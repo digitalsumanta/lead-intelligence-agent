@@ -1,5 +1,6 @@
 """Environment-backed application settings."""
 from pathlib import Path
+from typing import Literal
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,6 +21,11 @@ class Settings(BaseSettings):
     google_places_request_timeout_seconds: float = 10
     google_places_operation: str = "places_search_text"
     pagespeed_api_key: str = ""
+    pagespeed_enabled: bool = False
+    pagespeed_operation: str = "run_pagespeed"
+    pagespeed_request_timeout_seconds: float = 45
+    pagespeed_strategy: Literal["mobile", "desktop"] = "mobile"
+    pagespeed_categories: str = "performance,accessibility,best-practices,seo"
     cors_origins: str = "http://localhost:3000"
     max_csv_bytes: int = 5_000_000
     max_batch_size: int = 100
@@ -49,6 +55,7 @@ class Settings(BaseSettings):
             ("openai", [self.openai_api_key, *self.openai_api_keys.split(",")]),
             ("gemini", [self.gemini_api_key, *self.gemini_api_keys.split(",")]),
             ("google_places", [self.google_places_api_key]),
+            ("pagespeed", [self.pagespeed_api_key]),
         ):
             cleaned = list(dict.fromkeys(value.strip() for value in values if value.strip()))
             if cleaned: result[provider] = cleaned

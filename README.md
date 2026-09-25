@@ -1,6 +1,6 @@
 # Lead Intelligence Agent
 
-Local-first lead ingestion and enrichment. The backend uses FastAPI, SQLAlchemy 2 async, PostgreSQL, Alembic, and a separate durable-job worker. The frontend is Next.js. Ollama is the supported AI provider in this stabilization phase; cloud clients and Google integrations are not implemented yet.
+Local-first lead ingestion and enrichment. The backend uses FastAPI, SQLAlchemy 2 async, PostgreSQL, Alembic, and a separate durable-job worker. The frontend is Next.js. Ollama is the supported AI provider; optional Google Places and PageSpeed fact-collection adapters are not yet wired into job processing.
 
 ## Architecture
 
@@ -44,6 +44,8 @@ The website analyzer only accepts HTTP(S), rejects localhost and non-public addr
 
 Google Places collection is an optional enrichment adapter and is disabled by default. Set `GOOGLE_PLACES_ENABLED=true` and configure `GOOGLE_PLACES_API_KEY`; the application registers the key with the provider key pool. The Google Cloud project must enable Places API (New) and have billing configured. The adapter uses Text Search (New) with a restricted field mask and mocked HTTP in normal tests; live Google access is optional. See Google's [Text Search (New) documentation](https://developers.google.com/maps/documentation/places/web-service/text-search) and [usage and billing documentation](https://developers.google.com/maps/documentation/places/web-service/usage-and-billing).
 
+PageSpeed Insights collection is optional and disabled by default. Set `PAGESPEED_ENABLED=true` to opt in; `PAGESPEED_API_KEY` is recommended for automated collection and is leased through the provider key pool when supplied. Configure `PAGESPEED_STRATEGY` as `mobile` or `desktop`, along with timeout, operation, and categories as needed. The adapter validates public HTTP(S) website URLs before requesting Google analysis, and normal tests use mocked responses. Each strategy run is an external Lighthouse analysis request and consumes the API project's quota; see the [PageSpeed Insights API method](https://developers.google.com/speed/docs/insights/rest/v5/pagespeedapi/runpagespeed) for current request parameters.
+
 ## Tests
 
 Run the default unit suite (SQLite, no PostgreSQL required):
@@ -64,4 +66,4 @@ That check requires the database to already be migrated to head. It inspects the
 
 ## Current limitations
 
-Only Ollama is executable as an AI provider. Google Places now has an optional fact-collection adapter; it is not wired into durable job stages or the frontend. Gemini, OpenAI-compatible providers, and PageSpeed remain future work. Provider request controls support API-key leases and typed retries, but `api_keys.key` is still stored as plaintext in PostgreSQL; use only trusted local credentials until encrypted storage or a secret-manager reference is implemented. API bearer-token auth is a lightweight local gate, not multi-user or production-grade authentication. DNS destinations are revalidated before each request/redirect; deployments requiring protection against DNS rebinding should add resolver pinning at the network transport layer. Reports and settings pages are not implemented.
+Only Ollama is executable as an AI provider. Google Places and PageSpeed now have optional fact-collection adapters; neither is wired into durable job stages or the frontend. Gemini and OpenAI-compatible providers remain future work. Provider request controls support API-key leases and typed retries, but `api_keys.key` is still stored as plaintext in PostgreSQL; use only trusted local credentials until encrypted storage or a secret-manager reference is implemented. API bearer-token auth is a lightweight local gate, not multi-user or production-grade authentication. DNS destinations are revalidated before requests and redirects; deployments requiring protection against DNS rebinding should add resolver pinning at the network transport layer. Reports and settings pages are not implemented.
