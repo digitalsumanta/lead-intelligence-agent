@@ -47,8 +47,9 @@ def test_provider_execution_migration_follows_enrichment_head():
     spec = importlib.util.spec_from_file_location("0005_provider_execution_controls", migration_path)
     migration = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(migration)
-    assert migration.revision == SCHEMA_REVISION == "0005_provider_execution_controls"
+    assert migration.revision == "0005_provider_execution_controls"
     assert migration.down_revision == "0004_enrichment_evidence"
+    assert SCHEMA_REVISION == "0006_resumable_enrichment_stages"
 
 
 async def add_key(session_factory, provider="mock", credential="mock-secret", **values):

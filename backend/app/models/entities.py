@@ -190,6 +190,13 @@ class EnrichmentRun(Base):
     __table_args__ = (
         Index("ix_enrichment_runs_lead_created", "lead_id", "created_at"),
         Index("ix_enrichment_runs_processing_job", "processing_job_id"),
+        Index(
+            "uq_enrichment_run_active_job",
+            "processing_job_id",
+            unique=True,
+            postgresql_where=text("status IN ('queued','running')"),
+            sqlite_where=text("status IN ('queued','running')"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -202,6 +209,10 @@ class EnrichmentRun(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     pipeline_version: Mapped[str] = mapped_column(String(100), nullable=False)
     failure_summary: Mapped[dict | None] = mapped_column(JSON)
+    stage_states: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default=text("'{}'"))
+    active_stage: Mapped[str | None] = mapped_column(String(40))
+    stage_lease_token: Mapped[str | None] = mapped_column(String(36))
+    stage_lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False)
 
@@ -222,6 +233,7 @@ class Evidence(Base):
         Index("ix_evidence_observed_at", "observed_at"),
         Index("ix_evidence_fetched_at", "fetched_at"),
         Index("ix_evidence_provider_reference", "provider_name", "external_provider_reference"),
+        Index("uq_evidence_run_content_hash", "enrichment_run_id", "content_hash", unique=True),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)

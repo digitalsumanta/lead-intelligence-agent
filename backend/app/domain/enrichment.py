@@ -236,6 +236,40 @@ class EnrichmentRunStatus(StrEnum):
     FAILED = "failed"
 
 
+class EnrichmentStage(StrEnum):
+    WEBSITE = "website"
+    GOOGLE_PLACES = "google_places"
+    PAGESPEED = "pagespeed"
+
+
+class EnrichmentStageState(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    SKIPPED = "skipped"
+    FAILED = "failed"
+    RETRYABLE = "retryable"
+
+
+class EnrichmentStageRecord(ContractModel):
+    """Typed durable state and safe result summary for one pipeline stage."""
+
+    stage: EnrichmentStage
+    state: EnrichmentStageState
+    attempt: Annotated[int, Field(ge=0)] = 0
+    updated_at: datetime
+    outcome: Annotated[str | None, Field(max_length=120)] = None
+    error_code: Annotated[str | None, Field(max_length=120)] = None
+    failure_message: Annotated[str | None, Field(max_length=1000)] = None
+
+    @field_validator("updated_at")
+    @classmethod
+    def require_timezone(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("updated_at must be timezone-aware")
+        return value
+
+
 class EnrichmentFailureSummary(ContractModel):
     """Run-level summary without coupling to persistence or exception types."""
 

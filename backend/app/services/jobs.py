@@ -2,13 +2,14 @@
 import asyncio, logging
 from datetime import timedelta
 from sqlalchemy import select, or_
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.models import Lead, ProcessingJob, LeadEvent, LeadStatus, JobStatus, AgentRun, ProviderUsage, LeadBatch
 from app.models.entities import now_utc
 from app.providers import get_provider
 from app.providers import validate_provider_model
 from app.services.website import WebsiteAnalyzer
 from app.services.scoring import score_lead
+from app.services.enrichment_pipeline import mark_expired_stage_retryable, run_enrichment_pipeline
 
 logger = logging.getLogger("lead_agent")
 RETRY_DELAYS = [5, 15, 60]
@@ -45,7 +46,17 @@ async def create_job(session: AsyncSession, lead: Lead, provider: str | None = N
     else: await session.flush()
     return job
 
-async def run_job(session: AsyncSession, job: ProcessingJob, analyzer: WebsiteAnalyzer | None = None, provider_instance=None, attempt_already_counted: bool = False) -> ProcessingJob:
+async def run_job(
+    session: AsyncSession,
+    job: ProcessingJob,
+    analyzer: WebsiteAnalyzer | None = None,
+    provider_instance=None,
+    attempt_already_counted: bool = False,
+    *,
+    session_factory=None,
+    google_places_provider=None,
+    pagespeed_provider=None,
+) -> ProcessingJob:
     """Run/resume a job, persisting each expensive stage and safe retry state."""
     lead = await session.get(Lead, job.lead_id)
     if not lead: raise ValueError("Lead not found")
@@ -71,7 +82,16 @@ async def run_job(session: AsyncSession, job: ProcessingJob, analyzer: WebsiteAn
             if not lead.company_name.strip(): raise ValueError("Company name is required")
             advance_checkpoint(job, "DATA_VALIDATED"); await session.commit()
         if validate_checkpoint(job.checkpoint) < CHECKPOINTS.index("WEBSITE_ANALYZED"):
-            lead.website_analysis = await analyzer.analyze(lead.website)
+            factory = session_factory or async_sessionmaker(session.bind, expire_on_commit=False)
+            await run_enrichment_pipeline(
+                factory,
+                job.id,
+                lead.id,
+                analyzer=analyzer,
+                google_provider=google_places_provider,
+                pagespeed_provider=pagespeed_provider,
+            )
+            await session.refresh(lead)
             advance_checkpoint(job, "WEBSITE_ANALYZED"); await session.commit()
         if lead.ai_analysis and validate_checkpoint(job.checkpoint) < CHECKPOINTS.index("AI_ANALYSIS_COMPLETED"):
             advance_checkpoint(job, "AI_ANALYSIS_COMPLETED")
@@ -141,6 +161,7 @@ async def recover_stale_jobs(session: AsyncSession, stale_before, now=None) -> N
         for run in runs:
             run.status = "ABANDONED"
             run.completed_at = now
+        await mark_expired_stage_retryable(session, job.id, now)
         session.add(LeadEvent(lead_id=job.lead_id, job_id=job.id, event_type="STALE_JOB_RECOVERED", details={"attempt_count": job.attempt_count, "status": job.status.value}))
         await update_batch_status(session, job.batch_id)
     await session.commit()
@@ -160,12 +181,31 @@ async def claim_jobs(session: AsyncSession, limit: int, now=None) -> list:
     await session.commit()
     return [job.id for job in jobs]
 
-async def process_many(session_factory, jobs: list[ProcessingJob], concurrency: int, analyzer=None, provider_instance=None, attempt_already_counted: bool = False):
+async def process_many(
+    session_factory,
+    jobs: list[ProcessingJob],
+    concurrency: int,
+    analyzer=None,
+    provider_instance=None,
+    attempt_already_counted: bool = False,
+    *,
+    google_places_provider=None,
+    pagespeed_provider=None,
+):
     """Run persisted jobs under a bounded semaphore using isolated sessions."""
     semaphore = asyncio.Semaphore(concurrency)
     async def one(job_id):
         async with semaphore:
             async with session_factory() as session:
                 job = await session.get(ProcessingJob, job_id)
-                return await run_job(session, job, analyzer=analyzer, provider_instance=provider_instance, attempt_already_counted=attempt_already_counted)
+                return await run_job(
+                    session,
+                    job,
+                    analyzer=analyzer,
+                    provider_instance=provider_instance,
+                    attempt_already_counted=attempt_already_counted,
+                    session_factory=session_factory,
+                    google_places_provider=google_places_provider,
+                    pagespeed_provider=pagespeed_provider,
+                )
     return await asyncio.gather(*(one(job.id) for job in jobs))
