@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-lead_agent}
+      POSTGRES_USER: ${POSTGRES_USER:-lead_agent}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lead_agent}
+    volumes: ["postgres_data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lead_agent} -d ${POSTGRES_DB:-lead_agent}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  backend:
+    build: ./docker/backend
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-lead_agent}:${POSTGRES_PASSWORD:-lead_agent}@postgres:5432/${POSTGRES_DB:-lead_agent}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+    ports: ["8000:8000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+  worker:
+    build: ./docker/backend
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-lead_agent}:${POSTGRES_PASSWORD:-lead_agent}@postgres:5432/${POSTGRES_DB:-lead_agent}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+    command: ["python", "-m", "app.workers.runner"]
+    depends_on:
+      backend: { condition: service_healthy }
+  frontend:
+    build: ./docker/frontend
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    ports: ["3000:3000"]
+    depends_on: [backend]
+volumes:
+  postgres_data:
