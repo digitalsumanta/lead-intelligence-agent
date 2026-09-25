@@ -1,0 +1,39 @@
+"""Domain contracts shared by enrichment services and providers."""
+
+from app.domain.enrichment import (
+    EnrichmentProvider,
+    EnrichmentRun,
+    EnrichmentRunStatus,
+    EvidenceInput,
+    EvidenceRecord,
+    EvidenceSourceType,
+    NormalizedObservation,
+    ObservationKind,
+    ProviderError,
+    ProviderErrorType,
+    ProviderIdentity,
+    ProviderKind,
+    ProviderRequestMetadata,
+    ProviderResult,
+    ProviderResultStatus,
+    LeadInput,
+)
+
+__all__ = [
+    "EnrichmentProvider",
+    "EnrichmentRun",
+    "EnrichmentRunStatus",
+    "EvidenceInput",
+    "EvidenceRecord",
+    "EvidenceSourceType",
+    "LeadInput",
+    "NormalizedObservation",
+    "ObservationKind",
+    "ProviderError",
+    "ProviderErrorType",
+    "ProviderIdentity",
+    "ProviderKind",
+    "ProviderRequestMetadata",
+    "ProviderResult",
+    "ProviderResultStatus",
+]
