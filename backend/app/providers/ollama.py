@@ -25,5 +25,5 @@ class OllamaProvider(AIProvider):
                 response = await client.get(f"{self.base_url}/api/tags")
                 response.raise_for_status()
             return {"provider": self.name, "healthy": True, "model": self.model}
-        except httpx.HTTPError as exc:
-            return {"provider": self.name, "healthy": False, "model": self.model, "error": str(exc)}
+        except httpx.HTTPError:
+            return {"provider": self.name, "healthy": False, "model": self.model, "error": "Ollama endpoint is unavailable"}

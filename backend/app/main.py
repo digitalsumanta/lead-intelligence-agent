@@ -1,19 +1,21 @@
 """FastAPI application and REST endpoints."""
-import logging, uuid
+import logging, uuid, hmac
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, UploadFile, File, HTTPException, Query
+from fastapi import FastAPI, Depends, UploadFile, File, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import select, func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
-from app.database import get_db, SessionLocal, engine
-from app.models import Base, Lead, ImportJob, ProcessingJob, LeadEvent, LeadStatus, JobStatus, LeadBatch
+from app.database import get_db, SessionLocal, engine, verify_database_schema, worker_is_available
+from app.models import Lead, ImportJob, ProcessingJob, LeadEvent, LeadStatus, JobStatus, LeadBatch
 from app.schemas.lead import LeadOut, ProcessBatchIn
 from app.services.csv_import import import_csv
-from app.services.jobs import create_job, run_job, process_many
+from app.services.jobs import create_job, update_batch_status
 from app.services.key_pool import ApiKeyPool
-from app.providers import get_provider
+from app.providers import get_provider, validate_provider_model
 from app.utils.logging_config import configure_logging
 from app.services.key_config import sync_environment_keys
 
@@ -21,18 +23,26 @@ configure_logging()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Create tables for local development; production schema uses Alembic."""
-    # Dev convenience when a local database is already available. Production migrations remain authoritative.
-    try:
-        async with engine.begin() as conn: await conn.run_sync(Base.metadata.create_all)
-        async with SessionLocal() as session: await sync_environment_keys(session)
-    except Exception as exc:
-        logging.getLogger("lead_agent").warning("database startup check failed: %s", exc)
+    """Verify the migrated database schema; Alembic owns all schema changes."""
+    await verify_database_schema()
+    async with SessionLocal() as session:
+        await sync_environment_keys(session)
     yield
     await engine.dispose()
 
 app = FastAPI(title=settings.app_name, version="1.0.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origin_list, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+
+@app.middleware("http")
+async def local_api_auth(request: Request, call_next):
+    """Require the configured bearer token for application data and mutation routes."""
+    if request.url.path.startswith("/api/"):
+        token = settings.api_auth_token
+        supplied = request.headers.get("authorization", "")
+        supplied = supplied[7:].strip() if supplied.lower().startswith("bearer ") else ""
+        if not token or not supplied or not hmac.compare_digest(token, supplied):
+            return JSONResponse(status_code=401, content={"success": False, "error": {"code": "UNAUTHORIZED", "message": "Valid API bearer token required", "details": {}}})
+    return await call_next(request)
 
 @app.exception_handler(Exception)
 async def global_error_handler(request, exc):
@@ -62,11 +72,33 @@ async def health():
     """Basic process liveness check."""
     return {"success": True, "status": "healthy", "service": settings.app_name}
 
+@app.get("/ready")
+async def readiness():
+    """Report readiness including the database schema and configured provider."""
+    try:
+        await verify_database_schema()
+    except Exception:
+        return JSONResponse(status_code=503, content={"success": False, "ready": False, "checks": {"database": "unavailable_or_unmigrated", "provider": "not_checked", "worker": "unavailable"}})
+    try:
+        provider = get_provider()
+        provider_status = await provider.health_check()
+        provider_ready = bool(provider_status.get("healthy"))
+    except Exception:
+        provider_status = {"healthy": False, "error": "Provider health check failed"}
+        provider_ready = False
+    try:
+        worker_ready = await worker_is_available()
+    except Exception:
+        worker_ready = False
+    ready = provider_ready and worker_ready
+    payload = {"success": ready, "ready": ready, "checks": {"database": "healthy", "provider": provider_status, "worker": "healthy" if worker_ready else "unavailable"}}
+    return payload if ready else JSONResponse(status_code=503, content=payload)
+
 @app.get("/api/leads", response_model=list[LeadOut])
-async def list_leads(page: int = Query(1, ge=1), page_size: int = Query(25, ge=1, le=100), status: str | None = None, db: AsyncSession = Depends(get_db)):
+async def list_leads(page: int = Query(1, ge=1), page_size: int = Query(25, ge=1, le=100), status: LeadStatus | None = None, db: AsyncSession = Depends(get_db)):
     """List leads newest first."""
     query = select(Lead)
-    if status: query = query.where(Lead.status == status.upper())
+    if status: query = query.where(Lead.status == status)
     rows = (await db.scalars(query.order_by(Lead.created_at.desc()).offset((page-1)*page_size).limit(page_size))).all()
     return [LeadOut.model_validate({**{c.name: getattr(x, c.name) for c in Lead.__table__.columns}, "id": str(x.id), "status": x.status.value}) for x in rows]
 
@@ -88,25 +120,41 @@ async def import_leads(file: UploadFile = File(...), db: AsyncSession = Depends(
 
 @app.post("/api/leads/{lead_id}/process")
 async def process_lead(lead_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    """Queue and run a single lead through the intelligence pipeline."""
+    """Queue a single lead for durable worker processing."""
     lead = await db.get(Lead, lead_id)
     if not lead: raise HTTPException(404, detail={"code":"LEAD_NOT_FOUND","message":"Lead not found"})
-    job = await create_job(db, lead, settings.ai_provider, settings.ollama_model)
-    await run_job(db, job)
-    await db.refresh(job)
+    try:
+        provider, model = validate_provider_model(None, None)
+        job = await create_job(db, lead, provider, model)
+        await db.commit()
+    except ValueError as exc:
+        await db.rollback()
+        raise HTTPException(409, detail={"code":"JOB_NOT_CREATED","message":str(exc)})
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(409, detail={"code":"LEAD_ALREADY_QUEUED","message":"This lead already has an active job"})
     return job_payload(job)
 
 @app.post("/api/leads/process-batch")
 async def process_batch(body: ProcessBatchIn, db: AsyncSession = Depends(get_db)):
-    """Create and process a bounded batch of imported leads."""
+    """Create a batch of durable jobs for worker execution."""
     size = min(body.batch_size, settings.max_batch_size)
+    try: provider, model = validate_provider_model(body.provider, body.model)
+    except ValueError as exc: raise HTTPException(422, detail={"code":"INVALID_PROVIDER_MODEL","message":str(exc)})
     leads = (await db.scalars(select(Lead).where(Lead.status.in_([LeadStatus.IMPORTED, LeadStatus.FAILED])).order_by(Lead.created_at).limit(size))).all()
-    batch = LeadBatch(requested_count=len(leads)); db.add(batch); await db.flush()
+    batch = LeadBatch(requested_count=len(leads), status="QUEUED"); db.add(batch); await db.flush()
     jobs = []
-    for lead in leads: jobs.append(await create_job(db, lead, body.provider or settings.ai_provider, body.model or settings.ollama_model, batch.id))
-    provider_instance = get_provider(body.provider, body.model) if jobs else None
-    results = await process_many(SessionLocal, jobs, min(body.max_concurrency, settings.max_concurrency), provider_instance=provider_instance) if jobs else []
-    return {"batch_id": str(batch.id), "requested": len(jobs), "jobs": [job_payload(j) for j in results]}
+    try:
+        for lead in leads: jobs.append(await create_job(db, lead, provider, model, batch.id, commit=False))
+    except ValueError as exc:
+        await db.rollback()
+        raise HTTPException(409, detail={"code":"JOB_NOT_CREATED","message":str(exc)})
+    if not jobs: batch.status = "COMPLETED"
+    try: await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(409, detail={"code":"LEAD_ALREADY_QUEUED","message":"One or more leads already have active jobs"})
+    return {"batch_id": str(batch.id), "requested": len(jobs), "jobs": [job_payload(j) for j in jobs]}
 
 @app.get("/api/jobs/{job_id}")
 async def get_job(job_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
@@ -123,13 +171,20 @@ async def list_jobs(limit: int = Query(50, ge=1, le=200), db: AsyncSession = Dep
 
 @app.post("/api/jobs/{job_id}/retry")
 async def retry_job(job_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    """Reset an exhausted job and resume it from its saved checkpoint."""
+    """Queue a failed job for worker execution from its saved checkpoint."""
     job = await db.get(ProcessingJob, job_id)
     if not job: raise HTTPException(404, detail={"code":"JOB_NOT_FOUND","message":"Job not found"})
-    if job.status not in {JobStatus.FAILED, JobStatus.RETRYING}: raise HTTPException(409, detail={"code":"JOB_NOT_RETRYABLE","message":"Only failed jobs can be retried"})
+    if job.status != JobStatus.FAILED: raise HTTPException(409, detail={"code":"JOB_NOT_RETRYABLE","message":"Only failed jobs can be manually retried"})
+    competing = await db.scalar(select(ProcessingJob.id).where(ProcessingJob.lead_id == job.lead_id, ProcessingJob.id != job.id, ProcessingJob.status.in_([JobStatus.QUEUED, JobStatus.PROCESSING, JobStatus.RETRYING])))
+    if competing: raise HTTPException(409, detail={"code":"LEAD_ALREADY_QUEUED","message":"This lead already has an active job"})
     job.status = JobStatus.QUEUED; job.attempt_count = 0; job.next_retry_at = None
     lead = await db.get(Lead, job.lead_id); lead.status = LeadStatus.QUEUED
-    await db.commit(); await run_job(db, job); await db.refresh(job)
+    db.add(LeadEvent(lead_id=lead.id, job_id=job.id, event_type="JOB_MANUAL_RETRY", details={"checkpoint": job.checkpoint}))
+    try: await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(409, detail={"code":"LEAD_ALREADY_QUEUED","message":"This lead already has an active job"})
+    await update_batch_status(db, job.batch_id)
     return job_payload(job)
 
 @app.get("/api/dashboard/stats")
@@ -150,4 +205,5 @@ async def providers_status(db: AsyncSession = Depends(get_db)):
 
 def job_payload(job):
     """Serialize job fields safely."""
-    return {"id": str(job.id), "lead_id": str(job.lead_id), "status": job.status.value, "attempt_count": job.attempt_count, "max_attempts": job.max_attempts, "last_error": job.last_error, "started_at": job.started_at, "completed_at": job.completed_at, "next_retry_at": job.next_retry_at, "checkpoint": job.checkpoint, "provider": job.provider, "model": job.model, "created_at": job.created_at, "updated_at": job.updated_at}
+    safe_error = "Processing failed; details are available in server logs" if job.last_error else None
+    return {"id": str(job.id), "lead_id": str(job.lead_id), "status": job.status.value, "attempt_count": job.attempt_count, "max_attempts": job.max_attempts, "last_error": safe_error, "started_at": job.started_at, "completed_at": job.completed_at, "next_retry_at": job.next_retry_at, "checkpoint": job.checkpoint, "provider": job.provider, "model": job.model, "created_at": job.created_at, "updated_at": job.updated_at}

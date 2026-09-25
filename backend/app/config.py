@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     """Runtime configuration; secrets are sourced only from the environment."""
     model_config = SettingsConfigDict(env_file=Path(__file__).resolve().parents[2] / ".env", env_file_encoding="utf-8", extra="ignore")
     app_name: str = "Lead Intelligence Agent"
-    database_url: str = "postgresql+asyncpg://lead_agent:lead_agent@localhost:5432/lead_agent"
+    database_url: str = "postgresql+asyncpg://lead_agent@localhost:5432/lead_agent"
     ai_provider: str = "ollama"
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5-coder:latest"
@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     max_batch_size: int = 100
     request_timeout_seconds: float = 300
     max_concurrency: int = 2
+    api_auth_token: str = ""
 
     @property
     def cors_origin_list(self) -> list[str]:
