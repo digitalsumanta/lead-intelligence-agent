@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     openai_api_keys: str = ""
     gemini_api_keys: str = ""
     google_places_api_key: str = ""
+    google_places_enabled: bool = False
+    google_places_request_timeout_seconds: float = 10
+    google_places_operation: str = "places_search_text"
     pagespeed_api_key: str = ""
     cors_origins: str = "http://localhost:3000"
     max_csv_bytes: int = 5_000_000
@@ -42,7 +45,11 @@ class Settings(BaseSettings):
     def provider_key_map(self) -> dict[str, list[str]]:
         """Return non-empty provider credentials from singular and plural env settings."""
         result = {}
-        for provider, values in (("openai", [self.openai_api_key, *self.openai_api_keys.split(",")]), ("gemini", [self.gemini_api_key, *self.gemini_api_keys.split(",")])):
+        for provider, values in (
+            ("openai", [self.openai_api_key, *self.openai_api_keys.split(",")]),
+            ("gemini", [self.gemini_api_key, *self.gemini_api_keys.split(",")]),
+            ("google_places", [self.google_places_api_key]),
+        ):
             cleaned = list(dict.fromkeys(value.strip() for value in values if value.strip()))
             if cleaned: result[provider] = cleaned
         return result

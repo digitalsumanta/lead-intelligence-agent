@@ -87,12 +87,13 @@ class RetryPolicy:
 class ProviderExecutionError(RuntimeError):
     """Sanitized terminal error that never includes the original exception."""
 
-    def __init__(self, provider: str, operation: str, outcome: RequestOutcome, attempts: int, http_status: int | None = None):
+    def __init__(self, provider: str, operation: str, outcome: RequestOutcome, attempts: int, http_status: int | None = None, retry_after_seconds: float | None = None):
         self.provider = provider
         self.operation = operation
         self.outcome = outcome
         self.attempts = attempts
         self.http_status = http_status
+        self.retry_after_seconds = retry_after_seconds
         super().__init__(f"Provider request failed: provider={provider}, operation={operation}, outcome={outcome.value}")
 
 
@@ -267,12 +268,15 @@ class ProviderExecutionService:
                             self.policy.key_lease_seconds,
                         )
                     if lease is None:
-                        info = _ResponseInfo(last_info.outcome if last_attempt > 1 else RequestOutcome.TRANSIENT)
+                        info = last_info if last_attempt > 1 else _ResponseInfo(RequestOutcome.TRANSIENT)
                         await self._record_usage(
                             provider, operation, model, job_id, None, info, attempt - 1,
                             started_at=now_utc(), completed_at=now_utc(), quota_units=None, cost_units=None,
                         )
-                        raise ProviderExecutionError(provider, operation, info.outcome, attempt - 1) from None
+                        raise ProviderExecutionError(
+                            provider, operation, info.outcome, attempt - 1,
+                            info.http_status, info.retry_after_seconds,
+                        ) from None
 
                 started = now_utc()
                 timer = time.perf_counter()
@@ -338,7 +342,10 @@ class ProviderExecutionService:
                 if delay:
                     await self._sleep(delay)
 
-        raise ProviderExecutionError(provider, operation, last_info.outcome, last_attempt, last_info.http_status) from None
+        raise ProviderExecutionError(
+            provider, operation, last_info.outcome, last_attempt,
+            last_info.http_status, last_info.retry_after_seconds,
+        ) from None
 
     def _retryable(self, outcome: RequestOutcome) -> bool:
         return outcome in {RequestOutcome.TRANSIENT, RequestOutcome.TIMEOUT, RequestOutcome.RATE_LIMITED}

@@ -208,8 +208,10 @@ class LeadInput(ContractModel):
     """Minimum lead context supplied to enrichment providers."""
 
     lead_id: UUID
+    enrichment_run_id: UUID | None = None
     company_name: Annotated[str, Field(min_length=1, max_length=250)]
     website: Annotated[str | None, Field(max_length=1000)] = None
+    phone: Annotated[str | None, Field(max_length=80)] = None
     address: Annotated[str | None, Field(max_length=500)] = None
     city: Annotated[str | None, Field(max_length=120)] = None
     state: Annotated[str | None, Field(max_length=120)] = None

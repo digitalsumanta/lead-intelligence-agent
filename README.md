@@ -42,6 +42,8 @@ Checkpoints advance monotonically through validation, website analysis, AI analy
 
 The website analyzer only accepts HTTP(S), rejects localhost and non-public addresses, checks DNS destinations, manually follows a bounded number of redirects while revalidating them, applies a timeout, and caps response size. It does not crawl subpages.
 
+Google Places collection is an optional enrichment adapter and is disabled by default. Set `GOOGLE_PLACES_ENABLED=true` and configure `GOOGLE_PLACES_API_KEY`; the application registers the key with the provider key pool. The Google Cloud project must enable Places API (New) and have billing configured. The adapter uses Text Search (New) with a restricted field mask and mocked HTTP in normal tests; live Google access is optional. See Google's [Text Search (New) documentation](https://developers.google.com/maps/documentation/places/web-service/text-search) and [usage and billing documentation](https://developers.google.com/maps/documentation/places/web-service/usage-and-billing).
+
 ## Tests
 
 Run the default unit suite (SQLite, no PostgreSQL required):
@@ -62,4 +64,4 @@ That check requires the database to already be migrated to head. It inspects the
 
 ## Current limitations
 
-Only Ollama is executable; Gemini and OpenAI-compatible providers, Google Places, and PageSpeed remain future work. Provider request controls support API-key leases and typed retries for future integrations, but `api_keys.key` is still stored as plaintext in PostgreSQL; use only trusted local credentials until encrypted storage or a secret-manager reference is implemented. API bearer-token auth is a lightweight local gate, not multi-user or production-grade authentication. DNS destinations are revalidated before each request/redirect; deployments requiring protection against DNS rebinding should add resolver pinning at the network transport layer. Reports and settings pages are not implemented.
+Only Ollama is executable as an AI provider. Google Places now has an optional fact-collection adapter; it is not wired into durable job stages or the frontend. Gemini, OpenAI-compatible providers, and PageSpeed remain future work. Provider request controls support API-key leases and typed retries, but `api_keys.key` is still stored as plaintext in PostgreSQL; use only trusted local credentials until encrypted storage or a secret-manager reference is implemented. API bearer-token auth is a lightweight local gate, not multi-user or production-grade authentication. DNS destinations are revalidated before each request/redirect; deployments requiring protection against DNS rebinding should add resolver pinning at the network transport layer. Reports and settings pages are not implemented.
