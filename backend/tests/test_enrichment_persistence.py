@@ -153,6 +153,7 @@ def test_enrichment_migration_is_the_single_head_after_worker_heartbeat():
         ("0002_active_job_guard", "0001_initial"),
         ("0003_worker_heartbeat", "0002_active_job_guard"),
         ("0004_enrichment_evidence", "0003_worker_heartbeat"),
+        ("0005_provider_execution_controls", "0004_enrichment_evidence"),
     ]
     actual = []
     for revision, _ in expected:
@@ -163,4 +164,4 @@ def test_enrichment_migration_is_the_single_head_after_worker_heartbeat():
         actual.append((module.revision, module.down_revision))
 
     assert actual == expected
-    assert SCHEMA_REVISION == "0004_enrichment_evidence"
+    assert SCHEMA_REVISION == "0005_provider_execution_controls"

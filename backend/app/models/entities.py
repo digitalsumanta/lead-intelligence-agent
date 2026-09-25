@@ -110,26 +110,61 @@ class LeadEvent(Base):
 
 class ProviderUsage(Base):
     __tablename__ = "provider_usage"
+    __table_args__ = (Index("ix_provider_usage_provider_operation_created", "provider", "operation", "created_at"),)
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     provider: Mapped[str] = mapped_column(String(40), nullable=False)
     model: Mapped[str] = mapped_column(String(160), nullable=False)
     job_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("lead_processing_jobs.id"))
     success: Mapped[bool] = mapped_column(Boolean, default=True)
     duration_ms: Mapped[int | None] = mapped_column(Integer)
+    operation: Mapped[str | None] = mapped_column(String(120))
+    key_fingerprint: Mapped[str | None] = mapped_column(String(64))
+    outcome: Mapped[str | None] = mapped_column(String(30))
+    http_status: Mapped[int | None] = mapped_column(Integer)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"), nullable=False)
+    error_category: Mapped[str | None] = mapped_column(String(40))
+    rate_limit_limit: Mapped[int | None] = mapped_column(Integer)
+    rate_limit_remaining: Mapped[int | None] = mapped_column(Integer)
+    rate_limit_reset_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    quota_units: Mapped[float | None] = mapped_column(Float)
+    cost_units: Mapped[float | None] = mapped_column(Float)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
 
 class ApiKey(Base):
     __tablename__ = "api_keys"
+    __table_args__ = (Index("ix_api_keys_provider_operation_available", "provider", "operation_scope", "enabled", "status", "cooldown_until", "quota_exhausted_until", "lease_expires_at"),)
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     provider: Mapped[str] = mapped_column(String(40), nullable=False)
     key: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(30), default="ACTIVE")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"), nullable=False)
+    operation_scope: Mapped[str | None] = mapped_column(String(120))
     failure_count: Mapped[int] = mapped_column(Integer, default=0)
     success_count: Mapped[int] = mapped_column(Integer, default=0)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_failure_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(Text)
     cooldown_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    quota_exhausted_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_token: Mapped[str | None] = mapped_column(String(36))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ProviderOperationState(Base):
+    """Provider-wide per-operation cooldown/quota state when keys share quota."""
+
+    __tablename__ = "provider_operation_state"
+
+    provider: Mapped[str] = mapped_column(String(40), primary_key=True)
+    operation: Mapped[str] = mapped_column(String(120), primary_key=True)
+    cooldown_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    quota_exhausted_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_failure_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc)
 
 
 class AgentRun(Base):

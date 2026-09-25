@@ -22,6 +22,15 @@ class Settings(BaseSettings):
     max_batch_size: int = 100
     request_timeout_seconds: float = 300
     max_concurrency: int = 2
+    provider_max_retries: int = 2
+    provider_backoff_base_seconds: float = 0.5
+    provider_backoff_max_seconds: float = 8.0
+    provider_retry_jitter_seconds: float = 0.2
+    provider_max_concurrency: int = 4
+    provider_key_lease_seconds: int = 360
+    provider_failure_cooldown_seconds: float = 0.5
+    provider_rate_limit_cooldown_seconds: int = 60
+    provider_quota_cooldown_seconds: int = 3600
     api_auth_token: str = ""
 
     @property
