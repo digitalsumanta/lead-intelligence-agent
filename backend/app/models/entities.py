@@ -2,8 +2,8 @@
 import enum
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, String, Text, JSON, Float, Boolean, Uuid, text
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import CheckConstraint, DateTime, Enum, ForeignKey, Index, Integer, String, Text, JSON, Float, Boolean, Uuid, text
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 def now_utc():
@@ -54,6 +54,8 @@ class Lead(Base):
     confidence_score: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+    enrichment_runs: Mapped[list["EnrichmentRun"]] = relationship(back_populates="lead", cascade="all, delete-orphan")
+    evidence: Mapped[list["Evidence"]] = relationship(back_populates="lead", cascade="all, delete-orphan")
 
 
 class ImportJob(Base):
@@ -144,3 +146,67 @@ class WorkerHeartbeat(Base):
     __tablename__ = "worker_heartbeats"
     worker_id: Mapped[str] = mapped_column(String(200), primary_key=True)
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+
+
+class EnrichmentRun(Base):
+    """Persist one versioned enrichment lifecycle for a lead."""
+
+    __tablename__ = "enrichment_runs"
+    __table_args__ = (
+        Index("ix_enrichment_runs_lead_created", "lead_id", "created_at"),
+        Index("ix_enrichment_runs_processing_job", "processing_job_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lead_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("leads.id", ondelete="CASCADE"), nullable=False)
+    processing_job_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("lead_processing_jobs.id", ondelete="SET NULL"))
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="queued")
+    requested_stages: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    completed_stages: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    pipeline_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    failure_summary: Mapped[dict | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False)
+
+    lead: Mapped[Lead] = relationship(back_populates="enrichment_runs")
+    evidence: Mapped[list["Evidence"]] = relationship(back_populates="enrichment_run", cascade="all, delete-orphan")
+
+
+class Evidence(Base):
+    """Append-only source observation tied to its lead and enrichment run."""
+
+    __tablename__ = "evidence"
+    __table_args__ = (
+        CheckConstraint("confidence IS NULL OR (confidence >= 0 AND confidence <= 1)", name="ck_evidence_confidence_range"),
+        Index("ix_evidence_lead", "lead_id"),
+        Index("ix_evidence_enrichment_run", "enrichment_run_id"),
+        Index("ix_evidence_type", "evidence_type"),
+        Index("ix_evidence_provider_source", "provider_kind", "provider_name", "source_type"),
+        Index("ix_evidence_observed_at", "observed_at"),
+        Index("ix_evidence_fetched_at", "fetched_at"),
+        Index("ix_evidence_provider_reference", "provider_name", "external_provider_reference"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lead_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("leads.id", ondelete="CASCADE"), nullable=False)
+    enrichment_run_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("enrichment_runs.id", ondelete="CASCADE"), nullable=False)
+    evidence_type: Mapped[str] = mapped_column(String(160), nullable=False)
+    source_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    provider_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    provider_kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    provider_implementation: Mapped[str | None] = mapped_column(String(100))
+    source_url: Mapped[str | None] = mapped_column(String(2048))
+    external_provider_reference: Mapped[str | None] = mapped_column(String(512))
+    observed_value: Mapped[object] = mapped_column(JSON, nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    confidence: Mapped[float | None] = mapped_column(Float)
+    content_hash: Mapped[str | None] = mapped_column(String(64))
+    metadata_json: Mapped[dict] = mapped_column("metadata", JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+
+    lead: Mapped[Lead] = relationship(back_populates="evidence")
+    enrichment_run: Mapped[EnrichmentRun] = relationship(back_populates="evidence")

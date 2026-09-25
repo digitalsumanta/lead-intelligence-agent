@@ -7,7 +7,7 @@ from app.config import settings
 from app.models import WorkerHeartbeat
 from app.models.entities import now_utc
 
-SCHEMA_REVISION = "0003_worker_heartbeat"
+SCHEMA_REVISION = "0004_enrichment_evidence"
 
 engine = create_async_engine(settings.database_url, pool_pre_ping=True)
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
@@ -21,7 +21,7 @@ async def get_db():
 
 async def verify_database_schema() -> None:
     """Fail startup if the database is unavailable or has not been migrated."""
-    required = {"leads", "lead_import_jobs", "lead_batches", "lead_processing_jobs", "lead_events", "provider_usage", "api_keys", "agent_runs", "worker_heartbeats", "alembic_version"}
+    required = {"leads", "lead_import_jobs", "lead_batches", "lead_processing_jobs", "lead_events", "provider_usage", "api_keys", "agent_runs", "worker_heartbeats", "enrichment_runs", "evidence", "alembic_version"}
     async with engine.connect() as connection:
         tables = await connection.run_sync(lambda conn: set(inspect(conn).get_table_names()))
         missing = sorted(required - tables)
