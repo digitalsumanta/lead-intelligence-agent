@@ -97,6 +97,10 @@ class ProviderExecutionError(RuntimeError):
         super().__init__(f"Provider request failed: provider={provider}, operation={operation}, outcome={outcome.value}")
 
 
+class ProviderInvalidResponse(ValueError):
+    """Sanitized indication that a successful HTTP exchange had no valid provider payload."""
+
+
 @dataclass(frozen=True)
 class _ResponseInfo:
     outcome: RequestOutcome
@@ -181,6 +185,8 @@ def _classify_http(status: int, headers, body: str = "") -> _ResponseInfo:
 
 
 def _exception_info(exc: Exception) -> _ResponseInfo:
+    if isinstance(exc, ProviderInvalidResponse):
+        return _ResponseInfo(RequestOutcome.INVALID_RESPONSE)
     if isinstance(exc, httpx.HTTPStatusError):
         response = exc.response
         try:

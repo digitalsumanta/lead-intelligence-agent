@@ -32,6 +32,17 @@ from app.domain.intelligence import (
     ServiceRecommendationContract,
     VersionedLeadScore,
 )
+from app.domain.ai import (
+    AIProvider,
+    AIProviderError,
+    AIProviderException,
+    AIProviderOutcome,
+    AIProviderSelectionError,
+    AIRequest,
+    AIRequestMetadata,
+    AIResponse,
+    AIUsage,
+)
 
 __all__ = [
     "EnrichmentProvider",
@@ -62,4 +73,13 @@ __all__ = [
     "ProviderRequestMetadata",
     "ProviderResult",
     "ProviderResultStatus",
+    "AIProvider",
+    "AIProviderError",
+    "AIProviderException",
+    "AIProviderOutcome",
+    "AIProviderSelectionError",
+    "AIRequest",
+    "AIRequestMetadata",
+    "AIResponse",
+    "AIUsage",
 ]

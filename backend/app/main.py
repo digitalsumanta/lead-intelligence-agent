@@ -33,6 +33,24 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title=settings.app_name, version="1.0.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origin_list, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
+
+async def evaluate_provider_readiness(provider, session_factory=SessionLocal) -> tuple[dict, bool]:
+    """Check only the selected provider and avoid leasing keys or making generations."""
+    status = await provider.health_check()
+    ready = bool(status.get("healthy"))
+    if provider.name == "ollama":
+        ready = ready and status.get("model_available") is True
+        status["serviceable"] = ready
+        return status, ready
+    if provider.name in {"gemini", "openai_compatible"}:
+        status["key_pool"] = {"configured": 0, "healthy": 0}
+        if ready and status.get("configured"):
+            async with session_factory() as session:
+                status["key_pool"] = await ApiKeyPool().health(session, provider.name, provider.operation)
+        ready = ready and status.get("configured") is True and status["key_pool"]["healthy"] > 0
+    status["serviceable"] = ready
+    return status, ready
+
 @app.middleware("http")
 async def local_api_auth(request: Request, call_next):
     """Require the configured bearer token for application data and mutation routes."""
@@ -81,8 +99,7 @@ async def readiness():
         return JSONResponse(status_code=503, content={"success": False, "ready": False, "checks": {"database": "unavailable_or_unmigrated", "provider": "not_checked", "worker": "unavailable"}})
     try:
         provider = get_provider()
-        provider_status = await provider.health_check()
-        provider_ready = bool(provider_status.get("healthy"))
+        provider_status, provider_ready = await evaluate_provider_readiness(provider, SessionLocal)
     except Exception:
         provider_status = {"healthy": False, "error": "Provider health check failed"}
         provider_ready = False
@@ -200,7 +217,7 @@ async def providers_status(db: AsyncSession = Depends(get_db)):
     """Report configured provider health without exposing credentials."""
     provider = get_provider()
     pool = ApiKeyPool()
-    key_pools = {name: await pool.health(db, name) for name in ("openai", "gemini")}
+    key_pools = {name: await pool.health(db, name) for name in ("openai", "gemini", "openai_compatible")}
     return {"active_provider": provider.name, "providers": [await provider.health_check()], "key_pools": key_pools}
 
 def job_payload(job):

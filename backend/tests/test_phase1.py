@@ -160,7 +160,8 @@ async def test_readiness_reports_database_and_provider_success(monkeypatch):
     import asyncio
     from app.main import readiness
     class Provider:
-        async def health_check(self): return {"provider": "ollama", "healthy": True}
+        name = "ollama"
+        async def health_check(self): return {"provider": "ollama", "healthy": True, "model_available": True}
     async def ok(): return None
     monkeypatch.setattr("app.main.verify_database_schema", ok)
     monkeypatch.setattr("app.main.get_provider", lambda: Provider())

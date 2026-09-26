@@ -130,6 +130,8 @@ async def run_job(
         advance_checkpoint(job, "COMPLETED"); job.status = JobStatus.COMPLETED; job.completed_at = now_utc(); job.next_retry_at = None
         lead.status = LeadStatus.COMPLETED; run.status = "COMPLETED"; run.completed_at = now_utc()
         session.add(LeadEvent(lead_id=lead.id, job_id=job.id, event_type="JOB_COMPLETED", details={"score": lead.lead_score}))
+        # Job summary: request-level attempts are separately recorded by ProviderExecutionService
+        # with operation/outcome/key fingerprint populated. Keep this operation-null row for job outcome history.
         session.add(ProviderUsage(provider=job.provider, model=job.model, job_id=job.id, success=True, duration_ms=int((now_utc()-started).total_seconds()*1000)))
         await session.commit()
         logger.info("job completed", extra={"job_id": str(job.id), "lead_id": str(lead.id), "provider": job.provider, "model": job.model, "checkpoint": job.checkpoint, "duration_ms": int((now_utc()-started).total_seconds()*1000)})
@@ -142,6 +144,7 @@ async def run_job(
         job.next_retry_at = now_utc() + timedelta(seconds=retry_delay(job.attempt_count)) if retryable else None
         run.status = job.status.value; run.completed_at = now_utc()
         session.add(LeadEvent(lead_id=lead.id, job_id=job.id, event_type="JOB_ERROR", details={"retryable": retryable, "error": job.last_error}))
+        # Job summary row; request-level failures retain their own operation-scoped executor rows.
         session.add(ProviderUsage(provider=job.provider, model=job.model, job_id=job.id, success=False, duration_ms=int((now_utc()-started).total_seconds()*1000)))
         await session.commit()
         await update_batch_status(session, job.batch_id)

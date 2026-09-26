@@ -1,6 +1,6 @@
 # Lead Intelligence Agent
 
-Local-first lead ingestion and enrichment. The backend uses FastAPI, SQLAlchemy 2 async, PostgreSQL, Alembic, and a separate durable-job worker. The frontend is Next.js. Ollama is the supported AI provider; optional Google Places and PageSpeed adapters collect source evidence through resumable enrichment stages.
+Local-first lead ingestion and enrichment. The backend uses FastAPI, SQLAlchemy 2 async, PostgreSQL, Alembic, and a separate durable-job worker. The frontend is Next.js. Ollama is the default AI provider; optional Gemini and generic OpenAI-compatible adapters use the shared provider execution/key-pool service. Google Places and PageSpeed collect source evidence through resumable enrichment stages.
 
 ## Architecture
 
@@ -43,6 +43,16 @@ Checkpoints advance monotonically through validation, website analysis, AI analy
 
 The website analyzer only accepts HTTP(S), rejects localhost and non-public addresses, checks DNS destinations, manually follows a bounded number of redirects while revalidating them, applies a timeout, and caps response size. It does not crawl subpages.
 
+## AI providers
+
+`AI_DEFAULT_PROVIDER` selects `ollama` (default), `gemini`, or `openai_compatible`. Ollama needs no subscription or API key; configure `OLLAMA_BASE_URL` and `OLLAMA_MODEL`. Gemini and OpenAI-compatible providers are disabled by default. Enable the chosen provider with `AI_GEMINI_ENABLED=true` or `AI_OPENAI_COMPATIBLE_ENABLED=true`, then configure its base URL, model, and timeout (`AI_GEMINI_*` or `AI_OPENAI_COMPATIBLE_*`). Gemini uses Google's `generateContent` HTTP API; OpenAI-compatible endpoints use `POST /v1/chat/completions`. The Gemini base URL defaults to Google's v1beta API; the compatible endpoint defaults to a local LM Studio style server.
+
+Credentials are supplied as `AI_GEMINI_API_KEY` / `AI_GEMINI_API_KEYS` or `AI_OPENAI_COMPATIBLE_API_KEY` / `AI_OPENAI_COMPATIBLE_API_KEYS`; multiple keys are comma-separated and leased through the existing provider key pool. Calls share its retry, cooldown, rate-limit, and usage telemetry behavior. Cloud credentials are only required if that cloud provider is enabled and selected. Provider tests use mocked HTTP and do not call cloud services. The credential-at-rest limitation described below still applies.
+
+Structured output accepts Pydantic models or the locally enforced JSON Schema subset: local `$defs`/`definitions` references, primitive types, object/array constraints, enums/constants, string patterns, formats (`date-time`, `date`, `time`, `email`, `hostname`, `ipv4`, `ipv6`, `uri`, `uuid`), numeric bounds, nullable schemas, and `anyOf`/`oneOf`/`allOf`. Unsupported keywords, formats, dialects, or external references return an unsupported-capability error before a provider request. Gemini further rejects schema unions it cannot map to its API schema.
+
+`OPENAI_API_KEY` and `OPENAI_API_KEYS` are legacy key-pool settings and are not used by the `openai_compatible` adapter; configure the `AI_OPENAI_COMPATIBLE_*` variables instead. `ProviderUsage` contains operation-scoped request-attempt rows from the execution service and operation-null job summary rows; count request traffic using rows with an operation set.
+
 Google Places collection is an optional enrichment adapter and is disabled by default. Set `GOOGLE_PLACES_ENABLED=true` and configure `GOOGLE_PLACES_API_KEY`; the application registers the key with the provider key pool. The Google Cloud project must enable Places API (New) and have billing configured. The adapter uses Text Search (New) with a restricted field mask and mocked HTTP in normal tests; live Google access is optional. See Google's [Text Search (New) documentation](https://developers.google.com/maps/documentation/places/web-service/text-search) and [usage and billing documentation](https://developers.google.com/maps/documentation/places/web-service/usage-and-billing).
 
 PageSpeed Insights collection is optional and disabled by default. Set `PAGESPEED_ENABLED=true` to opt in; `PAGESPEED_API_KEY` is recommended for automated collection and is leased through the provider key pool when supplied. Configure `PAGESPEED_STRATEGY` as `mobile` or `desktop`, along with timeout, operation, and categories as needed. The adapter validates public HTTP(S) website URLs before requesting Google analysis, and normal tests use mocked responses. Each strategy run is an external Lighthouse analysis request and consumes the API project's quota; see the [PageSpeed Insights API method](https://developers.google.com/speed/docs/insights/rest/v5/pagespeedapi/runpagespeed) for current request parameters.
@@ -71,4 +81,4 @@ That check requires the database to already be migrated to head. It inspects the
 
 ## Current limitations
 
-Only Ollama is executable as an AI provider. Gemini and OpenAI-compatible providers remain future work. Provider request controls support API-key leases and typed retries, but `api_keys.key` is still stored as plaintext in PostgreSQL; use only trusted local credentials until encrypted storage or a secret-manager reference is implemented. API bearer-token auth is a lightweight local gate, not multi-user or production-grade authentication. DNS destinations are revalidated before requests and redirects; deployments requiring protection against DNS rebinding should add resolver pinning at the network transport layer. Reports and settings pages are not implemented.
+Provider adapters currently support Ollama, Gemini, and generic OpenAI-compatible chat completions. Provider request controls support API-key leases and typed retries, but `api_keys.key` is still stored as plaintext in PostgreSQL; use only trusted credentials until encrypted storage or a secret-manager reference is implemented. API bearer-token auth is a lightweight local gate, not multi-user or production-grade authentication. DNS destinations are revalidated before website requests and redirects; deployments requiring protection against DNS rebinding should add resolver pinning at the network transport layer. Reports and settings pages are not implemented.

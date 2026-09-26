@@ -273,15 +273,19 @@ class ApiKeyPool:
         key.lease_expires_at = None
         await session.commit()
 
-    async def health(self, session: AsyncSession, provider: str) -> dict:
-        """Return counts only; never serialize credential or lease data."""
-        keys = (await session.scalars(select(ApiKey).where(ApiKey.provider == provider))).all()
+    async def health(self, session: AsyncSession, provider: str, operation: str | None = None) -> dict:
+        """Return counts only; optionally restrict to keys usable for an operation."""
+        query = select(ApiKey).where(ApiKey.provider == provider)
+        if operation is not None:
+            query = query.where(or_(ApiKey.operation_scope.is_(None), ApiKey.operation_scope == operation))
+        keys = (await session.scalars(query)).all()
         now = now_utc()
         healthy = sum(
             key.enabled
             and key.status == "ACTIVE"
             and self._available_at(key.cooldown_until, now)
             and self._available_at(key.quota_exhausted_until, now)
+            and (operation is None or self._available_at(key.lease_expires_at, now))
             for key in keys
         )
         return {"configured": len(keys), "healthy": healthy}

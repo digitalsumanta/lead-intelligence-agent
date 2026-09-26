@@ -1,6 +1,7 @@
 """Environment-backed application settings."""
 from pathlib import Path
 from typing import Literal
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -9,13 +10,23 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=Path(__file__).resolve().parents[2] / ".env", env_file_encoding="utf-8", extra="ignore")
     app_name: str = "Lead Intelligence Agent"
     database_url: str = "postgresql+asyncpg://lead_agent@localhost:5432/lead_agent"
-    ai_provider: str = "ollama"
+    ai_provider: str = Field(default="ollama", validation_alias=AliasChoices("AI_DEFAULT_PROVIDER", "AI_PROVIDER"))
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5-coder:latest"
+    ai_gemini_enabled: bool = False
+    ai_gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
+    ai_gemini_model: str = "gemini-2.5-flash"
+    ai_gemini_timeout_seconds: float = 90
+    ai_openai_compatible_enabled: bool = False
+    ai_openai_compatible_base_url: str = "http://localhost:1234/v1"
+    ai_openai_compatible_model: str = "local-model"
+    ai_openai_compatible_timeout_seconds: float = 90
     openai_api_key: str = ""
-    gemini_api_key: str = ""
+    gemini_api_key: str = Field(default="", validation_alias=AliasChoices("AI_GEMINI_API_KEY", "GEMINI_API_KEY"))
     openai_api_keys: str = ""
-    gemini_api_keys: str = ""
+    gemini_api_keys: str = Field(default="", validation_alias=AliasChoices("AI_GEMINI_API_KEYS", "GEMINI_API_KEYS"))
+    ai_openai_compatible_api_key: str = ""
+    ai_openai_compatible_api_keys: str = ""
     google_places_api_key: str = ""
     google_places_enabled: bool = False
     google_places_request_timeout_seconds: float = 10
@@ -54,6 +65,7 @@ class Settings(BaseSettings):
         for provider, values in (
             ("openai", [self.openai_api_key, *self.openai_api_keys.split(",")]),
             ("gemini", [self.gemini_api_key, *self.gemini_api_keys.split(",")]),
+            ("openai_compatible", [self.ai_openai_compatible_api_key, *self.ai_openai_compatible_api_keys.split(",")]),
             ("google_places", [self.google_places_api_key]),
             ("pagespeed", [self.pagespeed_api_key]),
         ):
