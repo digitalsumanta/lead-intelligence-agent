@@ -2,7 +2,7 @@
 import enum
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import CheckConstraint, DateTime, Enum, ForeignKey, Index, Integer, String, Text, JSON, Float, Boolean, Uuid, text
+from sqlalchemy import CheckConstraint, Column, DateTime, Enum, ForeignKey, Index, Integer, String, Text, JSON, Float, Boolean, Uuid, Table, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -13,6 +13,32 @@ def now_utc():
 
 class Base(DeclarativeBase):
     pass
+
+
+opportunity_evidence_links = Table(
+    "opportunity_evidence_links", Base.metadata,
+    Column("opportunity_id", Uuid(as_uuid=True), ForeignKey("opportunities.id", ondelete="CASCADE"), primary_key=True),
+    Column("evidence_id", Uuid(as_uuid=True), ForeignKey("evidence.id", ondelete="CASCADE"), primary_key=True),
+    Index("ix_opportunity_evidence_evidence", "evidence_id"),
+)
+recommendation_evidence_links = Table(
+    "recommendation_evidence_links", Base.metadata,
+    Column("recommendation_id", Uuid(as_uuid=True), ForeignKey("service_recommendations.id", ondelete="CASCADE"), primary_key=True),
+    Column("evidence_id", Uuid(as_uuid=True), ForeignKey("evidence.id", ondelete="CASCADE"), primary_key=True),
+    Index("ix_recommendation_evidence_evidence", "evidence_id"),
+)
+recommendation_opportunity_links = Table(
+    "recommendation_opportunity_links", Base.metadata,
+    Column("recommendation_id", Uuid(as_uuid=True), ForeignKey("service_recommendations.id", ondelete="CASCADE"), primary_key=True),
+    Column("opportunity_id", Uuid(as_uuid=True), ForeignKey("opportunities.id", ondelete="CASCADE"), primary_key=True),
+    Index("ix_recommendation_opportunity_opportunity", "opportunity_id"),
+)
+score_evidence_links = Table(
+    "score_evidence_links", Base.metadata,
+    Column("score_id", Uuid(as_uuid=True), ForeignKey("lead_scores.id", ondelete="CASCADE"), primary_key=True),
+    Column("evidence_id", Uuid(as_uuid=True), ForeignKey("evidence.id", ondelete="CASCADE"), primary_key=True),
+    Index("ix_score_evidence_evidence", "evidence_id"),
+)
 
 
 class LeadStatus(str, enum.Enum):
@@ -56,6 +82,9 @@ class Lead(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
     enrichment_runs: Mapped[list["EnrichmentRun"]] = relationship(back_populates="lead", cascade="all, delete-orphan")
     evidence: Mapped[list["Evidence"]] = relationship(back_populates="lead", cascade="all, delete-orphan")
+    opportunities: Mapped[list["Opportunity"]] = relationship(back_populates="lead", cascade="all, delete-orphan")
+    service_recommendation_records: Mapped[list["ServiceRecommendation"]] = relationship(back_populates="lead", cascade="all, delete-orphan")
+    versioned_scores: Mapped[list["LeadScore"]] = relationship(back_populates="lead", cascade="all, delete-orphan")
 
 
 class ImportJob(Base):
@@ -218,6 +247,9 @@ class EnrichmentRun(Base):
 
     lead: Mapped[Lead] = relationship(back_populates="enrichment_runs")
     evidence: Mapped[list["Evidence"]] = relationship(back_populates="enrichment_run", cascade="all, delete-orphan")
+    opportunities: Mapped[list["Opportunity"]] = relationship(back_populates="enrichment_run", cascade="all, delete-orphan")
+    service_recommendations: Mapped[list["ServiceRecommendation"]] = relationship(back_populates="enrichment_run", cascade="all, delete-orphan")
+    scores: Mapped[list["LeadScore"]] = relationship(back_populates="enrichment_run", cascade="all, delete-orphan")
 
 
 class Evidence(Base):
@@ -257,3 +289,108 @@ class Evidence(Base):
 
     lead: Mapped[Lead] = relationship(back_populates="evidence")
     enrichment_run: Mapped[EnrichmentRun] = relationship(back_populates="evidence")
+
+
+class ServiceCatalogEntry(Base):
+    """Configurable service catalog consumed by deterministic rules."""
+
+    __tablename__ = "service_catalog"
+
+    service_id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    description: Mapped[str] = mapped_column(String(1000), nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
+    version: Mapped[str] = mapped_column(String(80), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc)
+
+
+class Opportunity(Base):
+    """Deterministic or AI-origin opportunity retained per enrichment run."""
+
+    __tablename__ = "opportunities"
+    __table_args__ = (
+        CheckConstraint("severity IN ('low','medium','high','critical')", name="ck_opportunity_severity"),
+        CheckConstraint("status IN ('open','acknowledged','resolved','dismissed')", name="ck_opportunity_status"),
+        CheckConstraint("origin IN ('deterministic','ai')", name="ck_opportunity_origin"),
+        Index("ix_opportunities_lead_created", "lead_id", "created_at"),
+        Index("ix_opportunities_run_category", "enrichment_run_id", "category"),
+        Index("uq_opportunities_run_identity", "enrichment_run_id", "identity", unique=True),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lead_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("leads.id", ondelete="CASCADE"), nullable=False)
+    enrichment_run_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("enrichment_runs.id", ondelete="CASCADE"), nullable=False)
+    identity: Mapped[str] = mapped_column(String(180), nullable=False)
+    category: Mapped[str] = mapped_column(String(80), nullable=False)
+    severity: Mapped[str] = mapped_column(String(20), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="open")
+    origin: Mapped[str] = mapped_column(String(20), nullable=False, default="deterministic")
+    title: Mapped[str] = mapped_column(String(250), nullable=False)
+    description: Mapped[str] = mapped_column(String(2000), nullable=False)
+    evidence_references: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    rule_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc)
+
+    lead: Mapped[Lead] = relationship(back_populates="opportunities")
+    enrichment_run: Mapped[EnrichmentRun] = relationship(back_populates="opportunities")
+    evidence_records: Mapped[list[Evidence]] = relationship(secondary=opportunity_evidence_links, lazy="selectin")
+
+
+class ServiceRecommendation(Base):
+    """Versioned deterministic service recommendation for one run and service."""
+
+    __tablename__ = "service_recommendations"
+    __table_args__ = (
+        CheckConstraint("rank >= 1", name="ck_service_recommendation_rank"),
+        CheckConstraint("confidence >= 0 AND confidence <= 1", name="ck_service_recommendation_confidence"),
+        Index("ix_service_recommendations_lead_rank", "lead_id", "rank"),
+        Index("uq_service_recommendations_run_service_rule", "enrichment_run_id", "service_id", "rule_version", unique=True),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lead_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("leads.id", ondelete="CASCADE"), nullable=False)
+    enrichment_run_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("enrichment_runs.id", ondelete="CASCADE"), nullable=False)
+    service_id: Mapped[str] = mapped_column(String(80), ForeignKey("service_catalog.service_id"), nullable=False)
+    service_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    service_description: Mapped[str] = mapped_column(String(1000), nullable=False)
+    service_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    rank: Mapped[int] = mapped_column(Integer, nullable=False)
+    rationale: Mapped[str] = mapped_column(String(2000), nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    opportunity_references: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    evidence_references: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    rule_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    ranking_score: Mapped[float] = mapped_column(Float, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+
+    lead: Mapped[Lead] = relationship(back_populates="service_recommendation_records")
+    enrichment_run: Mapped[EnrichmentRun] = relationship(back_populates="service_recommendations")
+    service: Mapped[ServiceCatalogEntry] = relationship()
+    evidence_records: Mapped[list[Evidence]] = relationship(secondary=recommendation_evidence_links, lazy="selectin")
+    opportunity_records: Mapped[list[Opportunity]] = relationship(secondary=recommendation_opportunity_links, lazy="selectin")
+
+
+class LeadScore(Base):
+    """Immutable, versioned deterministic score tied to its evidence run."""
+
+    __tablename__ = "lead_scores"
+    __table_args__ = (
+        CheckConstraint("score IS NULL OR (score >= 0 AND score <= 100)", name="ck_lead_score_range"),
+        Index("ix_lead_scores_lead_calculated", "lead_id", "calculated_at"),
+        Index("uq_lead_scores_run_version", "enrichment_run_id", "score_version", unique=True),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lead_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("leads.id", ondelete="CASCADE"), nullable=False)
+    enrichment_run_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("enrichment_runs.id", ondelete="CASCADE"), nullable=False)
+    score: Mapped[int | None] = mapped_column(Integer)
+    score_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    components: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    evidence_references: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    calculated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+
+    lead: Mapped[Lead] = relationship(back_populates="versioned_scores")
+    enrichment_run: Mapped[EnrichmentRun] = relationship(back_populates="scores")
+    evidence_records: Mapped[list[Evidence]] = relationship(secondary=score_evidence_links, lazy="selectin")

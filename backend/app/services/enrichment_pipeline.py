@@ -353,7 +353,22 @@ def _website_evidence(lead: LeadInput, result: dict) -> tuple[EvidenceInput, ...
             values.append(("website_social_link", link[:1000]))
     records = []
     for evidence_type, value in values:
-        if value is None or isinstance(value, (dict, list)):
+        if value is None:
+            if result.get("available") is True and evidence_type in {"website_title", "website_meta_description", "website_h1"} and evidence_type.removeprefix("website_") in result:
+                records.append(EvidenceInput(
+                    lead_id=lead.lead_id,
+                    enrichment_run_id=lead.enrichment_run_id,
+                    evidence_type=evidence_type,
+                    source=source,
+                    source_url=source_url,
+                    observed_value=None,
+                    observed_at=fetched_at,
+                    fetched_at=fetched_at,
+                    confidence=1.0,
+                    metadata={"enrichment_stage": EnrichmentStage.WEBSITE.value, "observation_state": "missing"},
+                ))
+            continue
+        if isinstance(value, (dict, list)):
             continue
         if not isinstance(value, (str, int, float, bool)):
             continue

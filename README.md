@@ -1,12 +1,13 @@
 # Lead Intelligence Agent
 
-Local-first lead ingestion and enrichment. The backend uses FastAPI, SQLAlchemy 2 async, PostgreSQL, Alembic, and a separate durable-job worker. The frontend is Next.js. Ollama is the supported AI provider; optional Google Places and PageSpeed fact-collection adapters are not yet wired into job processing.
+Local-first lead ingestion and enrichment. The backend uses FastAPI, SQLAlchemy 2 async, PostgreSQL, Alembic, and a separate durable-job worker. The frontend is Next.js. Ollama is the supported AI provider; optional Google Places and PageSpeed adapters collect source evidence through resumable enrichment stages.
 
 ## Architecture
 
 - `backend/app/main.py` exposes REST endpoints. It validates requests, authenticates `/api/*`, and queues work; it does not run long lead analyses inline.
 - `backend/app/models/entities.py` defines leads, import records, batches, processing jobs, events, provider usage, keys, and agent runs.
 - `backend/app/services/` contains CSV validation, job state transitions, website inspection, scoring, and key-pool utilities.
+- `backend/app/services/enrichment_pipeline.py` collects website, Google Places, and PageSpeed evidence in durable resumable stages. `backend/app/services/intelligence.py` deterministically derives opportunities, ranked service recommendations, and versioned scores from persisted evidence.
 - `backend/app/workers/runner.py` polls durable jobs. PostgreSQL workers claim rows with `FOR UPDATE SKIP LOCKED`; a conditional unique index prevents more than one active job per lead. A separate heartbeat task supports worker readiness checks while a long AI request is running.
 - `backend/migrations/` contains explicit Alembic schema revisions. Alembic is the sole schema authority. API and worker startup require an already migrated database and never create tables.
 - The dashboard queues work and polls job status; it does not process leads itself.
@@ -46,6 +47,10 @@ Google Places collection is an optional enrichment adapter and is disabled by de
 
 PageSpeed Insights collection is optional and disabled by default. Set `PAGESPEED_ENABLED=true` to opt in; `PAGESPEED_API_KEY` is recommended for automated collection and is leased through the provider key pool when supplied. Configure `PAGESPEED_STRATEGY` as `mobile` or `desktop`, along with timeout, operation, and categories as needed. The adapter validates public HTTP(S) website URLs before requesting Google analysis, and normal tests use mocked responses. Each strategy run is an external Lighthouse analysis request and consumes the API project's quota; see the [PageSpeed Insights API method](https://developers.google.com/speed/docs/insights/rest/v5/pagespeedapi/runpagespeed) for current request parameters.
 
+## Deterministic intelligence
+
+Opportunities and service recommendations are derived from persisted WebsiteAnalyzer, Google Places, and PageSpeed evidence. Current rule thresholds are versioned in `backend/app/services/intelligence.py`; unsupported signals do not create opportunities, and unknown lead fit or buying intent remains unavailable. The service catalog is persisted and can be configured by activating, deactivating, or revising catalog entries. `leads.lead_score` remains the current denormalized score for API compatibility; its meaning is now an evidence-backed digital opportunity score. `leads.score_factors` includes the score version and evidence-linked components, while historical versions are stored per enrichment run. Existing AI-generated copy fields remain separate and do not drive deterministic scoring or recommendations.
+
 ## Tests
 
 Run the default unit suite (SQLite, no PostgreSQL required):
@@ -66,4 +71,4 @@ That check requires the database to already be migrated to head. It inspects the
 
 ## Current limitations
 
-Only Ollama is executable as an AI provider. Google Places and PageSpeed now have optional fact-collection adapters; neither is wired into durable job stages or the frontend. Gemini and OpenAI-compatible providers remain future work. Provider request controls support API-key leases and typed retries, but `api_keys.key` is still stored as plaintext in PostgreSQL; use only trusted local credentials until encrypted storage or a secret-manager reference is implemented. API bearer-token auth is a lightweight local gate, not multi-user or production-grade authentication. DNS destinations are revalidated before requests and redirects; deployments requiring protection against DNS rebinding should add resolver pinning at the network transport layer. Reports and settings pages are not implemented.
+Only Ollama is executable as an AI provider. Gemini and OpenAI-compatible providers remain future work. Provider request controls support API-key leases and typed retries, but `api_keys.key` is still stored as plaintext in PostgreSQL; use only trusted local credentials until encrypted storage or a secret-manager reference is implemented. API bearer-token auth is a lightweight local gate, not multi-user or production-grade authentication. DNS destinations are revalidated before requests and redirects; deployments requiring protection against DNS rebinding should add resolver pinning at the network transport layer. Reports and settings pages are not implemented.

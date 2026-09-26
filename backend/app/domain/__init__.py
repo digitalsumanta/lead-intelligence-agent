@@ -21,6 +21,17 @@ from app.domain.enrichment import (
     ProviderResultStatus,
     LeadInput,
 )
+from app.domain.intelligence import (
+    IntelligenceOrigin,
+    OpportunityCategory,
+    OpportunityContract,
+    OpportunitySeverity,
+    OpportunityStatus,
+    ScoreFactor,
+    ServiceDefinition,
+    ServiceRecommendationContract,
+    VersionedLeadScore,
+)
 
 __all__ = [
     "EnrichmentProvider",
@@ -33,6 +44,15 @@ __all__ = [
     "EvidenceRecord",
     "EvidenceSourceType",
     "LeadInput",
+    "IntelligenceOrigin",
+    "OpportunityCategory",
+    "OpportunityContract",
+    "OpportunitySeverity",
+    "OpportunityStatus",
+    "ScoreFactor",
+    "ServiceDefinition",
+    "ServiceRecommendationContract",
+    "VersionedLeadScore",
     "NormalizedObservation",
     "ObservationKind",
     "ProviderError",

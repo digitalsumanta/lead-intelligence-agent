@@ -3,13 +3,14 @@ import asyncio, logging
 from datetime import timedelta
 from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from app.models import Lead, ProcessingJob, LeadEvent, LeadStatus, JobStatus, AgentRun, ProviderUsage, LeadBatch
+from app.models import Lead, ProcessingJob, LeadEvent, LeadStatus, JobStatus, AgentRun, ProviderUsage, LeadBatch, LeadScore, EnrichmentRun
 from app.models.entities import now_utc
 from app.providers import get_provider
 from app.providers import validate_provider_model
 from app.services.website import WebsiteAnalyzer
 from app.services.scoring import score_lead
 from app.services.enrichment_pipeline import mark_expired_stage_retryable, run_enrichment_pipeline
+from app.services.intelligence import derive_and_persist_intelligence
 
 logger = logging.getLogger("lead_agent")
 RETRY_DELAYS = [5, 15, 60]
@@ -66,6 +67,7 @@ async def run_job(
     lead.status = LeadStatus.PROCESSING
     run = AgentRun(job_id=job.id); session.add(run); await session.commit()
     started = now_utc()
+    intelligence_score_applied = False
     try:
         pos = validate_checkpoint(job.checkpoint)
         if pos == CHECKPOINTS.index("COMPLETED"):
@@ -83,7 +85,7 @@ async def run_job(
             advance_checkpoint(job, "DATA_VALIDATED"); await session.commit()
         if validate_checkpoint(job.checkpoint) < CHECKPOINTS.index("WEBSITE_ANALYZED"):
             factory = session_factory or async_sessionmaker(session.bind, expire_on_commit=False)
-            await run_enrichment_pipeline(
+            enrichment_run = await run_enrichment_pipeline(
                 factory,
                 job.id,
                 lead.id,
@@ -91,8 +93,18 @@ async def run_job(
                 google_provider=google_places_provider,
                 pagespeed_provider=pagespeed_provider,
             )
+            await derive_and_persist_intelligence(factory, lead.id, enrichment_run.id)
+            intelligence_score_applied = True
             await session.refresh(lead)
             advance_checkpoint(job, "WEBSITE_ANALYZED"); await session.commit()
+        else:
+            existing_score = await session.scalar(
+                select(LeadScore.id)
+                .join(EnrichmentRun, LeadScore.enrichment_run_id == EnrichmentRun.id)
+                .where(EnrichmentRun.processing_job_id == job.id)
+                .limit(1)
+            )
+            intelligence_score_applied = existing_score is not None
         if lead.ai_analysis and validate_checkpoint(job.checkpoint) < CHECKPOINTS.index("AI_ANALYSIS_COMPLETED"):
             advance_checkpoint(job, "AI_ANALYSIS_COMPLETED")
             await session.commit()
@@ -110,7 +122,9 @@ async def run_job(
             lead.decision_maker = data.get("decision_maker")
             advance_checkpoint(job, "AI_ANALYSIS_COMPLETED"); await session.commit()
         if validate_checkpoint(job.checkpoint) < CHECKPOINTS.index("SCORE_CALCULATED"):
-            lead.lead_score, lead.score_factors = score_lead(lead, lead.website_analysis or {}, lead.ai_analysis or {})
+            if not intelligence_score_applied:
+                # Legacy checkpoints without an enrichment run retain the Phase 1 score path.
+                lead.lead_score, lead.score_factors = score_lead(lead, lead.website_analysis or {}, lead.ai_analysis or {})
             advance_checkpoint(job, "SCORE_CALCULATED"); await session.commit()
         advance_checkpoint(job, "RESULT_SAVED"); await session.commit()
         advance_checkpoint(job, "COMPLETED"); job.status = JobStatus.COMPLETED; job.completed_at = now_utc(); job.next_retry_at = None
