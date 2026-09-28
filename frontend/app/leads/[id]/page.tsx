@@ -2,8 +2,97 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
-import { api, ApiError, IntelligenceClaim, IntelligenceResponse, LeadDetail } from "@/lib/api";
+import { FormEvent, useEffect, useState } from "react";
+import { api, ApiError, IntelligenceClaim, IntelligenceResponse, LeadDetail, SalesActivity, SalesActivityType, SalesPriority, SalesStatus, SalesWorkflow } from "@/lib/api";
+
+const NEXT_SALES_STATUS: Record<SalesStatus, SalesStatus[]> = {
+  NEW: ["QUALIFIED", "CONTACTED", "LOST"], QUALIFIED: ["CONTACTED", "LOST"],
+  CONTACTED: ["ENGAGED", "QUALIFIED", "LOST"], ENGAGED: ["PROPOSAL", "CONTACTED", "LOST"],
+  PROPOSAL: ["NEGOTIATION", "ENGAGED", "WON", "LOST"], NEGOTIATION: ["WON", "PROPOSAL", "LOST"],
+  WON: [], LOST: ["NEW", "QUALIFIED"],
+};
+
+function localDateTime(value: string | null) {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return new Date(parsed.getTime() - parsed.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+}
+
+function SalesWorkflowPanel({ leadId, intelligence }: { leadId: string; intelligence: IntelligenceResponse | null }) {
+  const [sales, setSales] = useState<SalesWorkflow | null>(null);
+  const [status, setStatus] = useState<SalesStatus>("NEW");
+  const [priority, setPriority] = useState<SalesPriority>("MEDIUM");
+  const [assignedTo, setAssignedTo] = useState("");
+  const [followUp, setFollowUp] = useState("");
+  const [lostReason, setLostReason] = useState("");
+  const [activityType, setActivityType] = useState<Exclude<SalesActivityType, "STATUS_CHANGE">>("NOTE");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [initialized, setInitialized] = useState(false);
+
+  async function reload() {
+    const data = await api<SalesWorkflow>(`/api/leads/${encodeURIComponent(leadId)}/sales`);
+    setSales(data); setStatus(data.sales_status); setPriority(data.priority);
+    setAssignedTo(data.assigned_to || ""); setLostReason(data.lost_reason || "");
+    setFollowUp(localDateTime(data.next_follow_up_at));
+  }
+
+  useEffect(() => {
+    let active = true;
+    api<SalesWorkflow>(`/api/leads/${encodeURIComponent(leadId)}/sales`).then((data) => {
+      if (!active) return;
+      setSales(data); setStatus(data.sales_status); setPriority(data.priority);
+      setAssignedTo(data.assigned_to || ""); setLostReason(data.lost_reason || "");
+      setFollowUp(localDateTime(data.next_follow_up_at));
+    }).catch(() => { if (active) setError("Sales workflow could not be loaded."); }).finally(() => { if (active) setInitialized(true); });
+    return () => { active = false; };
+  }, [leadId]);
+
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setError("");
+    try {
+      await api<SalesWorkflow>(`/api/leads/${encodeURIComponent(leadId)}/sales`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sales_status: status, priority, assigned_to: assignedTo.trim() || null, next_follow_up_at: followUp ? new Date(followUp).toISOString() : null, lost_reason: status === "LOST" ? lostReason.trim() || null : null }) });
+      await reload();
+    } catch (cause) { setError(cause instanceof ApiError ? cause.message : "Sales workflow could not be saved."); }
+    finally { setBusy(false); }
+  }
+
+  async function addActivity(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setError("");
+    try {
+      await api<SalesActivity>(`/api/leads/${encodeURIComponent(leadId)}/activities`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ activity_type: activityType, note }) });
+      setNote(""); await reload();
+    } catch (cause) { setError(cause instanceof ApiError ? cause.message : "Activity could not be saved."); }
+    finally { setBusy(false); }
+  }
+
+  const input = "mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm";
+  return <section className="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-bold text-ink">Sales workflow</h2><p className="mt-1 text-sm text-slate-500">Manage pipeline state and activity. Intelligence remains read-only and independent.</p></div>{sales && <span className="rounded-full bg-teal/10 px-3 py-1 text-xs font-semibold text-teal">{sales.sales_status} · {sales.priority}</span>}</div>
+    {error && <p role="alert" className="mt-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}
+    {!initialized ? <p className="mt-4 text-sm text-slate-500">Loading sales workflow…</p> : sales && <>
+      <form onSubmit={save} className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <label className="text-xs font-semibold text-slate-600">Sales status<select className={input} value={status} onChange={(event) => setStatus(event.target.value as SalesStatus)}><option value={sales.sales_status}>{sales.sales_status}</option>{NEXT_SALES_STATUS[sales.sales_status].map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
+        <label className="text-xs font-semibold text-slate-600">Priority<select className={input} value={priority} onChange={(event) => setPriority(event.target.value as SalesPriority)}>{["LOW", "MEDIUM", "HIGH", "URGENT"].map((value) => <option key={value}>{value}</option>)}</select></label>
+        <label className="text-xs font-semibold text-slate-600">Assigned owner<input className={input} maxLength={120} value={assignedTo} onChange={(event) => setAssignedTo(event.target.value)} placeholder="Unassigned" /></label>
+        <label className="text-xs font-semibold text-slate-600">Next follow-up<input className={input} type="datetime-local" value={followUp} onChange={(event) => setFollowUp(event.target.value)} /></label>
+        {status === "LOST" && <label className="text-xs font-semibold text-slate-600 sm:col-span-2">Lost reason<textarea className={input} maxLength={1000} required value={lostReason} onChange={(event) => setLostReason(event.target.value)} /></label>}
+        <div className="flex items-end"><button disabled={busy} className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{busy ? "Saving…" : "Save sales details"}</button></div>
+      </form>
+      <div className="mt-5 rounded-lg border border-teal/15 bg-teal/5 p-4">
+        <h3 className="text-xs font-bold uppercase tracking-wide text-teal">Read-only intelligence context</h3>
+        {intelligence ? <div className="mt-2 flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-700"><span>Deterministic score: <strong>{intelligence.score.value ?? "—"}</strong></span><span>Opportunities: <strong>{intelligence.opportunities.length}</strong></span><span>Personalization: <strong>{intelligence.personalization_available ? "Available" : "Unavailable"}</strong></span><span>Recommended services: <strong>{intelligence.recommendations.length ? intelligence.recommendations.map((item) => item.service_name).join(", ") : "None"}</strong></span></div> : <p className="mt-2 text-sm text-slate-500">Intelligence context is unavailable; sales workflow updates do not change intelligence.</p>}
+      </div>
+      {sales.lost_reason && status === "LOST" && <p className="mt-3 text-sm text-slate-600"><span className="font-semibold">Lost reason:</span> {sales.lost_reason}</p>}
+      <div className="mt-6 grid gap-6 lg:grid-cols-[.8fr_1.2fr]">
+        <form onSubmit={addActivity} className="rounded-lg bg-slate-50 p-4"><h3 className="font-semibold text-ink">Add activity</h3><label className="mt-3 block text-xs font-semibold text-slate-600">Type<select className={input} value={activityType} onChange={(event) => setActivityType(event.target.value as typeof activityType)}>{["NOTE", "CALL", "EMAIL", "WHATSAPP", "MEETING", "FOLLOW_UP", "PROPOSAL", "OTHER"].map((value) => <option key={value}>{value}</option>)}</select></label><label className="mt-3 block text-xs font-semibold text-slate-600">Note<textarea className={input} required maxLength={5000} value={note} onChange={(event) => setNote(event.target.value)} /></label><button disabled={busy} className="mt-3 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold disabled:opacity-50">Add activity</button></form>
+        <div><h3 className="font-semibold text-ink">Activity timeline</h3>{!sales.recent_activities.length ? <p className="mt-3 text-sm text-slate-500">No sales activities recorded.</p> : <ol className="mt-3 space-y-3">{sales.recent_activities.map((activity) => <li key={activity.id} className={`rounded-lg border p-3 ${activity.activity_type === "STATUS_CHANGE" ? "border-teal/20 bg-teal/5" : "border-slate-200"}`}><div className="flex justify-between gap-3"><span className="text-xs font-bold text-slate-700">{activity.activity_type === "STATUS_CHANGE" ? "System status change" : activity.activity_type.replaceAll("_", " ")}</span><time className="text-xs text-slate-400">{date(activity.occurred_at)}</time></div><p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{activity.note}</p></li>)}</ol>}</div>
+      </div>
+    </>}
+  </section>;
+}
 
 function date(value: string | null | undefined) {
   if (!value) return "—";
@@ -153,6 +242,8 @@ export default function LeadDetailPage() {
         </article>
         </>}
       </section>
+
+      <SalesWorkflowPanel leadId={id} intelligence={intel} />
 
       {intelligenceState !== "error" && <>
       <section className="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">

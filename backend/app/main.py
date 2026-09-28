@@ -13,8 +13,11 @@ from app.database import get_db, SessionLocal, engine, verify_database_schema, w
 from app.models import (
     Lead, ImportJob, ProcessingJob, LeadEvent, LeadStatus, JobStatus, LeadBatch,
     EnrichmentRun, LeadScore, Opportunity, ServiceRecommendation, Personalization,
+    SalesActivity, SalesStatus, SalesPriority, SalesActivityType,
 )
+from app.models.entities import now_utc
 from app.schemas.lead import LeadOut, ProcessBatchIn
+from app.schemas.sales import SalesPatch, SalesActivityCreate, SalesOut, SalesActivityOut
 from app.schemas.intelligence import IntelligenceResponse
 from app.services.lead_intelligence_api import read_intelligence_summary, read_lead_intelligence
 from app.services.csv_import import import_csv
@@ -125,6 +128,9 @@ async def list_leads(
     intelligence_status: str | None = Query(None, pattern="^(available|unavailable)$"),
     personalization_available: bool | None = None,
     opportunity_present: bool | None = None,
+    sales_status: SalesStatus | None = None,
+    priority: SalesPriority | None = None,
+    follow_up_due: bool | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     """List leads newest first, with stable created_at/id ordering and one-based pages."""
@@ -175,6 +181,14 @@ async def list_leads(
         query = query.where(has_personalization == personalization_available)
     if opportunity_present is not None:
         query = query.where((opportunity_count > 0) == opportunity_present)
+    if sales_status is not None:
+        query = query.where(Lead.sales_status == sales_status)
+    if priority is not None:
+        query = query.where(Lead.priority == priority)
+    if follow_up_due is True:
+        query = query.where(Lead.next_follow_up_at.is_not(None), Lead.next_follow_up_at <= now_utc())
+    elif follow_up_due is False:
+        query = query.where((Lead.next_follow_up_at.is_(None)) | (Lead.next_follow_up_at > now_utc()))
     if min_score is not None and max_score is not None and min_score > max_score:
         raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": "min_score cannot exceed max_score"})
     rows = (await db.execute(query.order_by(Lead.created_at.desc(), Lead.id.desc())
@@ -184,6 +198,7 @@ async def list_leads(
         result = LeadOut.model_validate({
             **{column.name: getattr(lead, column.name) for column in Lead.__table__.columns},
             "id": str(lead.id), "status": lead.status.value,
+            "sales_status": lead.sales_status.value, "priority": lead.priority.value,
             "intelligence_status": intel_status, "intelligence_score": score,
             "opportunity_count": opportunities, "recommendation_count": recommendations,
             "personalization_available": has_personalization_value,
@@ -199,6 +214,85 @@ async def get_lead(lead_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     if not lead: raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": "Lead not found"})
     summary = await read_intelligence_summary(db, lead_id)
     return LeadOut.model_validate({**{c.name: getattr(lead, c.name) for c in Lead.__table__.columns}, "id": str(lead.id), "status": lead.status.value, **summary.model_dump()})
+
+
+def sales_activity_payload(activity):
+    return SalesActivityOut.model_validate({"id": str(activity.id), "lead_id": str(activity.lead_id), "activity_type": activity.activity_type, "occurred_at": activity.occurred_at, "note": activity.note})
+
+
+@app.get("/api/leads/{lead_id}/sales", response_model=SalesOut)
+async def get_lead_sales(lead_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    lead = await db.get(Lead, lead_id)
+    if lead is None:
+        raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": "Lead not found"})
+    activities = (await db.scalars(select(SalesActivity).where(SalesActivity.lead_id == lead_id).order_by(SalesActivity.occurred_at.desc(), SalesActivity.id.desc()).limit(50))).all()
+    return SalesOut(sales_status=lead.sales_status, priority=lead.priority, assigned_to=lead.assigned_to, next_follow_up_at=lead.next_follow_up_at, lost_reason=lead.lost_reason, recent_activities=[sales_activity_payload(item) for item in activities])
+
+
+@app.patch("/api/leads/{lead_id}/sales", response_model=SalesOut)
+async def update_lead_sales(lead_id: uuid.UUID, body: SalesPatch, db: AsyncSession = Depends(get_db)):
+    lead = await db.scalar(select(Lead).where(Lead.id == lead_id).with_for_update())
+    if lead is None:
+        raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": "Lead not found"})
+    supplied = body.model_fields_set
+    if "sales_status" in supplied and body.sales_status is None:
+        raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": "sales_status cannot be null"})
+    if "priority" in supplied and body.priority is None:
+        raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": "priority cannot be null"})
+    transitions = {
+        SalesStatus.NEW: {SalesStatus.QUALIFIED, SalesStatus.CONTACTED, SalesStatus.LOST},
+        SalesStatus.QUALIFIED: {SalesStatus.CONTACTED, SalesStatus.LOST},
+        SalesStatus.CONTACTED: {SalesStatus.ENGAGED, SalesStatus.QUALIFIED, SalesStatus.LOST},
+        SalesStatus.ENGAGED: {SalesStatus.PROPOSAL, SalesStatus.CONTACTED, SalesStatus.LOST},
+        SalesStatus.PROPOSAL: {SalesStatus.NEGOTIATION, SalesStatus.ENGAGED, SalesStatus.WON, SalesStatus.LOST},
+        SalesStatus.NEGOTIATION: {SalesStatus.WON, SalesStatus.PROPOSAL, SalesStatus.LOST},
+        SalesStatus.WON: set(),
+        SalesStatus.LOST: {SalesStatus.NEW, SalesStatus.QUALIFIED},
+    }
+    old_status = lead.sales_status
+    target = body.sales_status if "sales_status" in supplied else old_status
+    changed_status = target != lead.sales_status
+    if changed_status and target not in transitions[lead.sales_status]:
+        raise HTTPException(422, detail={"code": "INVALID_SALES_TRANSITION", "message": f"Cannot change sales status from {lead.sales_status.value} to {target.value}"})
+    reason = body.lost_reason if "lost_reason" in supplied else lead.lost_reason
+    if target == SalesStatus.LOST and not reason:
+        raise HTTPException(422, detail={"code": "LOST_REASON_REQUIRED", "message": "lost_reason is required when changing status to LOST"})
+    if target != SalesStatus.LOST and "lost_reason" in supplied and body.lost_reason:
+        raise HTTPException(422, detail={"code": "INVALID_LOST_REASON", "message": "lost_reason is only allowed while sales_status is LOST"})
+    if changed_status and target != SalesStatus.LOST:
+        reason = None
+    if target != SalesStatus.LOST:
+        reason = None
+    for field in ("priority", "assigned_to", "next_follow_up_at"):
+        if field in supplied:
+            setattr(lead, field, getattr(body, field))
+    lead.sales_status = target
+    lead.lost_reason = reason
+    if changed_status:
+        db.add(SalesActivity(lead_id=lead.id, activity_type=SalesActivityType.STATUS_CHANGE, note=f"Sales status changed from {old_status.value} to {target.value}."))
+    await db.commit()
+    await db.refresh(lead)
+    activities = (await db.scalars(select(SalesActivity).where(SalesActivity.lead_id == lead.id).order_by(SalesActivity.occurred_at.desc(), SalesActivity.id.desc()).limit(50))).all()
+    return SalesOut(sales_status=lead.sales_status, priority=lead.priority, assigned_to=lead.assigned_to, next_follow_up_at=lead.next_follow_up_at, lost_reason=lead.lost_reason, recent_activities=[sales_activity_payload(item) for item in activities])
+
+
+@app.get("/api/leads/{lead_id}/activities", response_model=list[SalesActivityOut])
+async def list_sales_activities(lead_id: uuid.UUID, limit: int = Query(50, ge=1, le=200), db: AsyncSession = Depends(get_db)):
+    if await db.get(Lead, lead_id) is None:
+        raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": "Lead not found"})
+    activities = (await db.scalars(select(SalesActivity).where(SalesActivity.lead_id == lead_id).order_by(SalesActivity.occurred_at.desc(), SalesActivity.id.desc()).limit(limit))).all()
+    return [sales_activity_payload(item) for item in activities]
+
+
+@app.post("/api/leads/{lead_id}/activities", response_model=SalesActivityOut, status_code=201)
+async def create_sales_activity(lead_id: uuid.UUID, body: SalesActivityCreate, db: AsyncSession = Depends(get_db)):
+    if await db.get(Lead, lead_id) is None:
+        raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": "Lead not found"})
+    activity = SalesActivity(lead_id=lead_id, activity_type=body.activity_type, note=body.note)
+    db.add(activity)
+    await db.commit()
+    await db.refresh(activity)
+    return sales_activity_payload(activity)
 
 
 @app.get("/api/leads/{lead_id}/intelligence", response_model=IntelligenceResponse)

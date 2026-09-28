@@ -21,9 +21,13 @@ async def test_postgresql_schema_is_migrated_to_head():
     try:
         async with engine.connect() as connection:
             version = await connection.scalar(text("SELECT version_num FROM alembic_version"))
-            assert version == "0008_personalization"
+            assert version == "0009_sales_workflow"
             tables = set(await connection.run_sync(lambda conn: __import__("sqlalchemy").inspect(conn).get_table_names()))
-            assert {"leads", "lead_processing_jobs", "lead_batches", "lead_events", "enrichment_runs", "evidence", "provider_operation_state", "personalizations", "personalization_evidence_links"}.issubset(tables)
+            assert {"leads", "lead_processing_jobs", "lead_batches", "lead_events", "enrichment_runs", "evidence", "provider_operation_state", "personalizations", "personalization_evidence_links", "sales_activities"}.issubset(tables)
+            lead_indexes = await connection.run_sync(lambda conn: __import__("sqlalchemy").inspect(conn).get_indexes("leads"))
+            assert {"ix_leads_sales_status", "ix_leads_priority", "ix_leads_next_follow_up_at"}.issubset({index["name"] for index in lead_indexes})
+            sales_indexes = await connection.run_sync(lambda conn: __import__("sqlalchemy").inspect(conn).get_indexes("sales_activities"))
+            assert "ix_sales_activities_lead_occurred" in {index["name"] for index in sales_indexes}
             indexes = await connection.run_sync(lambda conn: __import__("sqlalchemy").inspect(conn).get_indexes("evidence"))
             assert {"ix_evidence_lead", "ix_evidence_enrichment_run", "ix_evidence_type", "ix_evidence_provider_source", "ix_evidence_observed_at", "ix_evidence_fetched_at", "ix_evidence_provider_reference"}.issubset({index["name"] for index in indexes})
             api_key_columns = await connection.run_sync(lambda conn: {column["name"] for column in __import__("sqlalchemy").inspect(conn).get_columns("api_keys")})

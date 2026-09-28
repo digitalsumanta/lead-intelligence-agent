@@ -38,6 +38,9 @@ export default function LeadsDashboard() {
   const [intelligenceStatus, setIntelligenceStatus] = useState("");
   const [personalization, setPersonalization] = useState("");
   const [hasOpportunity, setHasOpportunity] = useState("");
+  const [salesStatus, setSalesStatus] = useState("");
+  const [priority, setPriority] = useState("");
+  const [followUpDue, setFollowUpDue] = useState("");
   const [appliedFilters, setAppliedFilters] = useState("");
 
   const load = useCallback(async () => {
@@ -74,6 +77,9 @@ export default function LeadsDashboard() {
     if (intelligenceStatus) params.set("intelligence_status", intelligenceStatus);
     if (personalization) params.set("personalization_available", personalization);
     if (hasOpportunity) params.set("opportunity_present", hasOpportunity);
+    if (salesStatus) params.set("sales_status", salesStatus);
+    if (priority) params.set("priority", priority);
+    if (followUpDue) params.set("follow_up_due", followUpDue);
     setPage(1);
     setAppliedFilters(params.toString());
   }
@@ -81,6 +87,7 @@ export default function LeadsDashboard() {
   function clearFilters() {
     setMinScore(""); setMaxScore(""); setIntelligenceStatus("");
     setPersonalization(""); setHasOpportunity(""); setPage(1); setAppliedFilters("");
+    setSalesStatus(""); setPriority(""); setFollowUpDue("");
   }
 
   const withIntelligence = leads.filter((lead) => lead.intelligence_status === "available").length;
@@ -145,6 +152,15 @@ export default function LeadsDashboard() {
                 <option value="">Any</option><option value="true">Has opportunities</option><option value="false">None</option>
               </select>
             </label>
+            <label className="text-xs font-semibold text-slate-600">Sales status
+              <select value={salesStatus} onChange={(event) => setSalesStatus(event.target.value)} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"><option value="">Any status</option>{["NEW", "QUALIFIED", "CONTACTED", "ENGAGED", "PROPOSAL", "NEGOTIATION", "WON", "LOST"].map((value) => <option key={value}>{value}</option>)}</select>
+            </label>
+            <label className="text-xs font-semibold text-slate-600">Priority
+              <select value={priority} onChange={(event) => setPriority(event.target.value)} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"><option value="">Any priority</option>{["LOW", "MEDIUM", "HIGH", "URGENT"].map((value) => <option key={value}>{value}</option>)}</select>
+            </label>
+            <label className="text-xs font-semibold text-slate-600">Follow-up
+              <select value={followUpDue} onChange={(event) => setFollowUpDue(event.target.value)} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"><option value="">Any</option><option value="true">Due now</option><option value="false">Not due</option></select>
+            </label>
             <div className="flex items-end gap-2">
               <button type="submit" className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700">Apply</button>
               <button type="button" onClick={clearFilters} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Clear</button>
@@ -164,7 +180,7 @@ export default function LeadsDashboard() {
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1120px] text-left text-sm">
               <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
-                <tr>{["Business / Lead", "Location", "Intelligence score", "Opportunities", "Recommended service", "Personalization", "Status", "Last enriched", "Action"].map((heading) => <th key={heading} className="px-4 py-3 font-semibold">{heading}</th>)}</tr>
+                <tr>{["Business / Lead", "Location", "Intelligence score", "Opportunities", "Recommended service", "Personalization", "Enrichment", "Sales status", "Priority", "Next follow-up", "Last enriched", "Action"].map((heading) => <th key={heading} className="px-4 py-3 font-semibold">{heading}</th>)}</tr>
               </thead>
               <tbody>
                 {leads.map((lead) => (
@@ -176,6 +192,9 @@ export default function LeadsDashboard() {
                     <td className="px-4 py-4 text-slate-700">{lead.recommended_services?.[0] || (lead.recommendation_count ? `${lead.recommendation_count} recommendation${lead.recommendation_count === 1 ? "" : "s"}` : "—")}</td>
                     <td className="px-4 py-4"><span className={lead.personalization_available ? "text-emerald-700" : "text-slate-400"}>{lead.personalization_available ? "Available" : "—"}</span></td>
                     <td className="px-4 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${lead.intelligence_status === "available" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>{lead.intelligence_status === "available" ? "Ready" : "Awaiting"}</span></td>
+                    <td className="px-4 py-4 text-xs font-semibold text-slate-700">{lead.sales_status}</td>
+                    <td className="px-4 py-4 text-xs text-slate-600">{lead.priority}</td>
+                    <td className="whitespace-nowrap px-4 py-4 text-xs text-slate-500">{displayDate(lead.next_follow_up_at)}</td>
                     <td className="whitespace-nowrap px-4 py-4 text-slate-500">{displayDate(lead.latest_enrichment_at)}</td>
                     <td className="px-4 py-4"><Link href={`/leads/${lead.id}`} className="font-semibold text-teal hover:underline">Review</Link></td>
                   </tr>

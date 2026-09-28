@@ -55,9 +55,21 @@ class JobStatus(str, enum.Enum):
     QUEUED="QUEUED"; PROCESSING="PROCESSING"; COMPLETED="COMPLETED"; FAILED="FAILED"; RETRYING="RETRYING"
 
 
+class SalesStatus(str, enum.Enum):
+    NEW="NEW"; QUALIFIED="QUALIFIED"; CONTACTED="CONTACTED"; ENGAGED="ENGAGED"; PROPOSAL="PROPOSAL"; NEGOTIATION="NEGOTIATION"; WON="WON"; LOST="LOST"
+
+
+class SalesPriority(str, enum.Enum):
+    LOW="LOW"; MEDIUM="MEDIUM"; HIGH="HIGH"; URGENT="URGENT"
+
+
+class SalesActivityType(str, enum.Enum):
+    NOTE="NOTE"; CALL="CALL"; EMAIL="EMAIL"; WHATSAPP="WHATSAPP"; MEETING="MEETING"; STATUS_CHANGE="STATUS_CHANGE"; FOLLOW_UP="FOLLOW_UP"; PROPOSAL="PROPOSAL"; OTHER="OTHER"
+
+
 class Lead(Base):
     __tablename__ = "leads"
-    __table_args__ = (Index("ix_leads_email", "email"), Index("ix_leads_company_city", "company_name", "city"), Index("ix_leads_status_created", "status", "created_at"))
+    __table_args__ = (Index("ix_leads_email", "email"), Index("ix_leads_company_city", "company_name", "city"), Index("ix_leads_status_created", "status", "created_at"), Index("ix_leads_sales_status", "sales_status"), Index("ix_leads_priority", "priority"), Index("ix_leads_next_follow_up_at", "next_follow_up_at"))
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     company_name: Mapped[str] = mapped_column(String(250), nullable=False)
     website: Mapped[str | None] = mapped_column(String(1000))
@@ -69,6 +81,11 @@ class Lead(Base):
     country: Mapped[str | None] = mapped_column(String(120))
     industry: Mapped[str | None] = mapped_column(String(160))
     status: Mapped[LeadStatus] = mapped_column(Enum(LeadStatus), default=LeadStatus.IMPORTED, nullable=False)
+    sales_status: Mapped[SalesStatus] = mapped_column(Enum(SalesStatus, name="salesstatus"), default=SalesStatus.NEW, server_default="NEW", nullable=False)
+    priority: Mapped[SalesPriority] = mapped_column(Enum(SalesPriority, name="salespriority"), default=SalesPriority.MEDIUM, server_default="MEDIUM", nullable=False)
+    assigned_to: Mapped[str | None] = mapped_column(String(120))
+    next_follow_up_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lost_reason: Mapped[str | None] = mapped_column(String(1000))
     lead_score: Mapped[int | None] = mapped_column(Integer)
     score_factors: Mapped[dict | None] = mapped_column(JSON)
     ai_summary: Mapped[str | None] = mapped_column(Text)
@@ -91,6 +108,18 @@ class Lead(Base):
     opportunities: Mapped[list["Opportunity"]] = relationship(back_populates="lead", cascade="all, delete-orphan")
     service_recommendation_records: Mapped[list["ServiceRecommendation"]] = relationship(back_populates="lead", cascade="all, delete-orphan")
     versioned_scores: Mapped[list["LeadScore"]] = relationship(back_populates="lead", cascade="all, delete-orphan")
+    sales_activities: Mapped[list["SalesActivity"]] = relationship(back_populates="lead", cascade="all, delete-orphan")
+
+
+class SalesActivity(Base):
+    __tablename__ = "sales_activities"
+    __table_args__ = (Index("ix_sales_activities_lead_occurred", "lead_id", "occurred_at"),)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lead_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("leads.id", ondelete="CASCADE"), nullable=False)
+    activity_type: Mapped[SalesActivityType] = mapped_column(Enum(SalesActivityType, name="salesactivitytype"), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+    note: Mapped[str] = mapped_column(Text, nullable=False)
+    lead: Mapped[Lead] = relationship(back_populates="sales_activities")
 
 
 class ImportJob(Base):

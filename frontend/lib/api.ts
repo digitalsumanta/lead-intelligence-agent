@@ -54,6 +54,11 @@ export type LeadListItem = {
   state: string | null;
   country: string | null;
   status: string;
+  sales_status: SalesStatus;
+  priority: SalesPriority;
+  assigned_to: string | null;
+  next_follow_up_at: string | null;
+  lost_reason: string | null;
   lead_score: number | null;
   recommended_services: string[] | null;
   intelligence_status: "available" | "unavailable";
@@ -78,10 +83,21 @@ export type LeadDetail = {
   country: string | null;
   industry: string | null;
   status: string;
+  sales_status: SalesStatus;
+  priority: SalesPriority;
+  assigned_to: string | null;
+  next_follow_up_at: string | null;
+  lost_reason: string | null;
   intelligence_status: "available" | "unavailable";
   intelligence_score: number | null;
   latest_enrichment_at: string | null;
 };
+
+export type SalesStatus = "NEW" | "QUALIFIED" | "CONTACTED" | "ENGAGED" | "PROPOSAL" | "NEGOTIATION" | "WON" | "LOST";
+export type SalesPriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+export type SalesActivityType = "NOTE" | "CALL" | "EMAIL" | "WHATSAPP" | "MEETING" | "STATUS_CHANGE" | "FOLLOW_UP" | "PROPOSAL" | "OTHER";
+export type SalesActivity = { id: string; lead_id: string; activity_type: SalesActivityType; occurred_at: string; note: string };
+export type SalesWorkflow = { sales_status: SalesStatus; priority: SalesPriority; assigned_to: string | null; next_follow_up_at: string | null; lost_reason: string | null; recent_activities: SalesActivity[] };
 
 export type IntelligenceClaim = {
   type: "verified_fact" | "supported_inference" | "suggested_language";

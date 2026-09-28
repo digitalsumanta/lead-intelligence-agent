@@ -16,6 +16,11 @@ class LeadOut(BaseModel):
     country: str | None = None
     industry: str | None = None
     status: str
+    sales_status: str = "NEW"
+    priority: str = "MEDIUM"
+    assigned_to: str | None = None
+    next_follow_up_at: datetime | None = None
+    lost_reason: str | None = None
     lead_score: int | None = None
     score_factors: dict[str, Any] | None = None
     ai_summary: str | None = None
