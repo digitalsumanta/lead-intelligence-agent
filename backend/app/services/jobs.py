@@ -12,6 +12,7 @@ from app.services.scoring import score_lead
 from app.services.enrichment_pipeline import mark_expired_stage_retryable, run_enrichment_pipeline
 from app.services.intelligence import derive_and_persist_intelligence
 from app.services.personalization import generate_personalization
+from app.services.outreach import mark_outreach_stale
 
 logger = logging.getLogger("lead_agent")
 RETRY_DELAYS = [5, 15, 60]
@@ -77,6 +78,7 @@ async def run_job(
             lead.status = LeadStatus.COMPLETED
             run.status = "COMPLETED"
             run.completed_at = now_utc()
+            await mark_outreach_stale(session, lead.id)
             session.add(LeadEvent(lead_id=lead.id, job_id=job.id, event_type="JOB_RESUMED_FROM_COMPLETED_CHECKPOINT", details={}))
             await session.commit()
             await update_batch_status(session, job.batch_id)
@@ -206,6 +208,7 @@ async def run_job(
         advance_checkpoint(job, "RESULT_SAVED"); await session.commit()
         advance_checkpoint(job, "COMPLETED"); job.status = JobStatus.COMPLETED; job.completed_at = now_utc(); job.next_retry_at = None
         lead.status = LeadStatus.COMPLETED; run.status = "COMPLETED"; run.completed_at = now_utc()
+        await mark_outreach_stale(session, lead.id)
         session.add(LeadEvent(lead_id=lead.id, job_id=job.id, event_type="JOB_COMPLETED", details={"score": lead.lead_score}))
         # Job summary: request-level attempts are separately recorded by ProviderExecutionService
         # with operation/outcome/key fingerprint populated. Keep this operation-null row for job outcome history.

@@ -7,17 +7,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import select, func, case
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.config import settings
 from app.database import get_db, SessionLocal, engine, verify_database_schema, worker_is_available
 from app.models import (
     Lead, ImportJob, ProcessingJob, LeadEvent, LeadStatus, JobStatus, LeadBatch,
     EnrichmentRun, LeadScore, Opportunity, ServiceRecommendation, Personalization,
-    SalesActivity, SalesStatus, SalesPriority, SalesActivityType,
+    SalesActivity, SalesStatus, SalesPriority, SalesActivityType, OutreachArtifact, OutreachStatus,
 )
 from app.models.entities import now_utc
 from app.schemas.lead import LeadOut, ProcessBatchIn
 from app.schemas.sales import SalesPatch, SalesActivityCreate, SalesOut, SalesActivityOut
+from app.schemas.outreach import OutreachArtifactOut, OutreachReadOut, OutreachContextOut, OutreachPatch, OutreachReject
 from app.schemas.intelligence import IntelligenceResponse
 from app.services.lead_intelligence_api import read_intelligence_summary, read_lead_intelligence
 from app.services.csv_import import import_csv
@@ -26,6 +27,10 @@ from app.services.key_pool import ApiKeyPool
 from app.providers import get_provider, validate_provider_model
 from app.utils.logging_config import configure_logging
 from app.services.key_config import sync_environment_keys
+from app.services.outreach import (
+    OutreachUnavailable, current_artifact_response, generate_outreach,
+    mark_outreach_stale, source_state, validate_outreach,
+)
 
 configure_logging()
 
@@ -270,6 +275,7 @@ async def update_lead_sales(lead_id: uuid.UUID, body: SalesPatch, db: AsyncSessi
     lead.lost_reason = reason
     if changed_status:
         db.add(SalesActivity(lead_id=lead.id, activity_type=SalesActivityType.STATUS_CHANGE, note=f"Sales status changed from {old_status.value} to {target.value}."))
+        await mark_outreach_stale(db, lead.id)
     await db.commit()
     await db.refresh(lead)
     activities = (await db.scalars(select(SalesActivity).where(SalesActivity.lead_id == lead.id).order_by(SalesActivity.occurred_at.desc(), SalesActivity.id.desc()).limit(50))).all()
@@ -293,6 +299,158 @@ async def create_sales_activity(lead_id: uuid.UUID, body: SalesActivityCreate, d
     await db.commit()
     await db.refresh(activity)
     return sales_activity_payload(activity)
+
+
+async def _latest_outreach(db: AsyncSession, lead_id: uuid.UUID):
+    return await db.scalar(select(OutreachArtifact).where(
+        OutreachArtifact.lead_id == lead_id,
+    ).order_by(OutreachArtifact.created_at.desc(), OutreachArtifact.id.desc()).limit(1))
+
+
+async def _outreach_is_current(db: AsyncSession, lead: Lead, artifact: OutreachArtifact):
+    intelligence = await read_lead_intelligence(db, lead.id)
+    if intelligence is None:
+        return False, None
+    fingerprint, _, _ = source_state(intelligence, lead)
+    return fingerprint == artifact.source_fingerprint and artifact.status != OutreachStatus.STALE, intelligence
+
+
+def _outreach_payload(artifact: OutreachArtifact, is_current: bool, *, sales_status=None):
+    try:
+        return current_artifact_response(artifact, is_current, current_sales_status=sales_status)
+    except (TypeError, ValueError):
+        return OutreachArtifactOut(
+            id=artifact.id, lead_id=artifact.lead_id, enrichment_run_id=artifact.enrichment_run_id,
+            status=OutreachStatus.STALE if not is_current else OutreachStatus.DRAFT,
+            is_current=is_current, sales_status=sales_status or artifact.sales_context["sales_status"],
+            sales_context_version=artifact.sales_context_version, contract_version=artifact.contract_version,
+            prompt_version=artifact.prompt_version, content=None,
+            validation_result={"valid": False, "error_code": "PERSISTED_CONTENT_INVALID"},
+            generation_error="Stored outreach content failed validation.", generated_at=artifact.generated_at,
+            reviewed_at=artifact.reviewed_at, reviewed_by=artifact.reviewed_by,
+            rejection_reason=artifact.rejection_reason,
+        )
+
+
+@app.get("/api/leads/{lead_id}/outreach", response_model=OutreachReadOut)
+async def get_lead_outreach(lead_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    lead = await db.get(Lead, lead_id)
+    if lead is None:
+        raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": "Lead not found"})
+    intelligence = await read_lead_intelligence(db, lead_id)
+    context = None
+    if intelligence is not None:
+        context = OutreachContextOut(
+            sales_status=lead.sales_status, score=intelligence.score.value,
+            opportunity_count=len(intelligence.opportunities),
+            recommended_services=tuple(item.service_name for item in intelligence.recommendations),
+            personalization_available=intelligence.personalization_available,
+        )
+    artifact = await _latest_outreach(db, lead_id)
+    if artifact is None:
+        return OutreachReadOut(current_context=context, artifact=None)
+    is_current = False
+    if intelligence is not None:
+        fingerprint, _, _ = source_state(intelligence, lead)
+        is_current = fingerprint == artifact.source_fingerprint and artifact.status != OutreachStatus.STALE
+    return OutreachReadOut(current_context=context, artifact=_outreach_payload(artifact, is_current, sales_status=lead.sales_status))
+
+
+@app.post("/api/leads/{lead_id}/outreach/generate", response_model=OutreachArtifactOut)
+async def generate_lead_outreach(lead_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    factory = async_sessionmaker(db.bind, expire_on_commit=False)
+    try:
+        provider = get_provider(session_factory=factory)
+    except Exception:
+        provider = None
+    try:
+        artifact = await generate_outreach(factory, lead_id, provider)
+    except OutreachUnavailable as exc:
+        message = str(exc)
+        if message == "Lead not found":
+            raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": message})
+        code = "OUTREACH_NOT_ALLOWED" if "WON or LOST" in message else "INTELLIGENCE_NOT_AVAILABLE"
+        raise HTTPException(409, detail={"code": code, "message": message})
+    return _outreach_payload(artifact, artifact.status != OutreachStatus.STALE)
+
+
+@app.patch("/api/leads/{lead_id}/outreach", response_model=OutreachArtifactOut)
+async def edit_lead_outreach(lead_id: uuid.UUID, body: OutreachPatch, db: AsyncSession = Depends(get_db)):
+    lead = await db.get(Lead, lead_id)
+    artifact = await _latest_outreach(db, lead_id)
+    if lead is None:
+        raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": "Lead not found"})
+    if artifact is None:
+        raise HTTPException(404, detail={"code": "OUTREACH_NOT_FOUND", "message": "No outreach artifact is available"})
+    current, intelligence = await _outreach_is_current(db, lead, artifact)
+    if not current:
+        await mark_outreach_stale(db, lead_id)
+        await db.commit()
+        raise HTTPException(409, detail={"code": "OUTREACH_STALE", "message": "This outreach artifact is stale and cannot be edited"})
+    if artifact.status not in {OutreachStatus.DRAFT, OutreachStatus.READY_FOR_REVIEW}:
+        raise HTTPException(409, detail={"code": "OUTREACH_NOT_EDITABLE", "message": "Only draft or reviewable outreach can be edited"})
+    try:
+        validate_outreach(body.content, intelligence, lead.sales_status)
+    except ValueError as exc:
+        raise HTTPException(422, detail={"code": "INVALID_OUTREACH_CONTENT", "message": str(exc)})
+    artifact.content = body.content.model_dump(mode="json")
+    artifact.status = OutreachStatus.READY_FOR_REVIEW
+    artifact.validation_result = {"valid": True, "edited_by_human": True}
+    artifact.generation_error = None
+    artifact.updated_at = now_utc()
+    await db.commit()
+    await db.refresh(artifact)
+    return _outreach_payload(artifact, True, sales_status=lead.sales_status)
+
+
+@app.post("/api/leads/{lead_id}/outreach/approve", response_model=OutreachArtifactOut)
+async def approve_lead_outreach(lead_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    lead = await db.get(Lead, lead_id)
+    artifact = await _latest_outreach(db, lead_id)
+    if lead is None:
+        raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": "Lead not found"})
+    if artifact is None:
+        raise HTTPException(404, detail={"code": "OUTREACH_NOT_FOUND", "message": "No outreach artifact is available"})
+    current, _ = await _outreach_is_current(db, lead, artifact)
+    if not current:
+        await mark_outreach_stale(db, lead_id)
+        await db.commit()
+        raise HTTPException(409, detail={"code": "OUTREACH_STALE", "message": "Stale outreach cannot be approved"})
+    if artifact.status != OutreachStatus.READY_FOR_REVIEW or artifact.content is None:
+        raise HTTPException(409, detail={"code": "OUTREACH_NOT_REVIEWABLE", "message": "Only validated outreach awaiting review can be approved"})
+    artifact.status = OutreachStatus.APPROVED
+    artifact.reviewed_at = now_utc()
+    artifact.reviewed_by = None
+    artifact.rejection_reason = None
+    artifact.updated_at = now_utc()
+    await db.commit()
+    await db.refresh(artifact)
+    return _outreach_payload(artifact, True, sales_status=lead.sales_status)
+
+
+@app.post("/api/leads/{lead_id}/outreach/reject", response_model=OutreachArtifactOut)
+async def reject_lead_outreach(lead_id: uuid.UUID, body: OutreachReject, db: AsyncSession = Depends(get_db)):
+    lead = await db.get(Lead, lead_id)
+    artifact = await _latest_outreach(db, lead_id)
+    if lead is None:
+        raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": "Lead not found"})
+    if artifact is None:
+        raise HTTPException(404, detail={"code": "OUTREACH_NOT_FOUND", "message": "No outreach artifact is available"})
+    current, _ = await _outreach_is_current(db, lead, artifact)
+    if not current:
+        await mark_outreach_stale(db, lead_id)
+        await db.commit()
+        raise HTTPException(409, detail={"code": "OUTREACH_STALE", "message": "Stale outreach cannot be rejected"})
+    if artifact.status not in {OutreachStatus.DRAFT, OutreachStatus.READY_FOR_REVIEW}:
+        raise HTTPException(409, detail={"code": "OUTREACH_NOT_REJECTABLE", "message": "Only draft or reviewable outreach can be rejected"})
+    artifact.status = OutreachStatus.REJECTED
+    artifact.reviewed_at = now_utc()
+    artifact.reviewed_by = None
+    artifact.rejection_reason = body.reason
+    artifact.updated_at = now_utc()
+    await db.commit()
+    await db.refresh(artifact)
+    return _outreach_payload(artifact, True, sales_status=lead.sales_status)
 
 
 @app.get("/api/leads/{lead_id}/intelligence", response_model=IntelligenceResponse)

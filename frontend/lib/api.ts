@@ -99,6 +99,39 @@ export type SalesActivityType = "NOTE" | "CALL" | "EMAIL" | "WHATSAPP" | "MEETIN
 export type SalesActivity = { id: string; lead_id: string; activity_type: SalesActivityType; occurred_at: string; note: string };
 export type SalesWorkflow = { sales_status: SalesStatus; priority: SalesPriority; assigned_to: string | null; next_follow_up_at: string | null; lost_reason: string | null; recent_activities: SalesActivity[] };
 
+export type OutreachStatus = "DRAFT" | "READY_FOR_REVIEW" | "APPROVED" | "REJECTED" | "STALE";
+export type OutreachClaim = IntelligenceClaim;
+export type OutreachText = { text: string; claims: OutreachClaim[] };
+export type OutreachContent = {
+  email: { subject: string; opening: OutreachText; body: OutreachText; call_to_action: OutreachText };
+  whatsapp: { opening: OutreachText; message: OutreachText; call_to_action: OutreachText };
+  call_script: { opening: OutreachText; key_problem: OutreachText; recommended_service_ids: string[]; discovery_questions: string[]; objections_and_talking_points: OutreachText; closing: OutreachText };
+  follow_ups: Array<{ step: string; timing: string; purpose: string }>;
+  recommended_service_ids: string[];
+};
+export type OutreachArtifact = {
+  id: string;
+  lead_id: string;
+  enrichment_run_id: string;
+  status: OutreachStatus;
+  is_current: boolean;
+  sales_status: SalesStatus;
+  sales_context_version: string;
+  contract_version: string;
+  prompt_version: string;
+  content: OutreachContent | null;
+  validation_result: Record<string, unknown>;
+  generation_error: string | null;
+  generated_at: string;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
+  rejection_reason: string | null;
+};
+export type OutreachReadResponse = {
+  current_context: { sales_status: SalesStatus; score: number | null; opportunity_count: number; recommended_services: string[]; personalization_available: boolean } | null;
+  artifact: OutreachArtifact | null;
+};
+
 export type IntelligenceClaim = {
   type: "verified_fact" | "supported_inference" | "suggested_language";
   text: string;

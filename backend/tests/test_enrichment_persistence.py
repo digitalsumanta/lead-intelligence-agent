@@ -158,6 +158,7 @@ def test_enrichment_migration_is_the_single_head_after_worker_heartbeat():
         ("0007_deterministic_intelligence", "0006_resumable_enrichment_stages"),
         ("0008_personalization", "0007_deterministic_intelligence"),
         ("0009_sales_workflow", "0008_personalization"),
+        ("0010_outreach_preparation", "0009_sales_workflow"),
     ]
     actual = []
     for revision, _ in expected:
@@ -168,4 +169,4 @@ def test_enrichment_migration_is_the_single_head_after_worker_heartbeat():
         actual.append((module.revision, module.down_revision))
 
     assert actual == expected
-    assert SCHEMA_REVISION == "0009_sales_workflow"
+    assert SCHEMA_REVISION == "0010_outreach_preparation"

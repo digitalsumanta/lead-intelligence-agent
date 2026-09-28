@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
-import { api, ApiError, IntelligenceClaim, IntelligenceResponse, LeadDetail, SalesActivity, SalesActivityType, SalesPriority, SalesStatus, SalesWorkflow } from "@/lib/api";
+import { api, ApiError, IntelligenceClaim, IntelligenceResponse, LeadDetail, OutreachArtifact, OutreachContent, OutreachReadResponse, SalesActivity, SalesActivityType, SalesPriority, SalesStatus, SalesWorkflow } from "@/lib/api";
 
 const NEXT_SALES_STATUS: Record<SalesStatus, SalesStatus[]> = {
   NEW: ["QUALIFIED", "CONTACTED", "LOST"], QUALIFIED: ["CONTACTED", "LOST"],
@@ -90,6 +90,86 @@ function SalesWorkflowPanel({ leadId, intelligence }: { leadId: string; intellig
         <form onSubmit={addActivity} className="rounded-lg bg-slate-50 p-4"><h3 className="font-semibold text-ink">Add activity</h3><label className="mt-3 block text-xs font-semibold text-slate-600">Type<select className={input} value={activityType} onChange={(event) => setActivityType(event.target.value as typeof activityType)}>{["NOTE", "CALL", "EMAIL", "WHATSAPP", "MEETING", "FOLLOW_UP", "PROPOSAL", "OTHER"].map((value) => <option key={value}>{value}</option>)}</select></label><label className="mt-3 block text-xs font-semibold text-slate-600">Note<textarea className={input} required maxLength={5000} value={note} onChange={(event) => setNote(event.target.value)} /></label><button disabled={busy} className="mt-3 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold disabled:opacity-50">Add activity</button></form>
         <div><h3 className="font-semibold text-ink">Activity timeline</h3>{!sales.recent_activities.length ? <p className="mt-3 text-sm text-slate-500">No sales activities recorded.</p> : <ol className="mt-3 space-y-3">{sales.recent_activities.map((activity) => <li key={activity.id} className={`rounded-lg border p-3 ${activity.activity_type === "STATUS_CHANGE" ? "border-teal/20 bg-teal/5" : "border-slate-200"}`}><div className="flex justify-between gap-3"><span className="text-xs font-bold text-slate-700">{activity.activity_type === "STATUS_CHANGE" ? "System status change" : activity.activity_type.replaceAll("_", " ")}</span><time className="text-xs text-slate-400">{date(activity.occurred_at)}</time></div><p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{activity.note}</p></li>)}</ol>}</div>
       </div>
+    </>}
+  </section>;
+}
+
+function OutreachPanel({ leadId }: { leadId: string }) {
+  const [data, setData] = useState<OutreachReadResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [editJson, setEditJson] = useState("");
+  const [rejecting, setRejecting] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
+
+  async function reload() {
+    const result = await api<OutreachReadResponse>(`/api/leads/${encodeURIComponent(leadId)}/outreach`);
+    setData(result);
+    setEditing(false);
+  }
+
+  useEffect(() => {
+    let active = true;
+    api<OutreachReadResponse>(`/api/leads/${encodeURIComponent(leadId)}/outreach`)
+      .then((result) => { if (active) setData(result); })
+      .catch(() => { if (active) setError("Outreach preparation could not be loaded."); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [leadId]);
+
+  async function perform(action: () => Promise<unknown>, successMessage?: string) {
+    setBusy(true); setError("");
+    try {
+      await action(); await reload();
+      if (successMessage) setError(successMessage);
+      setRejecting(false); setRejectReason("");
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.message : "The outreach action could not be completed.");
+      try { await reload(); } catch { /* Keep the action error visible. */ }
+    } finally { setBusy(false); }
+  }
+
+  function beginEdit(artifact: OutreachArtifact) {
+    if (!artifact.content) return;
+    setEditJson(JSON.stringify(artifact.content, null, 2)); setEditing(true); setError("");
+  }
+
+  const artifact = data?.artifact;
+  const current = Boolean(artifact?.is_current && artifact.status !== "STALE");
+  const claimSections = artifact?.content ? [
+    ["Email opening", artifact.content.email.opening], ["Email body", artifact.content.email.body],
+    ["Email call to action", artifact.content.email.call_to_action], ["WhatsApp opening", artifact.content.whatsapp.opening],
+    ["WhatsApp message", artifact.content.whatsapp.message], ["WhatsApp call to action", artifact.content.whatsapp.call_to_action],
+    ["Call opening", artifact.content.call_script.opening], ["Key problem or opportunity", artifact.content.call_script.key_problem],
+    ["Objections and talking points", artifact.content.call_script.objections_and_talking_points], ["Call closing", artifact.content.call_script.closing],
+  ] as const : [];
+
+  return <section className="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-bold text-ink">Outreach preparation</h2><p className="mt-1 text-sm font-semibold text-teal">Prepared for review — not sent.</p></div>{artifact && <span className={`rounded-full px-3 py-1 text-xs font-semibold ${artifact.status === "APPROVED" ? "bg-emerald-50 text-emerald-700" : artifact.status === "STALE" ? "bg-rose-50 text-rose-700" : "bg-amber-50 text-amber-800"}`}>{artifact.status.replaceAll("_", " ")} · {current ? "Current" : "Stale"}</span>}</div>
+    {error && <p role="alert" className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}
+    {loading ? <p className="mt-4 text-sm text-slate-500">Loading outreach…</p> : <>
+      {data?.current_context && <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 rounded-lg bg-slate-50 p-3 text-xs text-slate-600"><span>Sales stage: <strong>{data.current_context.sales_status}</strong></span><span>Deterministic score: <strong>{data.current_context.score ?? "—"}</strong></span><span>Opportunities: <strong>{data.current_context.opportunity_count}</strong></span><span>Personalization: <strong>{data.current_context.personalization_available ? "Available" : "Unavailable"}</strong></span><span>Recommended services: <strong>{data.current_context.recommended_services.join(", ") || "None"}</strong></span></div>}
+      {!artifact && <p className="mt-4 text-sm text-slate-500">No outreach draft exists for this lead. Generation uses only the selected lead’s current validated intelligence.</p>}
+      {artifact && <div className="mt-4 flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-500"><span>Generated: {date(artifact.generated_at)}</span><span>Run: <code>{artifact.enrichment_run_id.slice(0, 8)}</code></span><span>{artifact.contract_version} · {artifact.prompt_version}</span>{artifact.reviewed_at && <span>Reviewed: {date(artifact.reviewed_at)}</span>}</div>}
+      {artifact?.generation_error && <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{artifact.generation_error} No partial draft was saved.</p>}
+      {!artifact?.content && artifact && <p className="mt-3 text-sm text-slate-500">This artifact has no validated outreach content.</p>}
+      {artifact?.content && !editing && <div className="mt-5 space-y-5">
+        <article className="rounded-lg border border-slate-200 p-4"><h3 className="font-semibold text-ink">Email draft</h3><p className="mt-2 text-sm"><span className="font-semibold">Subject:</span> {artifact.content.email.subject}</p>{claimSections.slice(0, 3).map(([title, section]) => <div key={title} className="mt-3"><p className="text-xs font-bold uppercase text-slate-400">{title}</p>{section.claims.map((claim, index) => <ClaimCard key={`${title}-${index}`} claim={claim} />)}</div>)}</article>
+        <article className="rounded-lg border border-slate-200 p-4"><h3 className="font-semibold text-ink">WhatsApp draft</h3>{claimSections.slice(3, 6).map(([title, section]) => <div key={title} className="mt-3"><p className="text-xs font-bold uppercase text-slate-400">{title}</p>{section.claims.map((claim, index) => <ClaimCard key={`${title}-${index}`} claim={claim} />)}</div>)}</article>
+        <article className="rounded-lg border border-slate-200 p-4"><h3 className="font-semibold text-ink">Call script</h3>{claimSections.slice(6).map(([title, section]) => <div key={title} className="mt-3"><p className="text-xs font-bold uppercase text-slate-400">{title}</p>{section.claims.map((claim, index) => <ClaimCard key={`${title}-${index}`} claim={claim} />)}</div>)}<p className="mt-4 text-xs text-slate-500">Recommended services: {artifact.content.recommended_service_ids.join(", ") || "None"}</p><ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-slate-600">{artifact.content.call_script.discovery_questions.map((question) => <li key={question}>{question}</li>)}</ul></article>
+        <article className="rounded-lg border border-slate-200 p-4"><h3 className="font-semibold text-ink">Follow-up suggestions</h3><ul className="mt-3 space-y-2 text-sm text-slate-600">{artifact.content.follow_ups.map((item, index) => <li key={`${item.step}-${index}`}><strong>{item.step.replaceAll("_", " ")}</strong> · {item.timing.replaceAll("_", " ")} · {item.purpose.replaceAll("_", " ")}</li>)}</ul></article>
+      </div>}
+      {editing && artifact?.content && <div className="mt-5"><label className="text-xs font-semibold text-slate-600">Structured draft JSON<textarea className="mt-2 block min-h-96 w-full rounded-lg border border-slate-300 p-3 font-mono text-xs" value={editJson} onChange={(event) => setEditJson(event.target.value)} /></label><p className="mt-2 text-xs text-slate-500">Edits are checked against the current evidence, opportunities, sales stage, and deterministic services.</p><div className="mt-3 flex gap-2"><button disabled={busy} onClick={() => void perform(async () => { const content = JSON.parse(editJson) as OutreachContent; await api(`/api/leads/${encodeURIComponent(leadId)}/outreach`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content }) }); })} className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Save edits</button><button disabled={busy} onClick={() => setEditing(false)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm">Cancel</button></div></div>}
+      <div className="mt-5 flex flex-wrap gap-2">
+        <button disabled={busy || data?.current_context === null || data?.current_context === undefined || ["WON", "LOST"].includes(data.current_context.sales_status)} onClick={() => void perform(() => api(`/api/leads/${encodeURIComponent(leadId)}/outreach/generate`, { method: "POST" }))} className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{busy ? "Working…" : artifact ? "Generate new draft" : "Generate outreach draft"}</button>
+        {artifact?.content && current && ["DRAFT", "READY_FOR_REVIEW"].includes(artifact.status) && !editing && <button disabled={busy} onClick={() => beginEdit(artifact)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold">Edit</button>}
+        {artifact?.status === "READY_FOR_REVIEW" && current && <button disabled={busy} onClick={() => void perform(() => api(`/api/leads/${encodeURIComponent(leadId)}/outreach/approve`, { method: "POST" }))} className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Approve</button>}
+        {artifact && current && ["DRAFT", "READY_FOR_REVIEW"].includes(artifact.status) && <button disabled={busy} onClick={() => setRejecting((value) => !value)} className="rounded-lg border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-800">Reject</button>}
+      </div>
+      {rejecting && <form className="mt-4 flex flex-col gap-2 sm:flex-row" onSubmit={(event) => { event.preventDefault(); void perform(() => api(`/api/leads/${encodeURIComponent(leadId)}/outreach/reject`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason: rejectReason }) })); }}><input required maxLength={1000} value={rejectReason} onChange={(event) => setRejectReason(event.target.value)} className="min-w-64 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Reason for rejection" /><button disabled={busy} className="rounded-lg bg-rose-700 px-4 py-2 text-sm font-semibold text-white">Confirm rejection</button></form>}
+      {data?.current_context && ["WON", "LOST"].includes(data.current_context.sales_status) && <p className="mt-3 text-xs text-slate-500">Outreach generation is disabled for WON and LOST leads.</p>}
     </>}
   </section>;
 }
@@ -244,6 +324,7 @@ export default function LeadDetailPage() {
       </section>
 
       <SalesWorkflowPanel leadId={id} intelligence={intel} />
+      <OutreachPanel leadId={id} />
 
       {intelligenceState !== "error" && <>
       <section className="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">

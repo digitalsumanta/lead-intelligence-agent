@@ -67,6 +67,10 @@ class SalesActivityType(str, enum.Enum):
     NOTE="NOTE"; CALL="CALL"; EMAIL="EMAIL"; WHATSAPP="WHATSAPP"; MEETING="MEETING"; STATUS_CHANGE="STATUS_CHANGE"; FOLLOW_UP="FOLLOW_UP"; PROPOSAL="PROPOSAL"; OTHER="OTHER"
 
 
+class OutreachStatus(str, enum.Enum):
+    DRAFT="DRAFT"; READY_FOR_REVIEW="READY_FOR_REVIEW"; APPROVED="APPROVED"; REJECTED="REJECTED"; STALE="STALE"
+
+
 class Lead(Base):
     __tablename__ = "leads"
     __table_args__ = (Index("ix_leads_email", "email"), Index("ix_leads_company_city", "company_name", "city"), Index("ix_leads_status_created", "status", "created_at"), Index("ix_leads_sales_status", "sales_status"), Index("ix_leads_priority", "priority"), Index("ix_leads_next_follow_up_at", "next_follow_up_at"))
@@ -109,6 +113,7 @@ class Lead(Base):
     service_recommendation_records: Mapped[list["ServiceRecommendation"]] = relationship(back_populates="lead", cascade="all, delete-orphan")
     versioned_scores: Mapped[list["LeadScore"]] = relationship(back_populates="lead", cascade="all, delete-orphan")
     sales_activities: Mapped[list["SalesActivity"]] = relationship(back_populates="lead", cascade="all, delete-orphan")
+    outreach_artifacts: Mapped[list["OutreachArtifact"]] = relationship(back_populates="lead", cascade="all, delete-orphan")
 
 
 class SalesActivity(Base):
@@ -120,6 +125,40 @@ class SalesActivity(Base):
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
     note: Mapped[str] = mapped_column(Text, nullable=False)
     lead: Mapped[Lead] = relationship(back_populates="sales_activities")
+
+
+class OutreachArtifact(Base):
+    """Run-scoped, grounded outreach draft awaiting human review."""
+    __tablename__ = "outreach_artifacts"
+    __table_args__ = (
+        Index("ix_outreach_artifacts_lead_created", "lead_id", "created_at"),
+        Index("ix_outreach_artifacts_enrichment_run", "enrichment_run_id"),
+        Index("ix_outreach_artifacts_status", "status"),
+        ForeignKeyConstraint(
+            ["enrichment_run_id", "lead_id"], ["enrichment_runs.id", "enrichment_runs.lead_id"],
+            name="fk_outreach_artifacts_run_lead", ondelete="CASCADE",
+        ),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lead_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("leads.id", ondelete="CASCADE"), nullable=False)
+    enrichment_run_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    status: Mapped[OutreachStatus] = mapped_column(Enum(OutreachStatus, name="outreachstatus"), nullable=False)
+    sales_context_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    sales_context: Mapped[dict] = mapped_column(JSON, nullable=False)
+    source_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_snapshot: Mapped[dict] = mapped_column(JSON, nullable=False)
+    contract_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    content: Mapped[dict | None] = mapped_column(JSON)
+    validation_result: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    generation_error: Mapped[str | None] = mapped_column(String(500))
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reviewed_by: Mapped[str | None] = mapped_column(String(120))
+    rejection_reason: Mapped[str | None] = mapped_column(String(1000))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc)
+    lead: Mapped[Lead] = relationship(back_populates="outreach_artifacts")
 
 
 class ImportJob(Base):
