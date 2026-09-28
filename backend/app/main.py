@@ -5,13 +5,18 @@ from fastapi import FastAPI, Depends, UploadFile, File, HTTPException, Query, Re
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy import select, func
+from sqlalchemy import select, func, case
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database import get_db, SessionLocal, engine, verify_database_schema, worker_is_available
-from app.models import Lead, ImportJob, ProcessingJob, LeadEvent, LeadStatus, JobStatus, LeadBatch
+from app.models import (
+    Lead, ImportJob, ProcessingJob, LeadEvent, LeadStatus, JobStatus, LeadBatch,
+    EnrichmentRun, LeadScore, Opportunity, ServiceRecommendation, Personalization,
+)
 from app.schemas.lead import LeadOut, ProcessBatchIn
+from app.schemas.intelligence import IntelligenceResponse
+from app.services.lead_intelligence_api import read_intelligence_summary, read_lead_intelligence
 from app.services.csv_import import import_csv
 from app.services.jobs import create_job, update_batch_status
 from app.services.key_pool import ApiKeyPool
@@ -112,19 +117,102 @@ async def readiness():
     return payload if ready else JSONResponse(status_code=503, content=payload)
 
 @app.get("/api/leads", response_model=list[LeadOut])
-async def list_leads(page: int = Query(1, ge=1), page_size: int = Query(25, ge=1, le=100), status: LeadStatus | None = None, db: AsyncSession = Depends(get_db)):
-    """List leads newest first."""
-    query = select(Lead)
-    if status: query = query.where(Lead.status == status)
-    rows = (await db.scalars(query.order_by(Lead.created_at.desc()).offset((page-1)*page_size).limit(page_size))).all()
-    return [LeadOut.model_validate({**{c.name: getattr(x, c.name) for c in Lead.__table__.columns}, "id": str(x.id), "status": x.status.value}) for x in rows]
+async def list_leads(
+    page: int = Query(1, ge=1), page_size: int = Query(25, ge=1, le=100),
+    status: LeadStatus | None = None,
+    min_score: int | None = Query(None, ge=0, le=100),
+    max_score: int | None = Query(None, ge=0, le=100),
+    intelligence_status: str | None = Query(None, pattern="^(available|unavailable)$"),
+    personalization_available: bool | None = None,
+    opportunity_present: bool | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """List leads newest first, with stable created_at/id ordering and one-based pages."""
+    latest_run = select(EnrichmentRun.id).where(
+        EnrichmentRun.lead_id == Lead.id,
+        func.lower(EnrichmentRun.status) == "completed",
+        select(LeadScore.id).where(
+            LeadScore.lead_id == Lead.id,
+            LeadScore.enrichment_run_id == EnrichmentRun.id,
+        ).exists(),
+    ).order_by(func.coalesce(EnrichmentRun.completed_at, EnrichmentRun.created_at).desc(), EnrichmentRun.id.desc()).limit(1).correlate(Lead).scalar_subquery()
+    score_value = select(LeadScore.score).where(
+        LeadScore.lead_id == Lead.id, LeadScore.enrichment_run_id == latest_run,
+    ).order_by(LeadScore.calculated_at.desc(), LeadScore.id.desc()).limit(1).correlate(Lead).scalar_subquery()
+    opportunity_count = select(func.count(Opportunity.id)).where(
+        Opportunity.lead_id == Lead.id, Opportunity.enrichment_run_id == latest_run,
+        Opportunity.origin == "deterministic",
+    ).correlate(Lead).scalar_subquery()
+    recommendation_count = select(func.count(ServiceRecommendation.id)).where(
+        ServiceRecommendation.lead_id == Lead.id, ServiceRecommendation.enrichment_run_id == latest_run,
+    ).correlate(Lead).scalar_subquery()
+    has_personalization = select(Personalization.id).where(
+        Personalization.lead_id == Lead.id, Personalization.enrichment_run_id == latest_run,
+        Personalization.status == "validated", Personalization.generated.is_not(None),
+        Personalization.contract_version == "personalization-v2",
+    ).exists().correlate(Lead)
+    latest_at = select(func.coalesce(EnrichmentRun.completed_at, EnrichmentRun.created_at)).where(
+        EnrichmentRun.id == latest_run,
+    ).correlate(Lead).scalar_subquery()
+    available = latest_run.is_not(None)
+    query = select(
+        Lead, case((available, "available"), else_="unavailable").label("intelligence_status"),
+        score_value.label("intelligence_score"), opportunity_count.label("opportunity_count"),
+        recommendation_count.label("recommendation_count"), has_personalization.label("personalization_available"),
+        latest_at.label("latest_enrichment_at"),
+    )
+    if status:
+        query = query.where(Lead.status == status)
+    if min_score is not None:
+        query = query.where(score_value >= min_score)
+    if max_score is not None:
+        query = query.where(score_value <= max_score)
+    if intelligence_status == "available":
+        query = query.where(available)
+    elif intelligence_status == "unavailable":
+        query = query.where(~available)
+    if personalization_available is not None:
+        query = query.where(has_personalization == personalization_available)
+    if opportunity_present is not None:
+        query = query.where((opportunity_count > 0) == opportunity_present)
+    if min_score is not None and max_score is not None and min_score > max_score:
+        raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": "min_score cannot exceed max_score"})
+    rows = (await db.execute(query.order_by(Lead.created_at.desc(), Lead.id.desc())
+        .offset((page - 1) * page_size).limit(page_size))).all()
+    results = []
+    for lead, intel_status, score, opportunities, recommendations, has_personalization_value, enriched_at in rows:
+        result = LeadOut.model_validate({
+            **{column.name: getattr(lead, column.name) for column in Lead.__table__.columns},
+            "id": str(lead.id), "status": lead.status.value,
+            "intelligence_status": intel_status, "intelligence_score": score,
+            "opportunity_count": opportunities, "recommendation_count": recommendations,
+            "personalization_available": has_personalization_value,
+            "latest_enrichment_at": enriched_at,
+        })
+        results.append(result)
+    return results
 
 @app.get("/api/leads/{lead_id}", response_model=LeadOut)
 async def get_lead(lead_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     """Fetch full lead intelligence and recent processing history."""
     lead = await db.get(Lead, lead_id)
     if not lead: raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": "Lead not found"})
-    return LeadOut.model_validate({**{c.name: getattr(lead, c.name) for c in Lead.__table__.columns}, "id": str(lead.id), "status": lead.status.value})
+    summary = await read_intelligence_summary(db, lead_id)
+    return LeadOut.model_validate({**{c.name: getattr(lead, c.name) for c in Lead.__table__.columns}, "id": str(lead.id), "status": lead.status.value, **summary.model_dump()})
+
+
+@app.get("/api/leads/{lead_id}/intelligence", response_model=IntelligenceResponse)
+async def get_lead_intelligence(lead_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    """Return persisted intelligence from one completed enrichment run; never invokes a provider."""
+    if await db.get(Lead, lead_id) is None:
+        raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": "Lead not found"})
+    response = await read_lead_intelligence(db, lead_id)
+    if response is None:
+        raise HTTPException(409, detail={
+            "code": "INTELLIGENCE_NOT_AVAILABLE",
+            "message": "No completed enrichment run with valid persisted intelligence is available",
+        })
+    return response
 
 @app.post("/api/leads/import")
 async def import_leads(file: UploadFile = File(...), db: AsyncSession = Depends(get_db)):

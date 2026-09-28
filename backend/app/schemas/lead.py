@@ -1,6 +1,7 @@
 """Lead and AI response schemas."""
 from pydantic import BaseModel, ConfigDict, Field
-from typing import Any
+from typing import Any, Literal
+from datetime import datetime
 
 class LeadOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -30,6 +31,12 @@ class LeadOut(BaseModel):
     audit_video_script: str | None = None
     proposed_package: str | None = None
     confidence_score: float | None = None
+    intelligence_status: Literal["available", "unavailable"] = "unavailable"
+    intelligence_score: int | None = None
+    opportunity_count: int = 0
+    recommendation_count: int = 0
+    personalization_available: bool = False
+    latest_enrichment_at: datetime | None = None
     created_at: Any
     updated_at: Any
 
