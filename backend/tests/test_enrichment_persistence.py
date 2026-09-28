@@ -156,6 +156,7 @@ def test_enrichment_migration_is_the_single_head_after_worker_heartbeat():
         ("0005_provider_execution_controls", "0004_enrichment_evidence"),
         ("0006_resumable_enrichment_stages", "0005_provider_execution_controls"),
         ("0007_deterministic_intelligence", "0006_resumable_enrichment_stages"),
+        ("0008_personalization", "0007_deterministic_intelligence"),
     ]
     actual = []
     for revision, _ in expected:
@@ -166,4 +167,4 @@ def test_enrichment_migration_is_the_single_head_after_worker_heartbeat():
         actual.append((module.revision, module.down_revision))
 
     assert actual == expected
-    assert SCHEMA_REVISION == "0007_deterministic_intelligence"
+    assert SCHEMA_REVISION == "0008_personalization"

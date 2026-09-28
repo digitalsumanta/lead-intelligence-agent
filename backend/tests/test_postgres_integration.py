@@ -21,15 +21,30 @@ async def test_postgresql_schema_is_migrated_to_head():
     try:
         async with engine.connect() as connection:
             version = await connection.scalar(text("SELECT version_num FROM alembic_version"))
-            assert version == "0007_deterministic_intelligence"
+            assert version == "0008_personalization"
             tables = set(await connection.run_sync(lambda conn: __import__("sqlalchemy").inspect(conn).get_table_names()))
-            assert {"leads", "lead_processing_jobs", "lead_batches", "lead_events", "enrichment_runs", "evidence", "provider_operation_state"}.issubset(tables)
+            assert {"leads", "lead_processing_jobs", "lead_batches", "lead_events", "enrichment_runs", "evidence", "provider_operation_state", "personalizations", "personalization_evidence_links"}.issubset(tables)
             indexes = await connection.run_sync(lambda conn: __import__("sqlalchemy").inspect(conn).get_indexes("evidence"))
             assert {"ix_evidence_lead", "ix_evidence_enrichment_run", "ix_evidence_type", "ix_evidence_provider_source", "ix_evidence_observed_at", "ix_evidence_fetched_at", "ix_evidence_provider_reference"}.issubset({index["name"] for index in indexes})
             api_key_columns = await connection.run_sync(lambda conn: {column["name"] for column in __import__("sqlalchemy").inspect(conn).get_columns("api_keys")})
             usage_columns = await connection.run_sync(lambda conn: {column["name"] for column in __import__("sqlalchemy").inspect(conn).get_columns("provider_usage")})
             assert {"enabled", "operation_scope", "lease_token", "lease_expires_at", "quota_exhausted_until"}.issubset(api_key_columns)
             assert {"operation", "key_fingerprint", "outcome", "retry_count", "error_category", "rate_limit_reset_at"}.issubset(usage_columns)
+            inspector = __import__("sqlalchemy").inspect
+            personalization_indexes = await connection.run_sync(lambda conn: {item["name"] for item in inspector(conn).get_indexes("personalizations")})
+            link_indexes = await connection.run_sync(lambda conn: {item["name"] for item in inspector(conn).get_indexes("personalization_evidence_links")})
+            run_indexes = await connection.run_sync(lambda conn: {item["name"] for item in inspector(conn).get_indexes("enrichment_runs")})
+            assert "uq_personalizations_run_contract" in personalization_indexes
+            assert "ix_personalization_evidence_evidence" in link_indexes
+            assert "uq_enrichment_runs_id_lead" in run_indexes
+            personalization_fks = await connection.run_sync(lambda conn: inspector(conn).get_foreign_keys("personalizations"))
+            assert any(item["constrained_columns"] == ["enrichment_run_id", "lead_id"]
+                       and item["referred_table"] == "enrichment_runs"
+                       and item["referred_columns"] == ["id", "lead_id"] for item in personalization_fks)
+            assert any(item["constrained_columns"] == ["lead_id"] and item["referred_table"] == "leads"
+                       for item in personalization_fks)
+            link_fks = await connection.run_sync(lambda conn: inspector(conn).get_foreign_keys("personalization_evidence_links"))
+            assert {item["referred_table"] for item in link_fks} == {"personalizations", "evidence"}
     finally:
         await engine.dispose()
 

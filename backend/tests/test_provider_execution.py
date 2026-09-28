@@ -49,7 +49,7 @@ def test_provider_execution_migration_follows_enrichment_head():
     spec.loader.exec_module(migration)
     assert migration.revision == "0005_provider_execution_controls"
     assert migration.down_revision == "0004_enrichment_evidence"
-    assert SCHEMA_REVISION == "0007_deterministic_intelligence"
+    assert SCHEMA_REVISION == "0008_personalization"
 
 
 async def add_key(session_factory, provider="mock", credential="mock-secret", **values):

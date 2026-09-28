@@ -3,7 +3,8 @@ import json
 from types import SimpleNamespace
 import pytest
 from sqlalchemy import select
-from app.models import Lead, ProcessingJob, LeadStatus, JobStatus
+from app.models import Lead, ProcessingJob, LeadStatus, JobStatus, Personalization
+from app.models.entities import EnrichmentRun
 from app.services.csv_import import normalize_row, validate_row, import_csv
 from app.services.jobs import retry_delay, create_job, run_job
 from app.services.scoring import score_lead
@@ -14,6 +15,22 @@ from app.schemas.lead import AIAnalysis
 from app.models import ApiKey
 from app.providers.ollama import OllamaProvider
 from app.services.key_config import sync_environment_keys
+
+def personalization_result(request, *, summary="Local company", video="Show page", package="Growth"):
+    context=json.loads(request.user_prompt.split("\n", 1)[1])
+    del summary, video, package
+    def section(text, service_ids=()):
+        return {"text":text,"claims":[{"type":"suggested_language","text":text,"evidence_ids":[],"opportunity_ids":[],"service_ids":list(service_ids)}]}
+    service_ids=[item["service_id"] for item in context["recommendations"]]
+    sales="Would you be open to a brief conversation?"
+    package_text="Would you like to explore the recommended services?"
+    return SimpleNamespace(parsed_json={
+        "contract_version":"personalization-v2","prompt_version":"evidence-grounded-prompt-v2",
+        "recommended_service_ids":service_ids,
+        "sales_opening":section(sales),"audit_summary":section(sales),
+        "audit_video_script":section(sales),"recommended_package_language":section(package_text, service_ids),
+        "confidence_score":0.8,
+    })
 
 def test_normalizes_and_adds_https():
     assert normalize_row({"company_name":" Acme ","website":" acme.com ","email":" SALES@ACME.COM "}) == {"company_name":"Acme","website":"https://acme.com","email":"sales@acme.com"}
@@ -112,7 +129,7 @@ async def test_pipeline_completes_and_calculates_score(session_factory):
     payload={"company_summary":"Local company","business_category":"Retail","website_problems":[],"seo_opportunities":["Improve title"],"digital_marketing_opportunities":["Local ads"],"pain_points":["Low reach"],"recommended_services":["SEO"],"suggested_keywords":["shop"],"competitors":[],"personalized_sales_opening":"Hi","audit_video_script":"Show page","proposed_package":"Growth","confidence_score":0.8}
     class MockProvider:
         name="mock";model="mock"
-        async def analyze_lead(self, lead, website): return AIAnalysis.model_validate(payload)
+        async def generate(self, request): return personalization_result(request, summary=payload["company_summary"], video=payload["audit_video_script"], package=payload["proposed_package"])
     class MockAnalyzer:
         async def analyze(self,url): return {"available":True,"status_code":200,"https":True,"title":"Title","meta_description":"Description","issues":[]}
     async with session_factory() as db:
@@ -123,18 +140,72 @@ async def test_pipeline_completes_and_calculates_score(session_factory):
         assert job.status == JobStatus.COMPLETED and job.checkpoint == "COMPLETED"
         assert lead.lead_score is not None and 0 <= lead.lead_score <= 100
         assert lead.score_factors["https"] == 10
+        assert set(lead.ai_analysis) == set(AIAnalysis.model_fields)
+        assert lead.ai_summary == lead.ai_analysis["company_summary"]
+        assert lead.sales_opening == lead.ai_analysis["personalized_sales_opening"]
+        assert lead.recommended_services == lead.ai_analysis["recommended_services"]
+        assert lead.keyword_opportunities == [] and lead.competitors == []
+        assert lead.decision_maker is None
 
 @pytest.mark.asyncio
-async def test_invalid_analysis_is_not_retried(session_factory):
+async def test_personalization_failure_does_not_fail_successful_enrichment(session_factory):
     class BadProvider:
-        async def analyze_lead(self, lead, website): raise ValueError("invalid AI JSON")
+        async def generate(self, request): raise RuntimeError("provider unavailable")
     class MockAnalyzer:
         async def analyze(self,url): return {"available":False,"issues":[]}
     async with session_factory() as db:
         lead=Lead(company_name="Acme");db.add(lead);await db.commit()
         job=await create_job(db,lead)
         await run_job(db,job,MockAnalyzer(),BadProvider());await db.refresh(job)
-        assert job.status == JobStatus.FAILED and job.next_retry_at is None
+        assert job.status == JobStatus.RETRYING and job.next_retry_at is not None
+        artifact = await db.scalar(select(Personalization))
+        assert artifact.status == "failed"
+        assert artifact.generated is None
+        enrichment = await db.scalar(select(EnrichmentRun).where(EnrichmentRun.processing_job_id == job.id))
+        assert enrichment.status == "completed"
+
+@pytest.mark.asyncio
+async def test_ai_retry_resumes_same_run_and_next_run_clears_old_decision_maker(session_factory):
+    class RetryProvider:
+        calls=0
+        async def generate(self, request):
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("provider unavailable")
+            return personalization_result(request)
+    class GoodProvider:
+        async def generate(self, request): return personalization_result(request)
+    class NoWebsite:
+        async def analyze(self,url): return {"available":False,"issues":[]}
+
+    provider=RetryProvider()
+    async with session_factory() as db:
+        lead=Lead(company_name="Resume Co", decision_maker="Old AI generated contact")
+        db.add(lead); await db.commit()
+        job=await create_job(db,lead)
+        await run_job(db,job,NoWebsite(),provider)
+        await db.refresh(job)
+        assert job.status == JobStatus.RETRYING and job.checkpoint == "AI_ANALYSIS_STARTED"
+        failed_artifact=await db.scalar(select(Personalization))
+        failed_id=failed_artifact.id
+        enrichment=await db.scalar(select(EnrichmentRun).where(EnrichmentRun.processing_job_id == job.id))
+        run_id=enrichment.id
+        assert enrichment.status == "completed"
+        await run_job(db,job,NoWebsite(),provider)
+        await db.refresh(job)
+        assert job.status == JobStatus.COMPLETED
+        assert await db.scalar(select(Personalization.id).where(Personalization.enrichment_run_id == run_id)) == failed_id
+        lead.decision_maker="Prior run AI contact"
+        await db.commit()
+        next_job=await create_job(db,lead)
+        await run_job(db,next_job,NoWebsite(),GoodProvider())
+        await db.refresh(lead)
+        assert lead.decision_maker is None
+        async with session_factory() as verify_db:
+            runs=(await verify_db.scalars(select(EnrichmentRun).where(EnrichmentRun.lead_id == lead.id))).all()
+            artifacts=(await verify_db.scalars(select(Personalization).where(Personalization.lead_id == lead.id))).all()
+        assert len(runs) == 2 and len(artifacts) == 2
+        assert all(row.status == "validated" for row in artifacts), [(row.status, row.validation_result) for row in artifacts]
 
 def test_scoring_factors_are_bounded_and_explainable():
     lead=SimpleNamespace(industry="Retail",city="Austin",state=None,country="US",address=None,email="a@b.test",phone=None)
@@ -215,6 +286,9 @@ async def test_process_many_uses_bounded_concurrency_and_mock_provider(session_f
         async def analyze_lead(self, lead, website):
             await asyncio.sleep(0.01)
             return AIAnalysis.model_validate(payload)
+        async def generate(self, request):
+            await asyncio.sleep(0.01)
+            return personalization_result(request, summary=payload["company_summary"], video=payload["audit_video_script"], package=payload["proposed_package"])
     class MockAnalyzer:
         async def analyze(self,url): return {"available":False,"issues":[]}
     from app.services.jobs import process_many

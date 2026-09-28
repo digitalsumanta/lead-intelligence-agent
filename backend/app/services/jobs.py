@@ -3,7 +3,7 @@ import asyncio, logging
 from datetime import timedelta
 from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from app.models import Lead, ProcessingJob, LeadEvent, LeadStatus, JobStatus, AgentRun, ProviderUsage, LeadBatch, LeadScore, EnrichmentRun
+from app.models import Lead, ProcessingJob, LeadEvent, LeadStatus, JobStatus, AgentRun, ProviderUsage, LeadBatch, LeadScore, EnrichmentRun, ServiceRecommendation, Opportunity
 from app.models.entities import now_utc
 from app.providers import get_provider
 from app.providers import validate_provider_model
@@ -11,6 +11,7 @@ from app.services.website import WebsiteAnalyzer
 from app.services.scoring import score_lead
 from app.services.enrichment_pipeline import mark_expired_stage_retryable, run_enrichment_pipeline
 from app.services.intelligence import derive_and_persist_intelligence
+from app.services.personalization import generate_personalization
 
 logger = logging.getLogger("lead_agent")
 RETRY_DELAYS = [5, 15, 60]
@@ -105,21 +106,97 @@ async def run_job(
                 .limit(1)
             )
             intelligence_score_applied = existing_score is not None
-        if lead.ai_analysis and validate_checkpoint(job.checkpoint) < CHECKPOINTS.index("AI_ANALYSIS_COMPLETED"):
-            advance_checkpoint(job, "AI_ANALYSIS_COMPLETED")
-            await session.commit()
         if validate_checkpoint(job.checkpoint) < CHECKPOINTS.index("AI_ANALYSIS_COMPLETED"):
             advance_checkpoint(job, "AI_ANALYSIS_STARTED"); await session.commit()
-            provider = provider_instance or get_provider(job.provider, job.model)
-            payload = {k: getattr(lead, k) for k in ("company_name", "website", "industry", "city", "state", "country")}
-            result = await provider.analyze_lead(payload, lead.website_analysis or {})
-            data = result.model_dump()
-            lead.ai_analysis = data; lead.ai_summary = data["company_summary"]
-            lead.pain_points = data["pain_points"]; lead.keyword_opportunities = data["suggested_keywords"]
-            lead.competitors = data["competitors"]; lead.recommended_services = data["recommended_services"]
-            lead.sales_opening = data["personalized_sales_opening"]; lead.audit_video_script = data["audit_video_script"]
-            lead.proposed_package = data["proposed_package"]; lead.confidence_score = data["confidence_score"]
-            lead.decision_maker = data.get("decision_maker")
+            factory = session_factory or async_sessionmaker(session.bind, expire_on_commit=False)
+            current_enrichment_run = await session.scalar(select(EnrichmentRun).where(
+                EnrichmentRun.processing_job_id == job.id,
+                EnrichmentRun.lead_id == lead.id,
+            ).order_by(EnrichmentRun.created_at.desc()).limit(1))
+            if current_enrichment_run is not None:
+                provider = provider_instance or get_provider(job.provider, job.model)
+                # Remove denormalized copy from an older run before generating this run's validated artifact.
+                lead.ai_analysis = None
+                lead.ai_summary = None
+                lead.pain_points = None
+                lead.keyword_opportunities = None
+                lead.competitors = None
+                lead.recommended_services = None
+                lead.sales_opening = None
+                lead.audit_video_script = None
+                lead.proposed_package = None
+                lead.confidence_score = None
+                lead.decision_maker = None
+                await session.commit()
+                artifact = await generate_personalization(factory, lead.id, current_enrichment_run.id, provider,
+                                                          raise_on_failure=True)
+                if artifact is not None and artifact.status == "validated" and artifact.generated:
+                    generated = artifact.generated
+                    recommendations = list((await session.scalars(select(ServiceRecommendation).where(
+                        ServiceRecommendation.enrichment_run_id == current_enrichment_run.id,
+                        ServiceRecommendation.lead_id == lead.id,
+                    ).order_by(ServiceRecommendation.rank))).all())
+                    opportunities = list((await session.scalars(select(Opportunity).where(
+                        Opportunity.enrichment_run_id == current_enrichment_run.id,
+                        Opportunity.lead_id == lead.id,
+                        Opportunity.origin == "deterministic",
+                    ).order_by(Opportunity.category))).all())
+                    sales_opening = generated["sales_opening"]["text"]
+                    audit_summary = generated["audit_summary"]["text"]
+                    video_script = generated["audit_video_script"]["text"]
+                    package_language = generated["recommended_package_language"]["text"]
+                    service_names = [row.service_name for row in recommendations]
+                    data = {
+                        "company_summary": audit_summary,
+                        "business_category": lead.industry or "Unknown",
+                        "website_problems": [row.title for row in opportunities if row.category in {"website_performance", "seo", "website_security"}],
+                        "seo_opportunities": [row.title for row in opportunities if row.category == "seo"],
+                        "digital_marketing_opportunities": [row.title for row in opportunities],
+                        "pain_points": [row.title for row in opportunities],
+                        "recommended_services": service_names,
+                        "suggested_keywords": [], "competitors": [],
+                        "personalized_sales_opening": sales_opening,
+                        "audit_video_script": video_script,
+                        "proposed_package": package_language,
+                        "confidence_score": generated["confidence_score"],
+                        "decision_maker": None,
+                    }
+                    lead.ai_analysis = data
+                    lead.ai_summary = audit_summary
+                    lead.pain_points = data["pain_points"]
+                    lead.keyword_opportunities = data["suggested_keywords"]
+                    lead.competitors = data["competitors"]
+                    lead.recommended_services = service_names
+                    lead.sales_opening = sales_opening
+                    lead.audit_video_script = video_script
+                    lead.proposed_package = package_language
+                    lead.confidence_score = generated["confidence_score"]
+                    lead.decision_maker = None
+                else:
+                    # Do not leave copy from an older run presented as current personalization.
+                    lead.ai_analysis = None
+                    lead.ai_summary = None
+                    lead.pain_points = None
+                    lead.keyword_opportunities = None
+                    lead.competitors = None
+                    lead.recommended_services = None
+                    lead.sales_opening = None
+                    lead.audit_video_script = None
+                    lead.proposed_package = None
+                    lead.confidence_score = None
+                    lead.decision_maker = None
+            else:
+                # Historical jobs predating enrichment-run persistence retain their legacy recovery path.
+                provider = provider_instance or get_provider(job.provider, job.model)
+                payload = {k: getattr(lead, k) for k in ("company_name", "website", "industry", "city", "state", "country")}
+                result = await provider.analyze_lead(payload, lead.website_analysis or {})
+                data = result.model_dump()
+                lead.ai_analysis = data; lead.ai_summary = data["company_summary"]
+                lead.pain_points = data["pain_points"]; lead.keyword_opportunities = data["suggested_keywords"]
+                lead.competitors = data["competitors"]; lead.recommended_services = data["recommended_services"]
+                lead.sales_opening = data["personalized_sales_opening"]; lead.audit_video_script = data["audit_video_script"]
+                lead.proposed_package = data["proposed_package"]; lead.confidence_score = data["confidence_score"]
+                lead.decision_maker = data.get("decision_maker")
             advance_checkpoint(job, "AI_ANALYSIS_COMPLETED"); await session.commit()
         if validate_checkpoint(job.checkpoint) < CHECKPOINTS.index("SCORE_CALCULATED"):
             if not intelligence_score_applied:

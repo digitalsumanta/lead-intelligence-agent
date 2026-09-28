@@ -2,7 +2,7 @@
 import enum
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import CheckConstraint, Column, DateTime, Enum, ForeignKey, Index, Integer, String, Text, JSON, Float, Boolean, Uuid, Table, text
+from sqlalchemy import CheckConstraint, Column, DateTime, Enum, ForeignKey, ForeignKeyConstraint, Index, Integer, String, Text, JSON, Float, Boolean, Uuid, Table, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -38,6 +38,12 @@ score_evidence_links = Table(
     Column("score_id", Uuid(as_uuid=True), ForeignKey("lead_scores.id", ondelete="CASCADE"), primary_key=True),
     Column("evidence_id", Uuid(as_uuid=True), ForeignKey("evidence.id", ondelete="CASCADE"), primary_key=True),
     Index("ix_score_evidence_evidence", "evidence_id"),
+)
+personalization_evidence_links = Table(
+    "personalization_evidence_links", Base.metadata,
+    Column("personalization_id", Uuid(as_uuid=True), ForeignKey("personalizations.id", ondelete="CASCADE"), primary_key=True),
+    Column("evidence_id", Uuid(as_uuid=True), ForeignKey("evidence.id", ondelete="CASCADE"), primary_key=True),
+    Index("ix_personalization_evidence_evidence", "evidence_id"),
 )
 
 
@@ -219,6 +225,7 @@ class EnrichmentRun(Base):
     __table_args__ = (
         Index("ix_enrichment_runs_lead_created", "lead_id", "created_at"),
         Index("ix_enrichment_runs_processing_job", "processing_job_id"),
+        Index("uq_enrichment_runs_id_lead", "id", "lead_id", unique=True),
         Index(
             "uq_enrichment_run_active_job",
             "processing_job_id",
@@ -394,3 +401,28 @@ class LeadScore(Base):
     lead: Mapped[Lead] = relationship(back_populates="versioned_scores")
     enrichment_run: Mapped[EnrichmentRun] = relationship(back_populates="scores")
     evidence_records: Mapped[list[Evidence]] = relationship(secondary=score_evidence_links, lazy="selectin")
+
+
+class Personalization(Base):
+    """Run-scoped validated or failed AI personalization artifact."""
+
+    __tablename__ = "personalizations"
+    __table_args__ = (
+        Index("uq_personalizations_run_contract", "enrichment_run_id", "contract_version", unique=True),
+        ForeignKeyConstraint(
+            ["enrichment_run_id", "lead_id"], ["enrichment_runs.id", "enrichment_runs.lead_id"],
+            name="fk_personalizations_run_lead",
+            ondelete="CASCADE",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lead_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("leads.id", ondelete="CASCADE"), nullable=False)
+    enrichment_run_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    contract_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    validation_result: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    generated: Mapped[dict | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+    evidence_records: Mapped[list[Evidence]] = relationship(secondary=personalization_evidence_links, lazy="selectin")
