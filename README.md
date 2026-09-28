@@ -11,6 +11,7 @@ Local-first lead ingestion and enrichment. The backend uses FastAPI, SQLAlchemy 
 - `backend/app/workers/runner.py` polls durable jobs. PostgreSQL workers claim rows with `FOR UPDATE SKIP LOCKED`; a conditional unique index prevents more than one active job per lead. A separate heartbeat task supports worker readiness checks while a long AI request is running.
 - `backend/migrations/` contains explicit Alembic schema revisions. Alembic is the sole schema authority. API and worker startup require an already migrated database and never create tables.
 - The dashboard queues work and polls job status; it does not process leads itself.
+- The Lead Intelligence review dashboard is available at `/leads`, with detail pages at `/leads/{lead_id}`. It uses `NEXT_PUBLIC_API_URL` (default `http://localhost:8000`) and the existing `NEXT_PUBLIC_API_TOKEN` browser bearer-token setting. Keep this token for trusted local development only because `NEXT_PUBLIC_*` values are bundled into browser code. Run the frontend with `cd frontend; npm run dev`; its list filters and pagination use the existing API. Search, sorting, and total result counts are not currently exposed by the backend and are therefore not simulated in the browser.
 
 ## Local development
 
