@@ -1,5 +1,6 @@
 """FastAPI application and REST endpoints."""
 import logging, uuid, hmac
+from datetime import timezone
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, UploadFile, File, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
@@ -13,12 +14,13 @@ from app.database import get_db, SessionLocal, engine, verify_database_schema, w
 from app.models import (
     Lead, ImportJob, ProcessingJob, LeadEvent, LeadStatus, JobStatus, LeadBatch,
     EnrichmentRun, LeadScore, Opportunity, ServiceRecommendation, Personalization,
-    SalesActivity, SalesStatus, SalesPriority, SalesActivityType, OutreachArtifact, OutreachStatus,
+    SalesActivity, SalesStatus, SalesPriority, SalesActivityType, SalesActivityOutcome, SalesTask, SalesTaskType, SalesTaskStatus, OutreachArtifact, OutreachStatus,
 )
 from app.models.entities import now_utc
 from app.schemas.lead import LeadOut, ProcessBatchIn
 from app.schemas.sales import SalesPatch, SalesActivityCreate, SalesOut, SalesActivityOut
 from app.schemas.outreach import OutreachArtifactOut, OutreachReadOut, OutreachContextOut, OutreachPatch, OutreachReject
+from app.schemas.sales_tasks import SalesTaskCreate, SalesTaskPatch, SalesTaskOut
 from app.schemas.intelligence import IntelligenceResponse
 from app.services.lead_intelligence_api import read_intelligence_summary, read_lead_intelligence
 from app.services.csv_import import import_csv
@@ -30,6 +32,10 @@ from app.services.key_config import sync_environment_keys
 from app.services.outreach import (
     OutreachUnavailable, current_artifact_response, generate_outreach,
     mark_outreach_stale, source_state, validate_outreach,
+)
+from app.services.sales_tasks import (
+    SalesTaskError, create_task, finish_task, list_tasks_query, suggested_task_type,
+    task_day_windows, task_due_state, update_task,
 )
 
 configure_logging()
@@ -222,7 +228,8 @@ async def get_lead(lead_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
 
 
 def sales_activity_payload(activity):
-    return SalesActivityOut.model_validate({"id": str(activity.id), "lead_id": str(activity.lead_id), "activity_type": activity.activity_type, "occurred_at": activity.occurred_at, "note": activity.note})
+    suggestion = suggested_task_type(activity.outcome) if activity.outcome else None
+    return SalesActivityOut.model_validate({"id": str(activity.id), "lead_id": str(activity.lead_id), "activity_type": activity.activity_type, "occurred_at": activity.occurred_at, "note": activity.note, "outcome": activity.outcome, "suggested_task_type": suggestion.value if suggestion else None})
 
 
 @app.get("/api/leads/{lead_id}/sales", response_model=SalesOut)
@@ -294,11 +301,132 @@ async def list_sales_activities(lead_id: uuid.UUID, limit: int = Query(50, ge=1,
 async def create_sales_activity(lead_id: uuid.UUID, body: SalesActivityCreate, db: AsyncSession = Depends(get_db)):
     if await db.get(Lead, lead_id) is None:
         raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": "Lead not found"})
-    activity = SalesActivity(lead_id=lead_id, activity_type=body.activity_type, note=body.note)
+    activity = SalesActivity(lead_id=lead_id, activity_type=body.activity_type, note=body.note, outcome=body.outcome)
     db.add(activity)
     await db.commit()
     await db.refresh(activity)
     return sales_activity_payload(activity)
+
+
+def sales_task_payload(task, lead_company_name=None):
+    is_due, is_overdue = task_due_state(task)
+    due_at = task.due_at
+    if due_at.tzinfo is None or due_at.utcoffset() is None:
+        due_at = due_at.replace(tzinfo=timezone.utc)
+    return SalesTaskOut.model_validate({
+        "id": task.id, "lead_id": task.lead_id, "assigned_to": task.assigned_to,
+        "task_type": task.task_type, "title": task.title, "description": task.description,
+        "due_at": due_at, "priority": task.priority, "status": task.status,
+        "related_activity_id": task.related_activity_id,
+        "related_outreach_artifact_id": task.related_outreach_artifact_id,
+        "created_at": task.created_at, "updated_at": task.updated_at,
+        "completed_at": task.completed_at, "is_due": is_due, "is_overdue": is_overdue,
+        "lead_company_name": lead_company_name,
+    })
+
+
+def _raise_task_error(error: SalesTaskError):
+    raise HTTPException(error.status_code, detail={"code": error.code, "message": str(error)})
+
+
+async def _task_by_id(db: AsyncSession, task_id: uuid.UUID, *, lock=False):
+    query = select(SalesTask).where(SalesTask.id == task_id)
+    if lock:
+        query = query.with_for_update()
+    task = await db.scalar(query)
+    if task is None:
+        raise HTTPException(404, detail={"code": "TASK_NOT_FOUND", "message": "Task not found"})
+    return task
+
+
+@app.get("/api/leads/{lead_id}/tasks", response_model=list[SalesTaskOut])
+async def list_lead_tasks(
+    lead_id: uuid.UUID,
+    status: SalesTaskStatus | None = None,
+    task_type: SalesTaskType | None = None,
+    priority: SalesPriority | None = None,
+    assigned_to: str | None = Query(None, max_length=120),
+    due: bool | None = None,
+    overdue: bool | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    if await db.get(Lead, lead_id) is None:
+        raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": "Lead not found"})
+    query = list_tasks_query(status=status, task_type=task_type, priority=priority,
+                             assigned_to=assigned_to, due=due, overdue=overdue, lead_id=lead_id)
+    rows = (await db.scalars(query.limit(500))).all()
+    return [sales_task_payload(task) for task in rows]
+
+
+@app.post("/api/leads/{lead_id}/tasks", response_model=SalesTaskOut, status_code=201)
+async def create_lead_task(lead_id: uuid.UUID, body: SalesTaskCreate, db: AsyncSession = Depends(get_db)):
+    try:
+        task = await create_task(db, lead_id, body)
+    except SalesTaskError as error:
+        _raise_task_error(error)
+    return sales_task_payload(task)
+
+
+@app.get("/api/tasks", response_model=list[SalesTaskOut])
+async def list_all_tasks(
+    status: SalesTaskStatus | None = None,
+    task_type: SalesTaskType | None = None,
+    priority: SalesPriority | None = None,
+    assigned_to: str | None = Query(None, max_length=120),
+    due: bool | None = None,
+    overdue: bool | None = None,
+    lead_id: uuid.UUID | None = None,
+    limit: int = Query(200, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+):
+    query = list_tasks_query(status=status, task_type=task_type, priority=priority,
+                             assigned_to=assigned_to, due=due, overdue=overdue, lead_id=lead_id)
+    query = query.join(Lead, Lead.id == SalesTask.lead_id).add_columns(Lead.company_name)
+    rows = (await db.execute(query.limit(limit))).all()
+    return [sales_task_payload(task, company_name) for task, company_name in rows]
+
+
+@app.get("/api/tasks/summary", response_model=dict[str, list[SalesTaskOut]])
+async def task_summary(db: AsyncSession = Depends(get_db)):
+    today, overdue, upcoming = task_day_windows()
+    result = {}
+    for name, query in (("today", today), ("overdue", overdue), ("upcoming", upcoming)):
+        query = query.join(Lead, Lead.id == SalesTask.lead_id).add_columns(Lead.company_name)
+        rows = (await db.execute(query.limit(500))).all()
+        result[name] = [sales_task_payload(task, company_name) for task, company_name in rows]
+    return result
+
+
+@app.patch("/api/tasks/{task_id}", response_model=SalesTaskOut)
+async def patch_sales_task(task_id: uuid.UUID, body: SalesTaskPatch, db: AsyncSession = Depends(get_db)):
+    task = await _task_by_id(db, task_id, lock=True)
+    try:
+        task = await update_task(db, task, body)
+    except SalesTaskError as error:
+        _raise_task_error(error)
+    return sales_task_payload(task)
+
+
+@app.post("/api/tasks/{task_id}/complete", response_model=SalesTaskOut)
+async def complete_sales_task(task_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    task = await _task_by_id(db, task_id, lock=True)
+    try:
+        task = await finish_task(db, task, cancel=False)
+    except SalesTaskError as error:
+        _raise_task_error(error)
+    return sales_task_payload(task)
+
+
+@app.post("/api/tasks/{task_id}/cancel", response_model=SalesTaskOut)
+async def cancel_sales_task(task_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    task = await _task_by_id(db, task_id, lock=True)
+    try:
+        task = await finish_task(db, task, cancel=True)
+    except SalesTaskError as error:
+        _raise_task_error(error)
+    return sales_task_payload(task)
+
+
 
 
 async def _latest_outreach(db: AsyncSession, lead_id: uuid.UUID):

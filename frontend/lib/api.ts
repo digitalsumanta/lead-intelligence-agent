@@ -96,8 +96,21 @@ export type LeadDetail = {
 export type SalesStatus = "NEW" | "QUALIFIED" | "CONTACTED" | "ENGAGED" | "PROPOSAL" | "NEGOTIATION" | "WON" | "LOST";
 export type SalesPriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
 export type SalesActivityType = "NOTE" | "CALL" | "EMAIL" | "WHATSAPP" | "MEETING" | "STATUS_CHANGE" | "FOLLOW_UP" | "PROPOSAL" | "OTHER";
-export type SalesActivity = { id: string; lead_id: string; activity_type: SalesActivityType; occurred_at: string; note: string };
+export type SalesActivityOutcome = "NO_RESPONSE" | "CONNECTED" | "INTERESTED" | "NOT_INTERESTED" | "CALLBACK_REQUESTED" | "MEETING_BOOKED" | "PROPOSAL_REQUESTED" | "PROPOSAL_SENT" | "NEGOTIATION_STARTED" | "WON" | "LOST" | "INVALID_CONTACT";
+export type SalesActivity = { id: string; lead_id: string; activity_type: SalesActivityType; occurred_at: string; note: string; outcome: SalesActivityOutcome | null; suggested_task_type: SalesTaskType | null };
 export type SalesWorkflow = { sales_status: SalesStatus; priority: SalesPriority; assigned_to: string | null; next_follow_up_at: string | null; lost_reason: string | null; recent_activities: SalesActivity[] };
+
+export type SalesTaskType = "FOLLOW_UP" | "CALL" | "EMAIL" | "WHATSAPP" | "MEETING" | "PROPOSAL" | "REVIEW_OUTREACH" | "OTHER";
+export type SalesTaskStatus = "OPEN" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
+export type SalesTask = {
+  id: string; lead_id: string; lead_company_name: string | null; assigned_to: string | null;
+  task_type: SalesTaskType; title: string; description: string | null; due_at: string;
+  priority: SalesPriority; status: SalesTaskStatus; related_activity_id: string | null;
+  related_outreach_artifact_id: string | null; created_at: string; updated_at: string;
+  completed_at: string | null; is_due: boolean; is_overdue: boolean;
+};
+export type SalesTaskCreate = Pick<SalesTask, "task_type" | "title" | "due_at" | "priority"> & Partial<Pick<SalesTask, "assigned_to" | "description" | "related_activity_id" | "related_outreach_artifact_id">>;
+export type SalesTaskSummary = { today: SalesTask[]; overdue: SalesTask[]; upcoming: SalesTask[] };
 
 export type OutreachStatus = "DRAFT" | "READY_FOR_REVIEW" | "APPROVED" | "REJECTED" | "STALE";
 export type OutreachClaim = IntelligenceClaim;

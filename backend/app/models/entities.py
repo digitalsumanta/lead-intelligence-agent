@@ -67,6 +67,18 @@ class SalesActivityType(str, enum.Enum):
     NOTE="NOTE"; CALL="CALL"; EMAIL="EMAIL"; WHATSAPP="WHATSAPP"; MEETING="MEETING"; STATUS_CHANGE="STATUS_CHANGE"; FOLLOW_UP="FOLLOW_UP"; PROPOSAL="PROPOSAL"; OTHER="OTHER"
 
 
+class SalesActivityOutcome(str, enum.Enum):
+    NO_RESPONSE="NO_RESPONSE"; CONNECTED="CONNECTED"; INTERESTED="INTERESTED"; NOT_INTERESTED="NOT_INTERESTED"; CALLBACK_REQUESTED="CALLBACK_REQUESTED"; MEETING_BOOKED="MEETING_BOOKED"; PROPOSAL_REQUESTED="PROPOSAL_REQUESTED"; PROPOSAL_SENT="PROPOSAL_SENT"; NEGOTIATION_STARTED="NEGOTIATION_STARTED"; WON="WON"; LOST="LOST"; INVALID_CONTACT="INVALID_CONTACT"
+
+
+class SalesTaskType(str, enum.Enum):
+    FOLLOW_UP="FOLLOW_UP"; CALL="CALL"; EMAIL="EMAIL"; WHATSAPP="WHATSAPP"; MEETING="MEETING"; PROPOSAL="PROPOSAL"; REVIEW_OUTREACH="REVIEW_OUTREACH"; OTHER="OTHER"
+
+
+class SalesTaskStatus(str, enum.Enum):
+    OPEN="OPEN"; IN_PROGRESS="IN_PROGRESS"; COMPLETED="COMPLETED"; CANCELLED="CANCELLED"
+
+
 class OutreachStatus(str, enum.Enum):
     DRAFT="DRAFT"; READY_FOR_REVIEW="READY_FOR_REVIEW"; APPROVED="APPROVED"; REJECTED="REJECTED"; STALE="STALE"
 
@@ -114,16 +126,18 @@ class Lead(Base):
     versioned_scores: Mapped[list["LeadScore"]] = relationship(back_populates="lead", cascade="all, delete-orphan")
     sales_activities: Mapped[list["SalesActivity"]] = relationship(back_populates="lead", cascade="all, delete-orphan")
     outreach_artifacts: Mapped[list["OutreachArtifact"]] = relationship(back_populates="lead", cascade="all, delete-orphan")
+    sales_tasks: Mapped[list["SalesTask"]] = relationship(back_populates="lead", cascade="all, delete-orphan")
 
 
 class SalesActivity(Base):
     __tablename__ = "sales_activities"
-    __table_args__ = (Index("ix_sales_activities_lead_occurred", "lead_id", "occurred_at"),)
+    __table_args__ = (Index("ix_sales_activities_lead_occurred", "lead_id", "occurred_at"), Index("uq_sales_activities_id_lead", "id", "lead_id", unique=True))
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     lead_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("leads.id", ondelete="CASCADE"), nullable=False)
     activity_type: Mapped[SalesActivityType] = mapped_column(Enum(SalesActivityType, name="salesactivitytype"), nullable=False)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
     note: Mapped[str] = mapped_column(Text, nullable=False)
+    outcome: Mapped[SalesActivityOutcome | None] = mapped_column(Enum(SalesActivityOutcome, name="salesactivityoutcome"))
     lead: Mapped[Lead] = relationship(back_populates="sales_activities")
 
 
@@ -134,6 +148,7 @@ class OutreachArtifact(Base):
         Index("ix_outreach_artifacts_lead_created", "lead_id", "created_at"),
         Index("ix_outreach_artifacts_enrichment_run", "enrichment_run_id"),
         Index("ix_outreach_artifacts_status", "status"),
+        Index("uq_outreach_artifacts_id_lead", "id", "lead_id", unique=True),
         ForeignKeyConstraint(
             ["enrichment_run_id", "lead_id"], ["enrichment_runs.id", "enrichment_runs.lead_id"],
             name="fk_outreach_artifacts_run_lead", ondelete="CASCADE",
@@ -159,6 +174,36 @@ class OutreachArtifact(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc)
     lead: Mapped[Lead] = relationship(back_populates="outreach_artifacts")
+
+
+class SalesTask(Base):
+    """Human-managed sales action; task state never triggers communication."""
+    __tablename__ = "sales_tasks"
+    __table_args__ = (
+        CheckConstraint("(status = 'COMPLETED' AND completed_at IS NOT NULL) OR (status <> 'COMPLETED' AND completed_at IS NULL)", name="ck_sales_tasks_completed_at_status"),
+        Index("ix_sales_tasks_lead", "lead_id"),
+        Index("ix_sales_tasks_status", "status"),
+        Index("ix_sales_tasks_due_at", "due_at"),
+        Index("ix_sales_tasks_assigned_to", "assigned_to"),
+        Index("uq_sales_tasks_id_lead", "id", "lead_id", unique=True),
+        ForeignKeyConstraint(["related_activity_id", "lead_id"], ["sales_activities.id", "sales_activities.lead_id"], name="fk_sales_tasks_activity_lead"),
+        ForeignKeyConstraint(["related_outreach_artifact_id", "lead_id"], ["outreach_artifacts.id", "outreach_artifacts.lead_id"], name="fk_sales_tasks_outreach_lead"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lead_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("leads.id", ondelete="CASCADE"), nullable=False)
+    assigned_to: Mapped[str | None] = mapped_column(String(120))
+    task_type: Mapped[SalesTaskType] = mapped_column(Enum(SalesTaskType, name="salestasktype"), nullable=False)
+    title: Mapped[str] = mapped_column(String(250), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    priority: Mapped[SalesPriority] = mapped_column(Enum(SalesPriority, name="salespriority"), nullable=False, default=SalesPriority.MEDIUM)
+    status: Mapped[SalesTaskStatus] = mapped_column(Enum(SalesTaskStatus, name="salestaskstatus"), nullable=False, default=SalesTaskStatus.OPEN, server_default="OPEN")
+    related_activity_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
+    related_outreach_artifact_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lead: Mapped[Lead] = relationship(back_populates="sales_tasks")
 
 
 class ImportJob(Base):

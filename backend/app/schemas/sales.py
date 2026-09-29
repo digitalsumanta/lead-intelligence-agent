@@ -1,7 +1,7 @@
 """Strict request and response contracts for sales workflow APIs."""
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from app.models import SalesActivityType, SalesPriority, SalesStatus
+from app.models import SalesActivityType, SalesActivityOutcome, SalesPriority, SalesStatus
 
 
 class SalesPatch(BaseModel):
@@ -32,6 +32,7 @@ class SalesActivityCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     activity_type: SalesActivityType
     note: str = Field(min_length=1, max_length=5000)
+    outcome: SalesActivityOutcome | None = None
 
     @field_validator("activity_type")
     @classmethod
@@ -56,6 +57,8 @@ class SalesActivityOut(BaseModel):
     activity_type: SalesActivityType
     occurred_at: datetime
     note: str
+    outcome: SalesActivityOutcome | None = None
+    suggested_task_type: str | None = None
 
 
 class SalesOut(BaseModel):

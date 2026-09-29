@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
-import { api, ApiError, IntelligenceClaim, IntelligenceResponse, LeadDetail, OutreachArtifact, OutreachContent, OutreachReadResponse, SalesActivity, SalesActivityType, SalesPriority, SalesStatus, SalesWorkflow } from "@/lib/api";
+import { api, ApiError, IntelligenceClaim, IntelligenceResponse, LeadDetail, OutreachArtifact, OutreachContent, OutreachReadResponse, SalesActivity, SalesActivityOutcome, SalesActivityType, SalesPriority, SalesStatus, SalesTask, SalesTaskCreate, SalesTaskStatus, SalesTaskType, SalesWorkflow } from "@/lib/api";
 
 const NEXT_SALES_STATUS: Record<SalesStatus, SalesStatus[]> = {
   NEW: ["QUALIFIED", "CONTACTED", "LOST"], QUALIFIED: ["CONTACTED", "LOST"],
@@ -19,7 +19,7 @@ function localDateTime(value: string | null) {
   return new Date(parsed.getTime() - parsed.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 }
 
-function SalesWorkflowPanel({ leadId, intelligence }: { leadId: string; intelligence: IntelligenceResponse | null }) {
+function SalesWorkflowPanel({ leadId, intelligence, onTasksChanged }: { leadId: string; intelligence: IntelligenceResponse | null; onTasksChanged: () => void }) {
   const [sales, setSales] = useState<SalesWorkflow | null>(null);
   const [status, setStatus] = useState<SalesStatus>("NEW");
   const [priority, setPriority] = useState<SalesPriority>("MEDIUM");
@@ -28,6 +28,8 @@ function SalesWorkflowPanel({ leadId, intelligence }: { leadId: string; intellig
   const [lostReason, setLostReason] = useState("");
   const [activityType, setActivityType] = useState<Exclude<SalesActivityType, "STATUS_CHANGE">>("NOTE");
   const [note, setNote] = useState("");
+  const [activityOutcome, setActivityOutcome] = useState<SalesActivityOutcome | "">("");
+  const [nextActionActivity, setNextActionActivity] = useState<SalesActivity | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [initialized, setInitialized] = useState(false);
@@ -62,8 +64,8 @@ function SalesWorkflowPanel({ leadId, intelligence }: { leadId: string; intellig
   async function addActivity(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError("");
     try {
-      await api<SalesActivity>(`/api/leads/${encodeURIComponent(leadId)}/activities`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ activity_type: activityType, note }) });
-      setNote(""); await reload();
+      const activity = await api<SalesActivity>(`/api/leads/${encodeURIComponent(leadId)}/activities`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ activity_type: activityType, note, outcome: activityOutcome || null }) });
+      setNote(""); setActivityOutcome(""); setNextActionActivity(activity); await reload();
     } catch (cause) { setError(cause instanceof ApiError ? cause.message : "Activity could not be saved."); }
     finally { setBusy(false); }
   }
@@ -87,9 +89,93 @@ function SalesWorkflowPanel({ leadId, intelligence }: { leadId: string; intellig
       </div>
       {sales.lost_reason && status === "LOST" && <p className="mt-3 text-sm text-slate-600"><span className="font-semibold">Lost reason:</span> {sales.lost_reason}</p>}
       <div className="mt-6 grid gap-6 lg:grid-cols-[.8fr_1.2fr]">
-        <form onSubmit={addActivity} className="rounded-lg bg-slate-50 p-4"><h3 className="font-semibold text-ink">Add activity</h3><label className="mt-3 block text-xs font-semibold text-slate-600">Type<select className={input} value={activityType} onChange={(event) => setActivityType(event.target.value as typeof activityType)}>{["NOTE", "CALL", "EMAIL", "WHATSAPP", "MEETING", "FOLLOW_UP", "PROPOSAL", "OTHER"].map((value) => <option key={value}>{value}</option>)}</select></label><label className="mt-3 block text-xs font-semibold text-slate-600">Note<textarea className={input} required maxLength={5000} value={note} onChange={(event) => setNote(event.target.value)} /></label><button disabled={busy} className="mt-3 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold disabled:opacity-50">Add activity</button></form>
+        <form onSubmit={addActivity} className="rounded-lg bg-slate-50 p-4"><h3 className="font-semibold text-ink">Record activity / outcome</h3><label className="mt-3 block text-xs font-semibold text-slate-600">Type<select className={input} value={activityType} onChange={(event) => setActivityType(event.target.value as typeof activityType)}>{["NOTE", "CALL", "EMAIL", "WHATSAPP", "MEETING", "FOLLOW_UP", "PROPOSAL", "OTHER"].map((value) => <option key={value}>{value}</option>)}</select></label><label className="mt-3 block text-xs font-semibold text-slate-600">Outcome<select className={input} value={activityOutcome} onChange={(event) => setActivityOutcome(event.target.value as SalesActivityOutcome | "")}><option value="">No structured outcome</option>{["NO_RESPONSE", "CONNECTED", "INTERESTED", "NOT_INTERESTED", "CALLBACK_REQUESTED", "MEETING_BOOKED", "PROPOSAL_REQUESTED", "PROPOSAL_SENT", "NEGOTIATION_STARTED", "WON", "LOST", "INVALID_CONTACT"].map((value) => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}</select></label><label className="mt-3 block text-xs font-semibold text-slate-600">Note<textarea className={input} required maxLength={5000} value={note} onChange={(event) => setNote(event.target.value)} /></label><button disabled={busy} className="mt-3 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold disabled:opacity-50">Record activity</button><p className="mt-2 text-xs text-slate-500">Outcome rules may suggest a next task; a task is created only by an explicit human action.</p>{nextActionActivity?.suggested_task_type && <div className="mt-3 rounded-md border border-teal/20 bg-white p-3 text-sm"><p>Suggested next action: <strong>{nextActionActivity.suggested_task_type.replaceAll("_", " ")}</strong></p><button type="button" disabled={busy} onClick={() => { void (async () => { setBusy(true); try { await api(`/api/leads/${encodeURIComponent(leadId)}/tasks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ task_type: nextActionActivity.suggested_task_type, title: `${nextActionActivity.suggested_task_type!.replaceAll("_", " ")} — ${nextActionActivity.note.slice(0, 100)}`, due_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), priority, assigned_to: assignedTo.trim() || null, related_activity_id: nextActionActivity.id }) }); setNextActionActivity(null); onTasksChanged(); } catch (cause) { setError(cause instanceof ApiError ? cause.message : "Task could not be created."); } finally { setBusy(false); } })(); }} className="mt-2 rounded-md bg-ink px-3 py-2 text-xs font-semibold text-white">Create suggested task</button></div>}</form>
         <div><h3 className="font-semibold text-ink">Activity timeline</h3>{!sales.recent_activities.length ? <p className="mt-3 text-sm text-slate-500">No sales activities recorded.</p> : <ol className="mt-3 space-y-3">{sales.recent_activities.map((activity) => <li key={activity.id} className={`rounded-lg border p-3 ${activity.activity_type === "STATUS_CHANGE" ? "border-teal/20 bg-teal/5" : "border-slate-200"}`}><div className="flex justify-between gap-3"><span className="text-xs font-bold text-slate-700">{activity.activity_type === "STATUS_CHANGE" ? "System status change" : activity.activity_type.replaceAll("_", " ")}</span><time className="text-xs text-slate-400">{date(activity.occurred_at)}</time></div><p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{activity.note}</p></li>)}</ol>}</div>
       </div>
+    </>}
+  </section>;
+}
+
+function SalesTasksPanel({ leadId, leadAssignedTo, leadPriority, refreshKey }: { leadId: string; leadAssignedTo: string | null; leadPriority: SalesPriority; refreshKey: number }) {
+  const [tasks, setTasks] = useState<SalesTask[]>([]);
+  const [outreach, setOutreach] = useState<OutreachArtifact | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [taskType, setTaskType] = useState<SalesTaskType>("FOLLOW_UP");
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [assignedTo, setAssignedTo] = useState(leadAssignedTo || "");
+  const [priority, setPriority] = useState<SalesPriority>(leadPriority);
+  const [dueAt, setDueAt] = useState(() => localDateTime(new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()));
+  const [linkOutreach, setLinkOutreach] = useState(false);
+  const [editing, setEditing] = useState<SalesTask | null>(null);
+
+  async function reload() {
+    const [taskRows, outreachResponse] = await Promise.all([
+      api<SalesTask[]>(`/api/leads/${encodeURIComponent(leadId)}/tasks`),
+      api<OutreachReadResponse>(`/api/leads/${encodeURIComponent(leadId)}/outreach`),
+    ]);
+    setTasks(taskRows); setOutreach(outreachResponse.artifact);
+  }
+
+  useEffect(() => {
+    let active = true;
+    Promise.all([
+      api<SalesTask[]>(`/api/leads/${encodeURIComponent(leadId)}/tasks`),
+      api<OutreachReadResponse>(`/api/leads/${encodeURIComponent(leadId)}/outreach`),
+    ]).then(([taskRows, outreachResponse]) => { if (active) { setTasks(taskRows); setOutreach(outreachResponse.artifact); } })
+      .catch(() => { if (active) setError("Sales actions could not be loaded."); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [leadId, refreshKey]);
+
+  async function perform(action: () => Promise<unknown>) {
+    setBusy(true); setError("");
+    try { await action(); await reload(); setEditing(null); }
+    catch (cause) { setError(cause instanceof ApiError ? cause.message : "Sales action could not be completed."); }
+    finally { setBusy(false); }
+  }
+
+  async function create(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await perform(async () => {
+      const body: SalesTaskCreate = {
+        task_type: taskType, title: title.trim(), description: description.trim() || null,
+        assigned_to: assignedTo.trim() || null, priority,
+        due_at: new Date(dueAt).toISOString(),
+        related_outreach_artifact_id: linkOutreach && outreach ? outreach.id : null,
+      };
+      await api<SalesTask>(`/api/leads/${encodeURIComponent(leadId)}/tasks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      setTitle(""); setDescription(""); setLinkOutreach(false);
+    });
+  }
+
+  const active = tasks.filter((task) => task.status === "OPEN" || task.status === "IN_PROGRESS");
+  const completed = tasks.filter((task) => task.status === "COMPLETED");
+  const overdue = active.filter((task) => task.is_overdue);
+  const upcoming = active.filter((task) => !task.is_due && new Date(task.due_at).getTime() <= Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const nextAction = active.filter((task) => !task.is_overdue).sort((a, b) => Date.parse(a.due_at) - Date.parse(b.due_at))[0] || overdue[0];
+  const input = "mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm";
+
+  function taskCard(task: SalesTask) {
+    return <article key={task.id} className="rounded-lg border border-slate-200 p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2"><div><p className="font-semibold text-ink">{task.title}</p><p className="mt-1 text-xs text-slate-500">{task.task_type.replaceAll("_", " ")} · {task.status.replaceAll("_", " ")} · {task.priority}</p></div><span className={`rounded-full px-2 py-1 text-xs font-semibold ${task.is_overdue ? "bg-rose-50 text-rose-800" : "bg-slate-100 text-slate-600"}`}>{task.is_overdue ? "Overdue" : task.status === "COMPLETED" ? "Completed" : "Due " + date(task.due_at)}</span></div>
+      <p className="mt-2 text-xs text-slate-500">Assigned to: {task.assigned_to || "Unassigned"}{task.related_outreach_artifact_id ? " · Linked to outreach preparation" : ""}</p>
+      {task.description && <p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">{task.description}</p>}
+      {active.includes(task) && <div className="mt-3 flex flex-wrap gap-2"><button disabled={busy} onClick={() => { setEditing(task); setTitle(task.title); setDescription(task.description || ""); setAssignedTo(task.assigned_to || ""); setPriority(task.priority); setDueAt(localDateTime(task.due_at)); }} className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold">Edit</button><button disabled={busy} onClick={() => void perform(() => api(`/api/tasks/${task.id}/complete`, { method: "POST" }))} className="rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white">Complete</button><button disabled={busy} onClick={() => void perform(() => api(`/api/tasks/${task.id}/cancel`, { method: "POST" }))} className="rounded-md border border-rose-300 px-3 py-1.5 text-xs font-semibold text-rose-800">Cancel</button></div>}
+    </article>;
+  }
+
+  return <section className="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-bold text-ink">Sales actions</h2><p className="mt-1 text-sm text-slate-500">Human-managed tasks and outcomes. Prepared and approved outreach is never sent by this system.</p></div><Link href="/leads/tasks" className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-teal">Daily task view</Link></div>
+    {error && <p role="alert" className="mt-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}
+    {loading ? <p className="mt-4 text-sm text-slate-500">Loading tasks…</p> : <>
+      <div className="mt-4 rounded-lg bg-teal/5 p-4"><p className="text-xs font-bold uppercase tracking-wide text-teal">Next action</p>{nextAction ? <p className="mt-1 text-sm font-semibold text-ink">{nextAction.title} · {date(nextAction.due_at)} · {nextAction.assigned_to || "Unassigned"} · {nextAction.priority} · {nextAction.status}</p> : <p className="mt-1 text-sm text-slate-500">No open sales action is scheduled.</p>}</div>
+      <form onSubmit={create} className="mt-5 grid gap-3 rounded-lg border border-slate-200 p-4 sm:grid-cols-2 lg:grid-cols-4"><h3 className="font-semibold text-ink sm:col-span-2 lg:col-span-4">Create task</h3><label className="text-xs font-semibold text-slate-600">Task type<select className={input} value={taskType} onChange={(event) => setTaskType(event.target.value as SalesTaskType)}>{["FOLLOW_UP", "CALL", "EMAIL", "WHATSAPP", "MEETING", "PROPOSAL", "REVIEW_OUTREACH", "OTHER"].map((value) => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}</select></label><label className="text-xs font-semibold text-slate-600">Title<input className={input} required maxLength={250} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Next sales action" /></label><label className="text-xs font-semibold text-slate-600">Due date<input className={input} type="datetime-local" required value={dueAt} onChange={(event) => setDueAt(event.target.value)} /></label><label className="text-xs font-semibold text-slate-600">Priority<select className={input} value={priority} onChange={(event) => setPriority(event.target.value as SalesPriority)}>{["LOW", "MEDIUM", "HIGH", "URGENT"].map((value) => <option key={value}>{value}</option>)}</select></label><label className="text-xs font-semibold text-slate-600">Assigned to<input className={input} maxLength={120} value={assignedTo} onChange={(event) => setAssignedTo(event.target.value)} placeholder="Unassigned" /></label><label className="text-xs font-semibold text-slate-600 sm:col-span-2">Description<textarea className={input} maxLength={10000} value={description} onChange={(event) => setDescription(event.target.value)} /></label>{outreach && <label className="flex items-center gap-2 self-end text-xs text-slate-600"><input type="checkbox" checked={linkOutreach} onChange={(event) => setLinkOutreach(event.target.checked)} />Link latest outreach ({outreach.status.replaceAll("_", " ")})</label>}<div className="flex items-end"><button disabled={busy} className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Create task</button></div></form>
+      {editing && <form className="mt-4 grid gap-3 rounded-lg border border-teal/30 bg-teal/5 p-4 sm:grid-cols-2 lg:grid-cols-4" onSubmit={(event) => { event.preventDefault(); void perform(() => api(`/api/tasks/${editing.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: title.trim(), description: description.trim() || null, assigned_to: assignedTo.trim() || null, priority, due_at: new Date(dueAt).toISOString() }) })); }}><h3 className="font-semibold sm:col-span-2 lg:col-span-4">Edit task</h3><label className="text-xs font-semibold">Title<input className={input} required maxLength={250} value={title} onChange={(event) => setTitle(event.target.value)} /></label><label className="text-xs font-semibold">Due date<input className={input} type="datetime-local" required value={dueAt} onChange={(event) => setDueAt(event.target.value)} /></label><label className="text-xs font-semibold">Assigned to<input className={input} value={assignedTo} onChange={(event) => setAssignedTo(event.target.value)} /></label><label className="text-xs font-semibold">Priority<select className={input} value={priority} onChange={(event) => setPriority(event.target.value as SalesPriority)}>{["LOW", "MEDIUM", "HIGH", "URGENT"].map((value) => <option key={value}>{value}</option>)}</select></label><label className="text-xs font-semibold sm:col-span-2">Description<textarea className={input} value={description} onChange={(event) => setDescription(event.target.value)} /></label><div className="flex items-end gap-2"><button disabled={busy} className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white">Save</button><button type="button" onClick={() => setEditing(null)} className="rounded-lg border px-4 py-2 text-sm">Cancel</button></div></form>}
+      <div className="mt-5 grid gap-5 lg:grid-cols-2"><section><h3 className="font-semibold text-ink">Open tasks ({active.length})</h3><div className="mt-3 space-y-2">{active.length ? active.map(taskCard) : <p className="text-sm text-slate-500">No open tasks.</p>}</div></section><section><h3 className="font-semibold text-ink">Overdue ({overdue.length})</h3><div className="mt-3 space-y-2">{overdue.length ? overdue.map(taskCard) : <p className="text-sm text-slate-500">No overdue tasks.</p>}<h3 className="pt-4 font-semibold text-ink">Upcoming next 7 days ({upcoming.length})</h3>{upcoming.length ? <div className="mt-3 space-y-2">{upcoming.map(taskCard)}</div> : <p className="mt-2 text-sm text-slate-500">No upcoming tasks in the next seven days.</p>}</div></section></div>
+      <section className="mt-5"><h3 className="font-semibold text-ink">Completed ({completed.length})</h3><div className="mt-3 grid gap-2 sm:grid-cols-2">{completed.length ? completed.map(taskCard) : <p className="text-sm text-slate-500">No completed tasks.</p>}</div></section>
     </>}
   </section>;
 }
@@ -226,6 +312,7 @@ export default function LeadDetailPage() {
   const [error, setError] = useState("");
   const [intelligenceState, setIntelligenceState] = useState<"loading" | "available" | "unavailable" | "error">("loading");
   const [intelligenceRetry, setIntelligenceRetry] = useState(0);
+  const [taskRefreshKey, setTaskRefreshKey] = useState(0);
 
   useEffect(() => {
     let current = true;
@@ -323,7 +410,8 @@ export default function LeadDetailPage() {
         </>}
       </section>
 
-      <SalesWorkflowPanel leadId={id} intelligence={intel} />
+      <SalesWorkflowPanel leadId={id} intelligence={intel} onTasksChanged={() => setTaskRefreshKey((key) => key + 1)} />
+      <SalesTasksPanel leadId={id} leadAssignedTo={lead.assigned_to} leadPriority={lead.priority} refreshKey={taskRefreshKey} />
       <OutreachPanel leadId={id} />
 
       {intelligenceState !== "error" && <>
