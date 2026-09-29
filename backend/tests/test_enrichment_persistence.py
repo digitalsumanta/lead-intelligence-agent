@@ -5,7 +5,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
-from sqlalchemy import select
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
+from sqlalchemy import create_engine, inspect, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
@@ -14,6 +16,36 @@ from app.models import Base, EnrichmentRun, Evidence, Lead
 
 
 NOW = datetime(2026, 9, 26, 12, 0, tzinfo=timezone.utc)
+
+
+def test_0007_opportunity_constraints_are_created_on_opportunities():
+    migrations = Path(__file__).resolve().parents[1] / "migrations" / "versions"
+    migration_file = next(migrations.glob("0007_deterministic_intelligence.py"))
+    spec = importlib.util.spec_from_file_location("0007_deterministic_intelligence_test", migration_file)
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+
+    engine = create_engine("sqlite:///:memory:")
+    with engine.begin() as connection:
+        for table_name in ("leads", "enrichment_runs", "evidence"):
+            connection.exec_driver_sql(
+                f'CREATE TABLE "{table_name}" (id CHAR(32) PRIMARY KEY)'
+            )
+        with Operations.context(MigrationContext.configure(connection)):
+            migration.upgrade()
+
+        constraints = {
+            table_name: {item["name"]: item["sqltext"] for item in inspect(connection).get_check_constraints(table_name)}
+            for table_name in ("service_catalog", "opportunities")
+        }
+
+    assert not constraints["service_catalog"]
+    assert constraints["opportunities"] == {
+        "ck_opportunity_severity": "severity IN ('low','medium','high','critical')",
+        "ck_opportunity_status": "status IN ('open','acknowledged','resolved','dismissed')",
+        "ck_opportunity_origin": "origin IN ('deterministic','ai')",
+    }
+    engine.dispose()
 
 
 def make_evidence(lead_id, run_id, value, *, confidence=0.9, fetched_at=NOW):

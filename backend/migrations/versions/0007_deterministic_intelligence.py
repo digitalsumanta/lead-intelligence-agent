@@ -36,9 +36,6 @@ def upgrade():
         sa.Column("version", sa.String(80), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
-        sa.CheckConstraint("severity IN ('low','medium','high','critical')", name="ck_opportunity_severity"),
-        sa.CheckConstraint("status IN ('open','acknowledged','resolved','dismissed')", name="ck_opportunity_status"),
-        sa.CheckConstraint("origin IN ('deterministic','ai')", name="ck_opportunity_origin"),
     )
     service_table = sa.table(
         "service_catalog",
@@ -70,6 +67,9 @@ def upgrade():
         sa.Column("rule_version", sa.String(100), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+        sa.CheckConstraint("severity IN ('low','medium','high','critical')", name="ck_opportunity_severity"),
+        sa.CheckConstraint("status IN ('open','acknowledged','resolved','dismissed')", name="ck_opportunity_status"),
+        sa.CheckConstraint("origin IN ('deterministic','ai')", name="ck_opportunity_origin"),
         sa.ForeignKeyConstraint(["lead_id"], ["leads.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["enrichment_run_id"], ["enrichment_runs.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
