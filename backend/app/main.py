@@ -37,6 +37,7 @@ from app.schemas.outreach_analytics import OutreachAnalyticsChannel, OutreachAna
 from app.schemas.intelligence import IntelligenceResponse
 from app.schemas.seo import LatestSeoOut, SeoRunCreatedOut, SeoRunDetailOut, SeoRunListOut, SeoRunOut
 from app.schemas.seo_opportunities import SeoSalesOpportunityList
+from app.schemas.ai_sales_intelligence import AISalesIntelligenceHistoryOut, AISalesIntelligenceOut
 from app.services.lead_intelligence_api import read_intelligence_summary, read_lead_intelligence
 from app.services.csv_import import import_csv
 from app.services.jobs import create_job, update_batch_status
@@ -65,6 +66,10 @@ from app.services.outreach_analytics import outreach_analytics
 from app.services.seo import SeoServiceError, create_seo_run
 from app.models.entities import SeoAuditRun, SeoFinding, SeoObservation
 from app.services.seo_opportunities import read_seo_sales_opportunities
+from app.services.ai_sales_intelligence import (
+    ai_sales_intelligence_by_id, ai_sales_intelligence_history,
+    current_ai_sales_intelligence, generate_ai_sales_intelligence,
+)
 
 configure_logging()
 
@@ -938,6 +943,66 @@ async def latest_seo_audit(lead_id: uuid.UUID, db: AsyncSession = Depends(get_db
     run = await db.scalar(select(SeoAuditRun).where(SeoAuditRun.lead_id == lead_id, SeoAuditRun.status == "COMPLETED").order_by(SeoAuditRun.created_at.desc(), SeoAuditRun.id.desc()).limit(1))
     findings = [] if run is None else (await db.execute(select(SeoFinding).where(SeoFinding.seo_run_id == run.id).order_by(SeoFinding.severity, SeoFinding.finding_code, SeoFinding.id))).scalars().all()
     return {"audit": run, "findings": findings}
+
+
+def _ai_sales_intelligence_payload(artifact, stale: bool):
+    current = artifact.status == "validated" and not stale
+    return AISalesIntelligenceOut(
+        id=artifact.id, lead_id=artifact.lead_id,
+        context_version=artifact.context_version,
+        contract_version=artifact.contract_version,
+        prompt_version=artifact.prompt_version,
+        provider=artifact.provider, model=artifact.model, status=artifact.status,
+        source_fingerprint=artifact.source_fingerprint, is_stale=stale,
+        is_current=current, generated_at=artifact.generated_at,
+        created_at=artifact.created_at, generated=artifact.generated,
+        evidence_catalog=tuple(artifact.evidence_catalog or ()),
+        evidence_refs=tuple(artifact.evidence_refs or ()),
+        usage_metadata=artifact.usage_metadata or {},
+        error_code=artifact.error_code, error_message=artifact.error_message,
+    )
+
+
+@app.post("/api/leads/{lead_id}/ai-sales-intelligence", response_model=AISalesIntelligenceOut, status_code=201)
+async def generate_lead_ai_sales_intelligence(lead_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    try:
+        artifact = await generate_ai_sales_intelligence(db, lead_id)
+    except LookupError as error:
+        raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": str(error)}) from None
+    return _ai_sales_intelligence_payload(artifact, False)
+
+
+@app.get("/api/leads/{lead_id}/ai-sales-intelligence", response_model=AISalesIntelligenceOut | None)
+async def get_lead_ai_sales_intelligence(lead_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    try:
+        artifact, stale = await current_ai_sales_intelligence(db, lead_id)
+    except LookupError as error:
+        raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": str(error)}) from None
+    return _ai_sales_intelligence_payload(artifact, stale) if artifact is not None else None
+
+
+@app.get("/api/leads/{lead_id}/ai-sales-intelligence/history", response_model=AISalesIntelligenceHistoryOut)
+async def get_lead_ai_sales_intelligence_history(
+    lead_id: uuid.UUID, limit: int = Query(50, ge=1, le=100), db: AsyncSession = Depends(get_db),
+):
+    try:
+        rows = await ai_sales_intelligence_history(db, lead_id, limit)
+    except LookupError as error:
+        raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": str(error)}) from None
+    return {"items": [_ai_sales_intelligence_payload(artifact, stale) for artifact, stale in rows]}
+
+
+@app.get("/api/leads/{lead_id}/ai-sales-intelligence/history/{artifact_id}", response_model=AISalesIntelligenceOut)
+async def get_lead_ai_sales_intelligence_artifact(
+    lead_id: uuid.UUID, artifact_id: uuid.UUID, db: AsyncSession = Depends(get_db),
+):
+    try:
+        artifact, stale = await ai_sales_intelligence_by_id(db, lead_id, artifact_id)
+    except LookupError as error:
+        raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": str(error)}) from None
+    if artifact is None:
+        raise HTTPException(404, detail={"code": "AI_SALES_INTELLIGENCE_NOT_FOUND", "message": "AI sales intelligence artifact not found for this lead"})
+    return _ai_sales_intelligence_payload(artifact, stale)
 
 
 @app.get("/api/leads/{lead_id}/seo/opportunities", response_model=SeoSalesOpportunityList)

@@ -164,6 +164,33 @@ export type SeoSalesOpportunity = {
 };
 export type LeadSeoOpportunities = { items: SeoSalesOpportunity[] };
 
+export type AISalesClaimKind = "VERIFIED_FACT" | "SUPPORTED_INFERENCE" | "SUGGESTED_LANGUAGE" | "UNCERTAINTY";
+export type AISalesActionType = "REVIEW_SEO_OPPORTUNITY" | "CALL_PROSPECT" | "FOLLOW_UP" | "REVIEW_OUTREACH" | "PREPARE_PROPOSAL" | "INVESTIGATE_MISSING_INFORMATION" | "REVIEW_COMMERCIAL_CONTEXT";
+export type AISalesClaim = { kind: AISalesClaimKind; text: string | null; evidence_refs: string[] };
+export type AISalesOpportunity = {
+  title: string; rationale: AISalesClaim; source_refs: string[];
+  action_type: AISalesActionType; service_ids: string[];
+};
+export type AISalesRecommendedAction = {
+  action_type: AISalesActionType; rationale: AISalesClaim; source_refs: string[];
+  task_type: SalesTaskType | null; service_ids: string[];
+};
+export type AISalesIntelligenceResponse = {
+  contract_version: "ai-sales-intelligence-v1"; prompt_version: "ai-sales-intelligence-prompt-v1";
+  summary: AISalesClaim[]; insights: AISalesClaim[]; opportunities: AISalesOpportunity[];
+  recommended_actions: AISalesRecommendedAction[]; uncertainties: AISalesClaim[]; evidence_refs: string[];
+};
+export type AISalesEvidenceCatalogEntry = { id: string; source_type: string; label: string; display_value: string };
+export type AISalesIntelligenceArtifact = {
+  id: string; lead_id: string; context_version: string; contract_version: string; prompt_version: string;
+  provider: string; model: string; status: "validated" | "failed"; source_fingerprint: string;
+  is_stale: boolean; is_current: boolean; generated_at: string; created_at: string;
+  generated: AISalesIntelligenceResponse | null; evidence_catalog: AISalesEvidenceCatalogEntry[];
+  evidence_refs: string[]; usage_metadata: Record<string, unknown>;
+  error_code: string | null; error_message: string | null;
+};
+export type AISalesIntelligenceHistory = { items: AISalesIntelligenceArtifact[] };
+
 export type CommercialRecord = {
   lead_id: string; sales_status: SalesStatus; estimated_value: string | null;
   proposal_value: string | null; negotiation_value: string | null; won_value: string | null;

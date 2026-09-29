@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { api, ApiError, CommercialRecord, IntelligenceClaim, IntelligenceResponse, LeadDetail, OutreachArtifact, OutreachChannel, OutreachContent, OutreachExecution, OutreachReadResponse, SalesActivity, SalesActivityOutcome, SalesActivityType, SalesCollection, SalesPriority, SalesStatus, SalesTask, SalesTaskCreate, SalesTaskStatus, SalesTaskType, SalesWorkflow } from "@/lib/api";
 import SeoSection from "./seo-section";
+import AISalesIntelligence from "./ai-sales-intelligence";
 
 const NEXT_SALES_STATUS: Record<SalesStatus, SalesStatus[]> = {
   NEW: ["QUALIFIED", "CONTACTED", "LOST"], QUALIFIED: ["CONTACTED", "LOST"],
@@ -594,6 +595,7 @@ export default function LeadDetailPage() {
       <SalesTasksPanel leadId={id} leadAssignedTo={lead.assigned_to} leadPriority={lead.priority} refreshKey={taskRefreshKey} />
       <OutreachPanel leadId={id} leadEmail={lead.email} leadPhone={lead.phone} onOutcomeRecorded={(activity) => { setNewOutcomeActivity(activity); setTaskRefreshKey((key) => key + 1); }} />
       <SeoSection leadId={id} website={lead.website} />
+      <AISalesIntelligence leadId={id} onTaskCreated={() => setTaskRefreshKey((key) => key + 1)} />
 
       {intelligenceState !== "error" && <>
       <section className="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">

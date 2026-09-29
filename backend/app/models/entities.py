@@ -666,6 +666,36 @@ class Personalization(Base):
     evidence_records: Mapped[list[Evidence]] = relationship(secondary=personalization_evidence_links, lazy="selectin")
 
 
+class AiSalesIntelligence(Base):
+    """Append-only, versioned AI interpretation tied to one lead."""
+
+    __tablename__ = "ai_sales_intelligence"
+    __table_args__ = (
+        CheckConstraint("status IN ('validated','failed')", name="ck_ai_sales_intelligence_status"),
+        Index("ix_ai_sales_intelligence_lead_created", "lead_id", "created_at"),
+        Index("ix_ai_sales_intelligence_lead_fingerprint", "lead_id", "source_fingerprint"),
+        ForeignKeyConstraint(["lead_id"], ["leads.id"], name="fk_ai_sales_intelligence_lead", ondelete="CASCADE"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lead_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    context_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    contract_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    provider: Mapped[str] = mapped_column(String(80), nullable=False)
+    model: Mapped[str] = mapped_column(String(200), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    source_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    generated: Mapped[dict | None] = mapped_column(JSON)
+    evidence_catalog: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    evidence_refs: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    usage_metadata: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    error_code: Mapped[str | None] = mapped_column(String(80))
+    error_message: Mapped[str | None] = mapped_column(String(500))
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+
+
 class SeoAuditRun(Base):
     """Independently versioned, durable SEO audit for one lead website."""
 
