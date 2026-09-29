@@ -3,8 +3,9 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from decimal import Decimal
 
-from app.models import SalesPriority, SalesTaskStatus, SalesTaskType
+from app.models import SalesActivityOutcome, SalesActivityType, SalesPriority, SalesStatus, SalesTaskStatus, SalesTaskType
 
 
 class SalesTaskCreate(BaseModel):
@@ -82,3 +83,37 @@ class SalesTaskOut(BaseModel):
     is_due: bool
     is_overdue: bool
     lead_company_name: str | None = None
+
+
+class SalesActionTaskOut(SalesTaskOut):
+    lead_sales_status: SalesStatus
+    lead_priority: SalesPriority
+    lead_assigned_to: str | None
+    next_follow_up_at: datetime | None
+    current_stage_value: Decimal | None
+    current_stage_value_field: str | None
+    currency: str
+
+
+class OutcomeSuggestionOut(BaseModel):
+    activity_id: UUID
+    lead_id: UUID
+    lead_company_name: str
+    activity_type: SalesActivityType
+    outcome: SalesActivityOutcome
+    occurred_at: datetime
+    suggested_task_type: SalesTaskType
+    lead_sales_status: SalesStatus
+    lead_priority: SalesPriority
+    lead_assigned_to: str | None
+    next_follow_up_at: datetime | None
+    current_stage_value: Decimal | None
+    current_stage_value_field: str | None
+    currency: str
+
+
+class SalesTaskSummaryOut(BaseModel):
+    today: list[SalesActionTaskOut]
+    overdue: list[SalesActionTaskOut]
+    upcoming: list[SalesActionTaskOut]
+    outcome_suggestions: list[OutcomeSuggestionOut]

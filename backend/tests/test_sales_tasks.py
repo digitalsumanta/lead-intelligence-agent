@@ -1,5 +1,6 @@
 """Focused API/service coverage for deterministic sales task management."""
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from uuid import uuid4
 
 import pytest
@@ -10,7 +11,7 @@ from app.database import get_db
 from app.main import app
 from app.models import (
     EnrichmentRun, Lead, OutreachArtifact, OutreachStatus, SalesActivity,
-    SalesActivityOutcome, SalesActivityType, SalesPriority, SalesTaskStatus,
+    SalesActivityOutcome, SalesActivityType, SalesPriority, SalesStatus, SalesTaskStatus,
     SalesTaskType,
 )
 from app.services.sales_tasks import suggested_task_type, task_due_state
@@ -152,7 +153,125 @@ async def test_filters_lead_scoping_and_authentication(task_client, session_fact
     assert len(filtered.json()) == 1 and filtered.json()[0]["id"] == first.json()["id"]
     assert [item["lead_id"] for item in by_lead.json()] == [str(lead_id)]
     assert unauthorized.status_code == 401
-    assert set(summary.json()) == {"today", "overdue", "upcoming"}
+    assert set(summary.json()) == {"today", "overdue", "upcoming", "outcome_suggestions"}
+
+
+@pytest.mark.asyncio
+async def test_action_center_adds_sales_commercial_context_and_unhandled_outcome_suggestions(task_client, session_factory):
+    lead_id, _, _ = await make_lead(session_factory, "Action Center Lead")
+    async with session_factory() as session:
+        lead = await session.get(Lead, lead_id)
+        lead.sales_status = SalesStatus.PROPOSAL
+        lead.priority = SalesPriority.URGENT
+        lead.assigned_to = "Rep A"
+        lead.proposal_value = Decimal("1250.50")
+        lead.currency = "USD"
+        lead.next_follow_up_at = datetime.now(timezone.utc) + timedelta(days=1)
+        await session.commit()
+
+    headers = {"Authorization": "Bearer task-test-token"}
+    async with task_client as client:
+        due_task = await client.post(
+            f"/api/leads/{lead_id}/tasks", headers=headers,
+            json=payload(datetime.now(timezone.utc) + timedelta(days=2), task_type="PROPOSAL"),
+        )
+        suggestion_response = await client.post(
+            f"/api/leads/{lead_id}/activities", headers=headers,
+            json={"activity_type": "CALL", "outcome": "PROPOSAL_REQUESTED", "note": "Private note is not in summary"},
+        )
+        summary = await client.get("/api/tasks/summary", headers=headers)
+
+    assert due_task.status_code == 201
+    assert suggestion_response.status_code == 201
+    body = summary.json()
+    task = next(row for row in body["upcoming"] if row["id"] == due_task.json()["id"])
+    assert task["lead_sales_status"] == "PROPOSAL"
+    assert task["lead_priority"] == "URGENT"
+    assert task["lead_assigned_to"] == "Rep A"
+    assert task["current_stage_value"] == "1250.50"
+    assert task["current_stage_value_field"] == "proposal_value"
+    assert task["currency"] == "USD"
+    assert task["next_follow_up_at"] is not None
+
+    suggestions = body["outcome_suggestions"]
+    assert len(suggestions) == 1
+    assert suggestions[0]["activity_id"] == suggestion_response.json()["id"]
+    assert suggestions[0]["outcome"] == "PROPOSAL_REQUESTED"
+    assert suggestions[0]["suggested_task_type"] == "PROPOSAL"
+    assert "note" not in suggestions[0]
+    assert "Private note" not in str(suggestions)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("sales_status", "expected_field", "expected_value"), [
+    (SalesStatus.NEW, "estimated_value", "100.10"),
+    (SalesStatus.QUALIFIED, "estimated_value", "100.10"),
+    (SalesStatus.CONTACTED, "estimated_value", "100.10"),
+    (SalesStatus.ENGAGED, "estimated_value", "100.10"),
+    (SalesStatus.PROPOSAL, "proposal_value", "200.20"),
+    (SalesStatus.NEGOTIATION, "negotiation_value", "300.30"),
+    (SalesStatus.WON, "won_value", "400.40"),
+    (SalesStatus.LOST, None, None),
+])
+async def test_action_center_uses_only_the_commercial_field_for_current_stage(
+    task_client, session_factory, sales_status, expected_field, expected_value,
+):
+    lead_id, _, _ = await make_lead(session_factory, f"Stage {sales_status.value}")
+    async with session_factory() as session:
+        lead = await session.get(Lead, lead_id)
+        lead.sales_status = sales_status
+        lead.estimated_value = Decimal("100.10")
+        lead.proposal_value = Decimal("200.20")
+        lead.negotiation_value = Decimal("300.30")
+        lead.won_value = Decimal("400.40")
+        lead.currency = "EUR"
+        await session.commit()
+
+    headers = {"Authorization": "Bearer task-test-token"}
+    async with task_client as client:
+        created = await client.post(
+            f"/api/leads/{lead_id}/tasks", headers=headers,
+            json=payload(datetime.now(timezone.utc) + timedelta(days=2)),
+        )
+        summary = await client.get("/api/tasks/summary", headers=headers)
+    task = next(row for row in summary.json()["upcoming"] if row["id"] == created.json()["id"])
+    assert task["current_stage_value_field"] == expected_field
+    assert task["current_stage_value"] == expected_value
+    assert task["currency"] == "EUR"
+
+
+@pytest.mark.asyncio
+async def test_action_center_suggestions_use_existing_mapping_and_hide_linked_activities(task_client, session_factory):
+    lead_id, _, _ = await make_lead(session_factory, "Outcome Suggestions Lead")
+    headers = {"Authorization": "Bearer task-test-token"}
+    async with task_client as client:
+        callback = await client.post(
+            f"/api/leads/{lead_id}/activities", headers=headers,
+            json={"activity_type": "CALL", "outcome": "CALLBACK_REQUESTED", "note": "Callback requested"},
+        )
+        meeting = await client.post(
+            f"/api/leads/{lead_id}/activities", headers=headers,
+            json={"activity_type": "MEETING", "outcome": "MEETING_BOOKED", "note": "Meeting booked"},
+        )
+        unsupported = await client.post(
+            f"/api/leads/{lead_id}/activities", headers=headers,
+            json={"activity_type": "CALL", "outcome": "CONNECTED", "note": "Connected"},
+        )
+        task_for_callback = await client.post(
+            f"/api/leads/{lead_id}/tasks", headers=headers,
+            json=payload(related_activity_id=callback.json()["id"]),
+        )
+        task_for_meeting = await client.post(
+            f"/api/leads/{lead_id}/tasks", headers=headers,
+            json=payload(related_activity_id=meeting.json()["id"]),
+        )
+        await client.post(f"/api/tasks/{task_for_callback.json()['id']}/complete", headers=headers)
+        await client.post(f"/api/tasks/{task_for_meeting.json()['id']}/cancel", headers=headers)
+        summary = await client.get("/api/tasks/summary", headers=headers)
+
+    assert unsupported.status_code == 201
+    assert summary.status_code == 200
+    assert summary.json()["outcome_suggestions"] == []
 
 
 def test_sales_task_migration_follows_outreach_and_is_reversible():

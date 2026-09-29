@@ -24,7 +24,10 @@ from app.schemas.outreach_operations import (
     OutreachSendRequest, OutreachRetryRequest, OutreachOutcomeCreate, ManualSendConfirmation,
     OutreachExecutionOut,
 )
-from app.schemas.sales_tasks import SalesTaskCreate, SalesTaskPatch, SalesTaskOut
+from app.schemas.sales_tasks import (
+    OutcomeSuggestionOut, SalesActionTaskOut, SalesTaskCreate, SalesTaskPatch,
+    SalesTaskOut, SalesTaskSummaryOut,
+)
 from app.schemas.revenue import (
     CommercialPatch, CommercialOut, SalesCollectionCreate, SalesCollectionPatch,
     SalesCollectionOut, RevenueTargetCreate, RevenueTargetPatch, RevenueTargetOut,
@@ -49,7 +52,7 @@ from app.services.outreach_operations import (
 )
 from app.services.sales_tasks import (
     SalesTaskError, create_task, finish_task, list_tasks_query, suggested_task_type,
-    task_day_windows, task_due_state, update_task,
+    action_center_rows, task_due_state, update_task,
 )
 from app.services.revenue import (
     RevenueError, commercial_values, update_commercial, create_collection,
@@ -534,7 +537,7 @@ async def _task_by_id(db: AsyncSession, task_id: uuid.UUID, *, lock=False):
     return task
 
 
-@app.get("/api/leads/{lead_id}/tasks", response_model=list[SalesTaskOut])
+@app.get("/api/leads/{lead_id}/tasks", response_model=list[SalesActionTaskOut])
 async def list_lead_tasks(
     lead_id: uuid.UUID,
     status: SalesTaskStatus | None = None,
@@ -549,8 +552,8 @@ async def list_lead_tasks(
         raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": "Lead not found"})
     query = list_tasks_query(status=status, task_type=task_type, priority=priority,
                              assigned_to=assigned_to, due=due, overdue=overdue, lead_id=lead_id)
-    rows = (await db.scalars(query.limit(500))).all()
-    return [sales_task_payload(task) for task in rows]
+    rows = (await db.execute(query.join(Lead, Lead.id == SalesTask.lead_id).add_columns(Lead).limit(500))).all()
+    return [_action_task_payload(task, lead) for task, lead in rows]
 
 
 @app.post("/api/leads/{lead_id}/tasks", response_model=SalesTaskOut, status_code=201)
@@ -562,7 +565,7 @@ async def create_lead_task(lead_id: uuid.UUID, body: SalesTaskCreate, db: AsyncS
     return sales_task_payload(task)
 
 
-@app.get("/api/tasks", response_model=list[SalesTaskOut])
+@app.get("/api/tasks", response_model=list[SalesActionTaskOut])
 async def list_all_tasks(
     status: SalesTaskStatus | None = None,
     task_type: SalesTaskType | None = None,
@@ -576,20 +579,75 @@ async def list_all_tasks(
 ):
     query = list_tasks_query(status=status, task_type=task_type, priority=priority,
                              assigned_to=assigned_to, due=due, overdue=overdue, lead_id=lead_id)
-    query = query.join(Lead, Lead.id == SalesTask.lead_id).add_columns(Lead.company_name)
+    query = query.join(Lead, Lead.id == SalesTask.lead_id).add_columns(Lead)
     rows = (await db.execute(query.limit(limit))).all()
-    return [sales_task_payload(task, company_name) for task, company_name in rows]
+    return [_action_task_payload(task, lead) for task, lead in rows]
 
 
-@app.get("/api/tasks/summary", response_model=dict[str, list[SalesTaskOut]])
+def _stage_commercial_context(lead: Lead):
+    if lead.sales_status in {SalesStatus.NEW, SalesStatus.QUALIFIED, SalesStatus.CONTACTED, SalesStatus.ENGAGED}:
+        return lead.estimated_value, "estimated_value"
+    if lead.sales_status == SalesStatus.PROPOSAL:
+        return lead.proposal_value, "proposal_value"
+    if lead.sales_status == SalesStatus.NEGOTIATION:
+        return lead.negotiation_value, "negotiation_value"
+    if lead.sales_status == SalesStatus.WON:
+        return lead.won_value, "won_value"
+    return None, None
+
+
+def _utc_or_none(value):
+    if value is None:
+        return None
+    if value.tzinfo is None or value.utcoffset() is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
+
+
+def _action_task_payload(task: SalesTask, lead: Lead):
+    value, value_field = _stage_commercial_context(lead)
+    base = sales_task_payload(task, lead.company_name).model_dump()
+    return SalesActionTaskOut.model_validate({
+        **base,
+        "lead_sales_status": lead.sales_status,
+        "lead_priority": lead.priority,
+        "lead_assigned_to": lead.assigned_to,
+        "next_follow_up_at": _utc_or_none(lead.next_follow_up_at),
+        "current_stage_value": value,
+        "current_stage_value_field": value_field,
+        "currency": lead.currency,
+    })
+
+
+def _outcome_suggestion_payload(activity: SalesActivity, lead: Lead):
+    value, value_field = _stage_commercial_context(lead)
+    return OutcomeSuggestionOut.model_validate({
+        "activity_id": activity.id,
+        "lead_id": lead.id,
+        "lead_company_name": lead.company_name,
+        "activity_type": activity.activity_type,
+        "outcome": activity.outcome,
+        "occurred_at": _utc_or_none(activity.occurred_at),
+        "suggested_task_type": suggested_task_type(activity.outcome),
+        "lead_sales_status": lead.sales_status,
+        "lead_priority": lead.priority,
+        "lead_assigned_to": lead.assigned_to,
+        "next_follow_up_at": _utc_or_none(lead.next_follow_up_at),
+        "current_stage_value": value,
+        "current_stage_value_field": value_field,
+        "currency": lead.currency,
+    })
+
+
+@app.get("/api/tasks/summary", response_model=SalesTaskSummaryOut)
 async def task_summary(db: AsyncSession = Depends(get_db)):
-    today, overdue, upcoming = task_day_windows()
-    result = {}
-    for name, query in (("today", today), ("overdue", overdue), ("upcoming", upcoming)):
-        query = query.join(Lead, Lead.id == SalesTask.lead_id).add_columns(Lead.company_name)
-        rows = (await db.execute(query.limit(500))).all()
-        result[name] = [sales_task_payload(task, company_name) for task, company_name in rows]
-    return result
+    rows = await action_center_rows(db)
+    return {
+        name: [_action_task_payload(task, lead) for task, lead in rows[name]]
+        for name in ("today", "overdue", "upcoming")
+    } | {
+        "outcome_suggestions": [_outcome_suggestion_payload(activity, lead) for activity, lead in rows["outcome_suggestions"]],
+    }
 
 
 @app.patch("/api/tasks/{task_id}", response_model=SalesTaskOut)

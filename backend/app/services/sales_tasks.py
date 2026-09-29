@@ -156,7 +156,33 @@ def task_day_windows(now: datetime | None = None):
     seven_days = next_day + timedelta(days=7)
     active = SalesTask.status.not_in([SalesTaskStatus.COMPLETED, SalesTaskStatus.CANCELLED])
     return (
-        select(SalesTask).where(active, SalesTask.due_at >= now, SalesTask.due_at < next_day).order_by(SalesTask.due_at.asc()),
-        select(SalesTask).where(active, SalesTask.due_at < now).order_by(SalesTask.due_at.asc()),
-        select(SalesTask).where(active, SalesTask.due_at >= next_day, SalesTask.due_at < seven_days).order_by(SalesTask.due_at.asc()),
+        select(SalesTask).where(active, SalesTask.due_at >= now, SalesTask.due_at < next_day).order_by(SalesTask.due_at.asc(), SalesTask.id.asc()),
+        select(SalesTask).where(active, SalesTask.due_at < now).order_by(SalesTask.due_at.asc(), SalesTask.id.asc()),
+        select(SalesTask).where(active, SalesTask.due_at >= next_day, SalesTask.due_at < seven_days).order_by(SalesTask.due_at.asc(), SalesTask.id.asc()),
     )
+
+
+async def action_center_rows(session: AsyncSession, now: datetime | None = None):
+    """Return existing task windows plus unresolved mapped outcome suggestions."""
+    today, overdue, upcoming = task_day_windows(now)
+    result = {}
+    for name, query in (("today", today), ("overdue", overdue), ("upcoming", upcoming)):
+        result[name] = (await session.execute(
+            query.join(Lead, Lead.id == SalesTask.lead_id).add_columns(Lead).limit(500)
+        )).all()
+
+    handled_activity = select(SalesTask.id).where(
+        SalesTask.related_activity_id == SalesActivity.id,
+    ).exists()
+    suggestion_outcomes = tuple(NEXT_TASK_BY_OUTCOME)
+    result["outcome_suggestions"] = (await session.execute(
+        select(SalesActivity, Lead)
+        .join(Lead, Lead.id == SalesActivity.lead_id)
+        .where(
+            SalesActivity.outcome.in_(suggestion_outcomes),
+            ~handled_activity,
+        )
+        .order_by(SalesActivity.occurred_at.asc(), SalesActivity.id.asc())
+        .limit(200)
+    )).all()
+    return result

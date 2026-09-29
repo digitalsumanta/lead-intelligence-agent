@@ -109,8 +109,26 @@ export type SalesTask = {
   related_outreach_artifact_id: string | null; created_at: string; updated_at: string;
   completed_at: string | null; is_due: boolean; is_overdue: boolean;
 };
+export type SalesActionTask = SalesTask & {
+  lead_sales_status: SalesStatus;
+  lead_priority: SalesPriority;
+  lead_assigned_to: string | null;
+  next_follow_up_at: string | null;
+  current_stage_value: string | null;
+  current_stage_value_field: "estimated_value" | "proposal_value" | "negotiation_value" | "won_value" | null;
+  currency: string;
+};
+export type OutcomeSuggestion = {
+  activity_id: string; lead_id: string; lead_company_name: string;
+  activity_type: SalesActivityType; outcome: SalesActivityOutcome; occurred_at: string;
+  suggested_task_type: SalesTaskType; lead_sales_status: SalesStatus; lead_priority: SalesPriority;
+  lead_assigned_to: string | null; next_follow_up_at: string | null;
+  current_stage_value: string | null;
+  current_stage_value_field: "estimated_value" | "proposal_value" | "negotiation_value" | "won_value" | null;
+  currency: string;
+};
 export type SalesTaskCreate = Pick<SalesTask, "task_type" | "title" | "due_at" | "priority"> & Partial<Pick<SalesTask, "assigned_to" | "description" | "related_activity_id" | "related_outreach_artifact_id">>;
-export type SalesTaskSummary = { today: SalesTask[]; overdue: SalesTask[]; upcoming: SalesTask[] };
+export type SalesTaskSummary = { today: SalesActionTask[]; overdue: SalesActionTask[]; upcoming: SalesActionTask[]; outcome_suggestions: OutcomeSuggestion[] };
 
 export type CommercialRecord = {
   lead_id: string; sales_status: SalesStatus; estimated_value: string | null;
