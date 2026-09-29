@@ -14,12 +14,16 @@ from app.database import get_db, SessionLocal, engine, verify_database_schema, w
 from app.models import (
     Lead, ImportJob, ProcessingJob, LeadEvent, LeadStatus, JobStatus, LeadBatch,
     EnrichmentRun, LeadScore, Opportunity, ServiceRecommendation, Personalization,
-    SalesActivity, SalesStatus, SalesPriority, SalesActivityType, SalesActivityOutcome, SalesTask, SalesTaskType, SalesTaskStatus, OutreachArtifact, OutreachStatus, SalesCollection, RevenueTarget,
+    SalesActivity, SalesStatus, SalesPriority, SalesActivityType, SalesActivityOutcome, SalesTask, SalesTaskType, SalesTaskStatus, OutreachArtifact, OutreachStatus, OutreachExecution, SalesCollection, RevenueTarget,
 )
 from app.models.entities import now_utc
 from app.schemas.lead import LeadOut, ProcessBatchIn
 from app.schemas.sales import SalesPatch, SalesActivityCreate, SalesOut, SalesActivityOut
 from app.schemas.outreach import OutreachArtifactOut, OutreachReadOut, OutreachContextOut, OutreachPatch, OutreachReject
+from app.schemas.outreach_operations import (
+    OutreachSendRequest, OutreachRetryRequest, ManualSendConfirmation,
+    OutreachExecutionOut,
+)
 from app.schemas.sales_tasks import SalesTaskCreate, SalesTaskPatch, SalesTaskOut
 from app.schemas.revenue import (
     CommercialPatch, CommercialOut, SalesCollectionCreate, SalesCollectionPatch,
@@ -37,6 +41,10 @@ from app.services.key_config import sync_environment_keys
 from app.services.outreach import (
     OutreachUnavailable, current_artifact_response, generate_outreach,
     mark_outreach_stale, source_state, validate_outreach,
+)
+from app.services.outreach_operations import (
+    OutreachOperationError, send_approved_outreach, retry_outreach_execution,
+    confirm_manual_send, cancel_manual_execution,
 )
 from app.services.sales_tasks import (
     SalesTaskError, create_task, finish_task, list_tasks_query, suggested_task_type,
@@ -764,6 +772,60 @@ async def reject_lead_outreach(lead_id: uuid.UUID, body: OutreachReject, db: Asy
     await db.commit()
     await db.refresh(artifact)
     return _outreach_payload(artifact, True, sales_status=lead.sales_status)
+
+
+def _raise_outreach_operation_error(error: OutreachOperationError):
+    raise HTTPException(error.status_code, detail={"code": error.code, "message": str(error)})
+
+
+def _outreach_execution_payload(execution: OutreachExecution):
+    return OutreachExecutionOut.model_validate(execution)
+
+
+@app.get("/api/leads/{lead_id}/outreach/executions", response_model=list[OutreachExecutionOut])
+async def list_lead_outreach_executions(lead_id: uuid.UUID, limit: int = Query(100, ge=1, le=500), db: AsyncSession = Depends(get_db)):
+    if await db.get(Lead, lead_id) is None:
+        raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": "Lead not found"})
+    rows = (await db.scalars(select(OutreachExecution).where(
+        OutreachExecution.lead_id == lead_id,
+    ).order_by(OutreachExecution.requested_at.desc(), OutreachExecution.id.desc()).limit(limit))).all()
+    return [_outreach_execution_payload(item) for item in rows]
+
+
+@app.post("/api/outreach/{artifact_id}/send", response_model=OutreachExecutionOut, status_code=201)
+async def send_outreach_artifact(artifact_id: uuid.UUID, body: OutreachSendRequest, db: AsyncSession = Depends(get_db)):
+    try:
+        execution = await send_approved_outreach(db, artifact_id, body)
+    except OutreachOperationError as error:
+        _raise_outreach_operation_error(error)
+    return _outreach_execution_payload(execution)
+
+
+@app.post("/api/outreach/executions/{execution_id}/retry", response_model=OutreachExecutionOut, status_code=201)
+async def retry_outreach_send(execution_id: uuid.UUID, body: OutreachRetryRequest, db: AsyncSession = Depends(get_db)):
+    try:
+        execution = await retry_outreach_execution(db, execution_id, body)
+    except OutreachOperationError as error:
+        _raise_outreach_operation_error(error)
+    return _outreach_execution_payload(execution)
+
+
+@app.post("/api/outreach/executions/{execution_id}/mark-manual", response_model=OutreachExecutionOut)
+async def mark_outreach_manually_sent(execution_id: uuid.UUID, body: ManualSendConfirmation, db: AsyncSession = Depends(get_db)):
+    try:
+        execution = await confirm_manual_send(db, execution_id, body)
+    except OutreachOperationError as error:
+        _raise_outreach_operation_error(error)
+    return _outreach_execution_payload(execution)
+
+
+@app.post("/api/outreach/executions/{execution_id}/cancel", response_model=OutreachExecutionOut)
+async def cancel_outreach_execution(execution_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    try:
+        execution = await cancel_manual_execution(db, execution_id)
+    except OutreachOperationError as error:
+        _raise_outreach_operation_error(error)
+    return _outreach_execution_payload(execution)
 
 
 @app.get("/api/leads/{lead_id}/intelligence", response_model=IntelligenceResponse)

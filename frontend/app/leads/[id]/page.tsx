@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
-import { api, ApiError, CommercialRecord, IntelligenceClaim, IntelligenceResponse, LeadDetail, OutreachArtifact, OutreachContent, OutreachReadResponse, SalesActivity, SalesActivityOutcome, SalesActivityType, SalesCollection, SalesPriority, SalesStatus, SalesTask, SalesTaskCreate, SalesTaskStatus, SalesTaskType, SalesWorkflow } from "@/lib/api";
+import { api, ApiError, CommercialRecord, IntelligenceClaim, IntelligenceResponse, LeadDetail, OutreachArtifact, OutreachChannel, OutreachContent, OutreachExecution, OutreachReadResponse, SalesActivity, SalesActivityOutcome, SalesActivityType, SalesCollection, SalesPriority, SalesStatus, SalesTask, SalesTaskCreate, SalesTaskStatus, SalesTaskType, SalesWorkflow } from "@/lib/api";
 
 const NEXT_SALES_STATUS: Record<SalesStatus, SalesStatus[]> = {
   NEW: ["QUALIFIED", "CONTACTED", "LOST"], QUALIFIED: ["CONTACTED", "LOST"],
@@ -252,8 +252,9 @@ function SalesTasksPanel({ leadId, leadAssignedTo, leadPriority, refreshKey }: {
   </section>;
 }
 
-function OutreachPanel({ leadId }: { leadId: string }) {
+function OutreachPanel({ leadId, leadEmail, leadPhone }: { leadId: string; leadEmail: string | null; leadPhone: string | null }) {
   const [data, setData] = useState<OutreachReadResponse | null>(null);
+  const [executions, setExecutions] = useState<OutreachExecution[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -261,17 +262,29 @@ function OutreachPanel({ leadId }: { leadId: string }) {
   const [editJson, setEditJson] = useState("");
   const [rejecting, setRejecting] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
+  const [sendChannel, setSendChannel] = useState<"EMAIL" | "WHATSAPP">("EMAIL");
+  const [manualMethod, setManualMethod] = useState<"EMAIL" | "WHATSAPP">("EMAIL");
+  const [confirmation, setConfirmation] = useState<{ channel: "EMAIL" | "WHATSAPP"; retryId?: string } | null>(null);
+  const [manualConfirmId, setManualConfirmId] = useState<string | null>(null);
+  const [manualConfirmed, setManualConfirmed] = useState(false);
 
   async function reload() {
-    const result = await api<OutreachReadResponse>(`/api/leads/${encodeURIComponent(leadId)}/outreach`);
+    const [result, rows] = await Promise.all([
+      api<OutreachReadResponse>(`/api/leads/${encodeURIComponent(leadId)}/outreach`),
+      api<OutreachExecution[]>(`/api/leads/${encodeURIComponent(leadId)}/outreach/executions`),
+    ]);
     setData(result);
+    setExecutions(rows);
     setEditing(false);
   }
 
   useEffect(() => {
     let active = true;
-    api<OutreachReadResponse>(`/api/leads/${encodeURIComponent(leadId)}/outreach`)
-      .then((result) => { if (active) setData(result); })
+    Promise.all([
+      api<OutreachReadResponse>(`/api/leads/${encodeURIComponent(leadId)}/outreach`),
+      api<OutreachExecution[]>(`/api/leads/${encodeURIComponent(leadId)}/outreach/executions`),
+    ])
+      .then(([result, rows]) => { if (active) { setData(result); setExecutions(rows); } })
       .catch(() => { if (active) setError("Outreach preparation could not be loaded."); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -296,6 +309,8 @@ function OutreachPanel({ leadId }: { leadId: string }) {
 
   const artifact = data?.artifact;
   const current = Boolean(artifact?.is_current && artifact.status !== "STALE");
+  const approvedCurrent = Boolean(artifact?.status === "APPROVED" && current);
+  const latestFailed = executions.find((execution) => execution.status === "FAILED");
   const claimSections = artifact?.content ? [
     ["Email opening", artifact.content.email.opening], ["Email body", artifact.content.email.body],
     ["Email call to action", artifact.content.email.call_to_action], ["WhatsApp opening", artifact.content.whatsapp.opening],
@@ -303,6 +318,35 @@ function OutreachPanel({ leadId }: { leadId: string }) {
     ["Call opening", artifact.content.call_script.opening], ["Key problem or opportunity", artifact.content.call_script.key_problem],
     ["Objections and talking points", artifact.content.call_script.objections_and_talking_points], ["Call closing", artifact.content.call_script.closing],
   ] as const : [];
+
+  function preview(channel: "EMAIL" | "WHATSAPP") {
+    if (!artifact?.content) return { subject: null as string | null, text: "" };
+    const parts = channel === "EMAIL"
+      ? [artifact.content.email.opening.text, artifact.content.email.body.text, artifact.content.email.call_to_action.text]
+      : [artifact.content.whatsapp.opening.text, artifact.content.whatsapp.message.text, artifact.content.whatsapp.call_to_action.text];
+    return { subject: channel === "EMAIL" ? artifact.content.email.subject : null, text: parts.filter(Boolean).join("\n\n") };
+  }
+
+  async function createManualExecution() {
+    await perform(() => api<OutreachExecution>(`/api/outreach/${artifact?.id}/send`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ channel: "MANUAL", manual_method: manualMethod, idempotency_key: crypto.randomUUID() }),
+    }));
+  }
+
+  async function confirmExternalSend() {
+    if (!artifact || !confirmation) return;
+    const key = crypto.randomUUID();
+    const action = confirmation.retryId
+      ? api<OutreachExecution>(`/api/outreach/executions/${confirmation.retryId}/retry`, {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idempotency_key: key }),
+        })
+      : api<OutreachExecution>(`/api/outreach/${artifact.id}/send`, {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ channel: confirmation.channel, idempotency_key: key }),
+        });
+    await perform(() => action);
+    setConfirmation(null);
+  }
 
   return <section className="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
     <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-bold text-ink">Outreach preparation</h2><p className="mt-1 text-sm font-semibold text-teal">Prepared for review — not sent.</p></div>{artifact && <span className={`rounded-full px-3 py-1 text-xs font-semibold ${artifact.status === "APPROVED" ? "bg-emerald-50 text-emerald-700" : artifact.status === "STALE" ? "bg-rose-50 text-rose-700" : "bg-amber-50 text-amber-800"}`}>{artifact.status.replaceAll("_", " ")} · {current ? "Current" : "Stale"}</span>}</div>
@@ -326,6 +370,34 @@ function OutreachPanel({ leadId }: { leadId: string }) {
         {artifact?.status === "READY_FOR_REVIEW" && current && <button disabled={busy} onClick={() => void perform(() => api(`/api/leads/${encodeURIComponent(leadId)}/outreach/approve`, { method: "POST" }))} className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Approve</button>}
         {artifact && current && ["DRAFT", "READY_FOR_REVIEW"].includes(artifact.status) && <button disabled={busy} onClick={() => setRejecting((value) => !value)} className="rounded-lg border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-800">Reject</button>}
       </div>
+      {artifact?.status === "STALE" && <p className="mt-3 rounded-lg bg-rose-50 p-3 text-sm text-rose-800">Outreach must be regenerated/revalidated before sending.</p>}
+      {approvedCurrent && artifact?.content && <section className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50/40 p-4">
+        <h3 className="font-semibold text-ink">Execute approved outreach</h3>
+        <p className="mt-1 text-sm text-slate-600">Each send requires your explicit confirmation. Provider credentials remain on the server.</p>
+        <div className="mt-3 flex flex-wrap items-end gap-3">
+          <label className="text-xs font-semibold text-slate-600">External channel<select className="mt-1 block rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" value={sendChannel} onChange={(event) => setSendChannel(event.target.value as "EMAIL" | "WHATSAPP")}><option value="EMAIL">Email</option><option value="WHATSAPP">WhatsApp</option></select></label>
+          <button disabled={busy} onClick={() => setConfirmation({ channel: sendChannel })} className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Send…</button>
+          <label className="text-xs font-semibold text-slate-600">Manual method<select className="mt-1 block rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" value={manualMethod} onChange={(event) => setManualMethod(event.target.value as "EMAIL" | "WHATSAPP")}><option value="EMAIL">Email</option><option value="WHATSAPP">WhatsApp</option></select></label>
+          <button disabled={busy} onClick={() => void createManualExecution()} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold disabled:opacity-50">Prepare manual send</button>
+        </div>
+      </section>}
+      {confirmation && artifact?.content && <section role="dialog" aria-modal="true" aria-labelledby="send-confirm-title" className="mt-4 rounded-lg border-2 border-amber-300 bg-amber-50 p-4">
+        <h3 id="send-confirm-title" className="font-bold text-amber-950">Confirm external send</h3>
+        <p className="mt-1 text-sm text-amber-900">This action sends the approved message to the lead through the configured provider.</p>
+        <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2"><div><dt className="font-semibold">Channel</dt><dd>{confirmation.channel}</dd></div><div><dt className="font-semibold">Recipient</dt><dd className="break-all">{confirmation.channel === "EMAIL" ? leadEmail || "No email on lead" : leadPhone || "No phone on lead"}</dd></div>{preview(confirmation.channel).subject && <div className="sm:col-span-2"><dt className="font-semibold">Subject</dt><dd>{preview(confirmation.channel).subject}</dd></div>}</dl>
+        <div className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg border border-amber-200 bg-white p-3 text-sm text-slate-700">{preview(confirmation.channel).text}</div>
+        <div className="mt-4 flex gap-2"><button disabled={busy} onClick={() => void confirmExternalSend()} className="rounded-lg bg-amber-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{confirmation.retryId ? "Confirm retry" : "Confirm and send"}</button><button disabled={busy} onClick={() => setConfirmation(null)} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm">Cancel</button></div>
+      </section>}
+      {executions.length > 0 && <section className="mt-5 rounded-lg border border-slate-200 p-4">
+        <h3 className="font-semibold text-ink">Execution history</h3>
+        <div className="mt-3 space-y-3">{executions.map((execution) => <article key={execution.id} className="rounded-lg bg-slate-50 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2"><p className="font-semibold text-ink">{execution.channel}{execution.manual_method ? ` · ${execution.manual_method} method` : ""} · {execution.status.replaceAll("_", " ")}</p><span className="text-xs text-slate-500">Attempt {execution.attempt_number} · {execution.provider}</span></div>
+          <dl className="mt-2 grid gap-x-5 gap-y-1 text-xs text-slate-600 sm:grid-cols-2 lg:grid-cols-3"><div>Requested: {date(execution.requested_at)}</div><div>Sent: {date(execution.sent_at)}</div><div>Delivered: {date(execution.delivered_at)}</div><div className="break-all">Recipient: {execution.recipient || "—"}</div><div className="break-all">Message ID: {execution.provider_message_id || "—"}</div><div>Error: {execution.error_message || "—"}</div></dl>
+          <details className="mt-2"><summary className="cursor-pointer text-xs font-semibold text-teal">Approved content snapshot</summary><pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-white p-2 text-xs">{execution.content_snapshot.text || JSON.stringify(execution.content_snapshot.content, null, 2)}</pre></details>
+          {execution.status === "FAILED" && approvedCurrent && execution.channel !== "MANUAL" && latestFailed?.id === execution.id && <button disabled={busy} onClick={() => setConfirmation({ channel: execution.channel as "EMAIL" | "WHATSAPP", retryId: execution.id })} className="mt-3 rounded-lg border border-amber-400 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 disabled:opacity-50">Retry…</button>}
+          {execution.status === "QUEUED" && execution.channel === "MANUAL" && <div className="mt-3"><div className="flex flex-wrap gap-2">{approvedCurrent && <button disabled={busy} onClick={() => { setManualConfirmId(execution.id); setManualConfirmed(false); }} className="rounded-lg border border-teal/40 bg-white px-3 py-1.5 text-xs font-semibold text-teal">Mark as manually sent…</button>}<button disabled={busy} onClick={() => void perform(() => api(`/api/outreach/executions/${execution.id}/cancel`, { method: "POST" }))} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 disabled:opacity-50">Cancel manual preparation</button></div>{manualConfirmId === execution.id && <div className="mt-2 rounded border border-slate-200 bg-white p-3"><label className="flex items-start gap-2 text-xs text-slate-700"><input type="checkbox" checked={manualConfirmed} onChange={(event) => setManualConfirmed(event.target.checked)} /><span>I confirm I sent this approved message manually through {execution.manual_method || "my chosen channel"}.</span></label><div className="mt-2 flex gap-2"><button disabled={busy || !manualConfirmed} onClick={() => void perform(() => api(`/api/outreach/executions/${execution.id}/mark-manual`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirmed: true }) }))} className="rounded bg-teal px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">Confirm manual send</button><button onClick={() => setManualConfirmId(null)} className="rounded border px-3 py-1.5 text-xs">Cancel</button></div></div>}</div>}
+        </article>)}</div>
+      </section>}
       {rejecting && <form className="mt-4 flex flex-col gap-2 sm:flex-row" onSubmit={(event) => { event.preventDefault(); void perform(() => api(`/api/leads/${encodeURIComponent(leadId)}/outreach/reject`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason: rejectReason }) })); }}><input required maxLength={1000} value={rejectReason} onChange={(event) => setRejectReason(event.target.value)} className="min-w-64 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Reason for rejection" /><button disabled={busy} className="rounded-lg bg-rose-700 px-4 py-2 text-sm font-semibold text-white">Confirm rejection</button></form>}
       {data?.current_context && ["WON", "LOST"].includes(data.current_context.sales_status) && <p className="mt-3 text-xs text-slate-500">Outreach generation is disabled for WON and LOST leads.</p>}
     </>}
@@ -485,7 +557,7 @@ export default function LeadDetailPage() {
       <SalesWorkflowPanel leadId={id} intelligence={intel} onTasksChanged={() => setTaskRefreshKey((key) => key + 1)} />
       <CommercialPanel leadId={id} refreshKey={taskRefreshKey} />
       <SalesTasksPanel leadId={id} leadAssignedTo={lead.assigned_to} leadPriority={lead.priority} refreshKey={taskRefreshKey} />
-      <OutreachPanel leadId={id} />
+      <OutreachPanel leadId={id} leadEmail={lead.email} leadPhone={lead.phone} />
 
       {intelligenceState !== "error" && <>
       <section className="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">

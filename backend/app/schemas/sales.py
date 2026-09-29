@@ -59,6 +59,8 @@ class SalesActivityOut(BaseModel):
     note: str
     outcome: SalesActivityOutcome | None = None
     suggested_task_type: str | None = None
+    old_sales_status: SalesStatus | None = None
+    new_sales_status: SalesStatus | None = None
 
 
 class SalesOut(BaseModel):

@@ -3,7 +3,7 @@ import enum
 import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal
-from sqlalchemy import CheckConstraint, Column, Date, DateTime, Enum, ForeignKey, ForeignKeyConstraint, Index, Integer, String, Text, JSON, Float, Boolean, Uuid, Table, text, Numeric
+from sqlalchemy import CheckConstraint, Column, Date, DateTime, Enum, ForeignKey, ForeignKeyConstraint, Index, Integer, String, Text, JSON, Float, Boolean, Uuid, Table, text, Numeric, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -138,7 +138,7 @@ class Lead(Base):
 
 class SalesActivity(Base):
     __tablename__ = "sales_activities"
-    __table_args__ = (CheckConstraint("(old_sales_status IS NULL AND new_sales_status IS NULL) OR (old_sales_status IS NOT NULL AND new_sales_status IS NOT NULL AND activity_type = 'STATUS_CHANGE')", name="ck_sales_activities_structured_status_change"), Index("ix_sales_activities_lead_occurred", "lead_id", "occurred_at"), Index("uq_sales_activities_id_lead", "id", "lead_id", unique=True))
+    __table_args__ = (CheckConstraint("(old_sales_status IS NULL AND new_sales_status IS NULL) OR (old_sales_status IS NOT NULL AND new_sales_status IS NOT NULL AND activity_type = 'STATUS_CHANGE')", name="ck_sales_activities_structured_status_change"), Index("ix_sales_activities_lead_occurred", "lead_id", "occurred_at"), Index("uq_sales_activities_id_lead", "id", "lead_id", unique=True), Index("uq_sales_activities_execution", "outreach_execution_id", unique=True), ForeignKeyConstraint(["outreach_execution_id", "lead_id"], ["outreach_executions.id", "outreach_executions.lead_id"], name="fk_sales_activities_execution_lead", ondelete="CASCADE"))
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     lead_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("leads.id", ondelete="CASCADE"), nullable=False)
     activity_type: Mapped[SalesActivityType] = mapped_column(Enum(SalesActivityType, name="salesactivitytype"), nullable=False)
@@ -147,6 +147,7 @@ class SalesActivity(Base):
     outcome: Mapped[SalesActivityOutcome | None] = mapped_column(Enum(SalesActivityOutcome, name="salesactivityoutcome"))
     old_sales_status: Mapped[SalesStatus | None] = mapped_column(Enum(SalesStatus, name="salesstatus"))
     new_sales_status: Mapped[SalesStatus | None] = mapped_column(Enum(SalesStatus, name="salesstatus"))
+    outreach_execution_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
     lead: Mapped[Lead] = relationship(back_populates="sales_activities")
 
 
@@ -183,6 +184,78 @@ class OutreachArtifact(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc)
     lead: Mapped[Lead] = relationship(back_populates="outreach_artifacts")
+
+
+class OutreachExecution(Base):
+    """Auditable human-triggered attempt using an immutable content snapshot."""
+    __tablename__ = "outreach_executions"
+    __table_args__ = (
+        CheckConstraint("channel IN ('EMAIL','WHATSAPP','MANUAL')", name="ck_outreach_executions_channel"),
+        CheckConstraint("status IN ('QUEUED','SENDING','SENT','DELIVERED','FAILED','CANCELLED')", name="ck_outreach_executions_status"),
+        CheckConstraint("attempt_number >= 1", name="ck_outreach_executions_attempt_number"),
+        CheckConstraint("manual_method IS NULL OR (channel = 'MANUAL' AND manual_method IN ('EMAIL','WHATSAPP'))", name="ck_outreach_executions_manual_method"),
+        Index("ix_outreach_executions_lead_created", "lead_id", "created_at"),
+        Index("ix_outreach_executions_artifact_created", "outreach_artifact_id", "created_at"),
+        Index("ix_outreach_executions_status", "status"),
+        Index("ix_outreach_executions_channel", "channel"),
+        UniqueConstraint("id", "lead_id", name="uq_outreach_executions_id_lead"),
+        UniqueConstraint("id", "lead_id", "outreach_artifact_id", name="uq_outreach_executions_id_lead_artifact"),
+        Index("uq_outreach_executions_artifact_key", "outreach_artifact_id", "idempotency_key", unique=True),
+        Index("uq_outreach_executions_active_artifact", "outreach_artifact_id", unique=True,
+              postgresql_where=text("status IN ('QUEUED','SENDING','SENT','DELIVERED')"),
+              sqlite_where=text("status IN ('QUEUED','SENDING','SENT','DELIVERED')")),
+        Index("uq_outreach_executions_provider_message", "provider", "provider_message_id", unique=True,
+              postgresql_where=text("provider_message_id IS NOT NULL"),
+              sqlite_where=text("provider_message_id IS NOT NULL")),
+        ForeignKeyConstraint(
+            ["outreach_artifact_id", "lead_id"], ["outreach_artifacts.id", "outreach_artifacts.lead_id"],
+            name="fk_outreach_executions_artifact_lead", ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["retry_of_execution_id", "lead_id", "outreach_artifact_id"],
+            ["outreach_executions.id", "outreach_executions.lead_id", "outreach_executions.outreach_artifact_id"],
+            name="fk_outreach_executions_retry_scope",
+        ),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lead_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("leads.id", ondelete="CASCADE"), nullable=False)
+    outreach_artifact_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    retry_of_execution_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
+    channel: Mapped[str] = mapped_column(String(20), nullable=False)
+    manual_method: Mapped[str | None] = mapped_column(String(20))
+    provider: Mapped[str] = mapped_column(String(80), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    attempt_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    idempotency_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    recipient: Mapped[str | None] = mapped_column(String(320))
+    subject: Mapped[str | None] = mapped_column(String(500))
+    content_snapshot: Mapped[dict] = mapped_column(JSON, nullable=False)
+    provider_message_id: Mapped[str | None] = mapped_column(String(512))
+    error_code: Mapped[str | None] = mapped_column(String(80))
+    error_message: Mapped[str | None] = mapped_column(String(500))
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    failed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc)
+
+
+class OutreachProviderEvent(Base):
+    """Normalized provider event record; raw webhooks and credentials are never persisted."""
+    __tablename__ = "outreach_provider_events"
+    __table_args__ = (
+        CheckConstraint("event_type IN ('DELIVERED','READ','REPLIED','BOUNCED','FAILED')", name="ck_outreach_provider_events_type"),
+        Index("ix_outreach_provider_events_execution", "execution_id", "occurred_at"),
+        Index("uq_outreach_provider_events_provider_event", "provider", "provider_event_id", unique=True),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    execution_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("outreach_executions.id", ondelete="CASCADE"), nullable=False)
+    provider: Mapped[str] = mapped_column(String(80), nullable=False)
+    provider_event_id: Mapped[str] = mapped_column(String(512), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
 
 
 class SalesTask(Base):

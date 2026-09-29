@@ -194,7 +194,7 @@ async def test_approval_rejection_edit_restrictions_and_cross_lead_isolation(out
     assert approved.status_code == 200 and approved.json()["status"] == "APPROVED"
     assert edit_approved.status_code == 422
     assert rejected.status_code == 200
-    assert not any(route.path.endswith("/send") for route in app.routes)
+    assert any(route.path == "/api/outreach/{artifact_id}/send" for route in app.routes)
 
 
 @pytest.mark.asyncio

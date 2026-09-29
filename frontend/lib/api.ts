@@ -173,6 +173,31 @@ export type OutreachReadResponse = {
   current_context: { sales_status: SalesStatus; score: number | null; opportunity_count: number; recommended_services: string[]; personalization_available: boolean } | null;
   artifact: OutreachArtifact | null;
 };
+export type OutreachChannel = "EMAIL" | "WHATSAPP" | "MANUAL";
+export type OutreachExecutionStatus = "QUEUED" | "SENDING" | "SENT" | "DELIVERED" | "FAILED" | "CANCELLED";
+export type OutreachExecution = {
+  id: string;
+  lead_id: string;
+  outreach_artifact_id: string;
+  retry_of_execution_id: string | null;
+  channel: OutreachChannel;
+  manual_method: "EMAIL" | "WHATSAPP" | null;
+  provider: string;
+  status: OutreachExecutionStatus;
+  attempt_number: number;
+  recipient: string | null;
+  subject: string | null;
+  content_snapshot: { content: OutreachContent; selected_channel: string; subject: string | null; text: string };
+  provider_message_id: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  requested_at: string;
+  sent_at: string | null;
+  delivered_at: string | null;
+  failed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
 
 export type IntelligenceClaim = {
   type: "verified_fact" | "supported_inference" | "suggested_language";

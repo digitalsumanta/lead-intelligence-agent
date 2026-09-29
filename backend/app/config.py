@@ -51,6 +51,16 @@ class Settings(BaseSettings):
     provider_failure_cooldown_seconds: float = 0.5
     provider_rate_limit_cooldown_seconds: int = 60
     provider_quota_cooldown_seconds: int = 3600
+    outreach_email_provider: str = ""
+    outreach_email_api_url: str = ""
+    outreach_email_api_key: str = ""
+    outreach_email_from: str = ""
+    outreach_email_enabled: bool = False
+    outreach_whatsapp_provider: str = ""
+    outreach_whatsapp_api_url: str = ""
+    outreach_whatsapp_api_key: str = ""
+    outreach_whatsapp_phone_number_id: str = ""
+    outreach_whatsapp_enabled: bool = False
     api_auth_token: str = ""
 
     @property
