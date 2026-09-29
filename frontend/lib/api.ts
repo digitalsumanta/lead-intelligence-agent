@@ -208,6 +208,16 @@ export type CopilotInteraction = {
   created_at: string;
 };
 export type CopilotHistory = { items: CopilotInteraction[] };
+export type PlannerActionType = "FOLLOW_UP" | "CALL_PROSPECT" | "REVIEW_SEO_OPPORTUNITY" | "REVIEW_OUTREACH" | "PREPARE_PROPOSAL" | "INVESTIGATE_MISSING_INFORMATION" | "REVIEW_COMMERCIAL_CONTEXT";
+export type PlannerAction = { action_type: PlannerActionType; priority: SalesPriority; title: string; rationale: string; evidence_ids: string[]; opportunity_ids: string[]; service_ids: string[]; preparation_items: string[] };
+export type ActionPlan = {
+  id: string; lead_id: string; contract_version: "ai-sales-action-planner-v1"; prompt_version: "ai-sales-action-planner-prompt-v1";
+  context_version: "ai-sales-context-v1"; provider: string; model: string; status: "validated" | "failed";
+  source_fingerprint: string; is_stale: boolean; is_current: boolean; action_plan: { contract_version: "ai-sales-action-planner-v1"; prompt_version: "ai-sales-action-planner-prompt-v1"; actions: PlannerAction[] } | null;
+  evidence_catalog: AISalesEvidenceCatalogEntry[]; evidence_refs: string[]; usage_metadata: Record<string, unknown>;
+  error_code: string | null; error_message: string | null; created_at: string; updated_at: string;
+};
+export type ActionPlanHistory = { items: ActionPlan[] };
 
 export type CommercialRecord = {
   lead_id: string; sales_status: SalesStatus; estimated_value: string | null;

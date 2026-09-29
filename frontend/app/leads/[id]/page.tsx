@@ -7,6 +7,7 @@ import { api, ApiError, CommercialRecord, IntelligenceClaim, IntelligenceRespons
 import SeoSection from "./seo-section";
 import AISalesIntelligence from "./ai-sales-intelligence";
 import AISalesCopilot from "./ai-sales-copilot";
+import AISalesActionPlanner from "./ai-sales-action-planner";
 
 const NEXT_SALES_STATUS: Record<SalesStatus, SalesStatus[]> = {
   NEW: ["QUALIFIED", "CONTACTED", "LOST"], QUALIFIED: ["CONTACTED", "LOST"],
@@ -598,6 +599,7 @@ export default function LeadDetailPage() {
       <div id="seo"><SeoSection leadId={id} website={lead.website} /></div>
       <AISalesIntelligence leadId={id} onTaskCreated={() => setTaskRefreshKey((key) => key + 1)} />
       <AISalesCopilot leadId={id} />
+      <AISalesActionPlanner leadId={id} onTaskCreated={() => setTaskRefreshKey((key) => key + 1)} />
 
       {intelligenceState !== "error" && <>
       <section id="opportunities" className="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
