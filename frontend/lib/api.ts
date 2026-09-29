@@ -112,6 +112,35 @@ export type SalesTask = {
 export type SalesTaskCreate = Pick<SalesTask, "task_type" | "title" | "due_at" | "priority"> & Partial<Pick<SalesTask, "assigned_to" | "description" | "related_activity_id" | "related_outreach_artifact_id">>;
 export type SalesTaskSummary = { today: SalesTask[]; overdue: SalesTask[]; upcoming: SalesTask[] };
 
+export type CommercialRecord = {
+  lead_id: string; sales_status: SalesStatus; estimated_value: string | null;
+  proposal_value: string | null; negotiation_value: string | null; won_value: string | null;
+  expected_collection: string | null; actual_collected: string; outstanding_collection: string; currency: string;
+};
+export type SalesCollection = {
+  id: string; lead_id: string; lead_company_name: string | null; amount: string; currency: string;
+  collection_date: string; payment_reference: string | null; notes: string | null;
+  created_at: string; updated_at: string;
+};
+export type RevenueTarget = {
+  id: string; label: string; target_amount: string; currency: string;
+  period_start: string; period_end: string; active: boolean; created_at: string; updated_at: string;
+};
+export type RevenueSummary = {
+  currency: string; pipeline_value: string; proposal_value: string; negotiation_value: string;
+  won_value: string; expected_collection: string; actual_collected: string; outstanding_collection: string;
+  target_id: string | null; target_label: string | null; target_amount: string | null;
+  target_collected: string | null; target_remaining: string | null; achievement_percentage: string | null;
+};
+export type RevenuePipelineStage = { sales_status: SalesStatus; lead_count: number; current_opportunity_value: string; won_value: string; collected_value: string };
+export type RevenueConversionStep = { from_status: SalesStatus; to_status: SalesStatus; source_count: number; converted_count: number; conversion_percentage: string | null };
+export type RevenueConversion = {
+  steps: RevenueConversionStep[]; tracked_lead_count: number; overall_conversion_percentage: string | null;
+  won_deal_count: number; lost_deal_count: number; open_opportunity_count: number;
+  average_won_deal_value: string | null; average_proposal_value: string | null; history_limitation: string;
+};
+export type RevenueSources = { available: boolean; reason: string; sources: Array<Record<string, unknown>> };
+
 export type OutreachStatus = "DRAFT" | "READY_FOR_REVIEW" | "APPROVED" | "REJECTED" | "STALE";
 export type OutreachClaim = IntelligenceClaim;
 export type OutreachText = { text: string; claims: OutreachClaim[] };

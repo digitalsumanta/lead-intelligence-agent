@@ -1,6 +1,6 @@
 """FastAPI application and REST endpoints."""
 import logging, uuid, hmac
-from datetime import timezone
+from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, UploadFile, File, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
@@ -14,13 +14,18 @@ from app.database import get_db, SessionLocal, engine, verify_database_schema, w
 from app.models import (
     Lead, ImportJob, ProcessingJob, LeadEvent, LeadStatus, JobStatus, LeadBatch,
     EnrichmentRun, LeadScore, Opportunity, ServiceRecommendation, Personalization,
-    SalesActivity, SalesStatus, SalesPriority, SalesActivityType, SalesActivityOutcome, SalesTask, SalesTaskType, SalesTaskStatus, OutreachArtifact, OutreachStatus,
+    SalesActivity, SalesStatus, SalesPriority, SalesActivityType, SalesActivityOutcome, SalesTask, SalesTaskType, SalesTaskStatus, OutreachArtifact, OutreachStatus, SalesCollection, RevenueTarget,
 )
 from app.models.entities import now_utc
 from app.schemas.lead import LeadOut, ProcessBatchIn
 from app.schemas.sales import SalesPatch, SalesActivityCreate, SalesOut, SalesActivityOut
 from app.schemas.outreach import OutreachArtifactOut, OutreachReadOut, OutreachContextOut, OutreachPatch, OutreachReject
 from app.schemas.sales_tasks import SalesTaskCreate, SalesTaskPatch, SalesTaskOut
+from app.schemas.revenue import (
+    CommercialPatch, CommercialOut, SalesCollectionCreate, SalesCollectionPatch,
+    SalesCollectionOut, RevenueTargetCreate, RevenueTargetPatch, RevenueTargetOut,
+    RevenueSummaryOut, PipelineStageOut, ConversionOut, SourceAnalyticsOut,
+)
 from app.schemas.intelligence import IntelligenceResponse
 from app.services.lead_intelligence_api import read_intelligence_summary, read_lead_intelligence
 from app.services.csv_import import import_csv
@@ -36,6 +41,11 @@ from app.services.outreach import (
 from app.services.sales_tasks import (
     SalesTaskError, create_task, finish_task, list_tasks_query, suggested_task_type,
     task_day_windows, task_due_state, update_task,
+)
+from app.services.revenue import (
+    RevenueError, commercial_values, update_commercial, create_collection,
+    update_collection, create_target, update_target, revenue_summary,
+    pipeline_summary, conversion_analytics, require_currency,
 )
 
 configure_logging()
@@ -229,7 +239,7 @@ async def get_lead(lead_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
 
 def sales_activity_payload(activity):
     suggestion = suggested_task_type(activity.outcome) if activity.outcome else None
-    return SalesActivityOut.model_validate({"id": str(activity.id), "lead_id": str(activity.lead_id), "activity_type": activity.activity_type, "occurred_at": activity.occurred_at, "note": activity.note, "outcome": activity.outcome, "suggested_task_type": suggestion.value if suggestion else None})
+    return SalesActivityOut.model_validate({"id": str(activity.id), "lead_id": str(activity.lead_id), "activity_type": activity.activity_type, "occurred_at": activity.occurred_at, "note": activity.note, "outcome": activity.outcome, "suggested_task_type": suggestion.value if suggestion else None, "old_sales_status": activity.old_sales_status, "new_sales_status": activity.new_sales_status})
 
 
 @app.get("/api/leads/{lead_id}/sales", response_model=SalesOut)
@@ -281,7 +291,7 @@ async def update_lead_sales(lead_id: uuid.UUID, body: SalesPatch, db: AsyncSessi
     lead.sales_status = target
     lead.lost_reason = reason
     if changed_status:
-        db.add(SalesActivity(lead_id=lead.id, activity_type=SalesActivityType.STATUS_CHANGE, note=f"Sales status changed from {old_status.value} to {target.value}."))
+        db.add(SalesActivity(lead_id=lead.id, activity_type=SalesActivityType.STATUS_CHANGE, note=f"Sales status changed from {old_status.value} to {target.value}.", old_sales_status=old_status, new_sales_status=target))
         await mark_outreach_stale(db, lead.id)
     await db.commit()
     await db.refresh(lead)
@@ -306,6 +316,181 @@ async def create_sales_activity(lead_id: uuid.UUID, body: SalesActivityCreate, d
     await db.commit()
     await db.refresh(activity)
     return sales_activity_payload(activity)
+
+
+def sales_collection_payload(collection, lead_company_name=None):
+    collection_date = collection.collection_date
+    if collection_date.tzinfo is None or collection_date.utcoffset() is None:
+        collection_date = collection_date.replace(tzinfo=timezone.utc)
+    return SalesCollectionOut.model_validate({
+        "id": collection.id, "lead_id": collection.lead_id,
+        "lead_company_name": lead_company_name, "amount": collection.amount,
+        "currency": collection.currency, "collection_date": collection_date,
+        "payment_reference": collection.payment_reference, "notes": collection.notes,
+        "created_at": collection.created_at, "updated_at": collection.updated_at,
+    })
+
+
+def raise_revenue_error(error: RevenueError):
+    raise HTTPException(error.status_code, detail={"code": error.code, "message": str(error)})
+
+
+@app.get("/api/leads/{lead_id}/commercial", response_model=CommercialOut)
+async def get_lead_commercial(lead_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    lead = await db.get(Lead, lead_id)
+    if lead is None:
+        raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": "Lead not found"})
+    return await commercial_values(db, lead)
+
+
+@app.patch("/api/leads/{lead_id}/commercial", response_model=CommercialOut)
+async def patch_lead_commercial(lead_id: uuid.UUID, body: CommercialPatch, db: AsyncSession = Depends(get_db)):
+    lead = await db.scalar(select(Lead).where(Lead.id == lead_id).with_for_update())
+    if lead is None:
+        raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": "Lead not found"})
+    try:
+        lead = await update_commercial(db, lead, body)
+    except RevenueError as error:
+        raise_revenue_error(error)
+    return await commercial_values(db, lead)
+
+
+@app.get("/api/leads/{lead_id}/collections", response_model=list[SalesCollectionOut])
+async def list_lead_collections(lead_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    lead = await db.get(Lead, lead_id)
+    if lead is None:
+        raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": "Lead not found"})
+    rows = (await db.scalars(select(SalesCollection).where(SalesCollection.lead_id == lead_id).order_by(SalesCollection.collection_date.desc(), SalesCollection.id.desc()))).all()
+    return [sales_collection_payload(row, lead.company_name) for row in rows]
+
+
+@app.post("/api/leads/{lead_id}/collections", response_model=SalesCollectionOut, status_code=201)
+async def create_lead_collection(lead_id: uuid.UUID, body: SalesCollectionCreate, db: AsyncSession = Depends(get_db)):
+    lead = await db.scalar(select(Lead).where(Lead.id == lead_id).with_for_update())
+    if lead is None:
+        raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": "Lead not found"})
+    try:
+        collection = await create_collection(db, lead, body)
+    except RevenueError as error:
+        raise_revenue_error(error)
+    return sales_collection_payload(collection, lead.company_name)
+
+
+@app.get("/api/revenue/collections", response_model=list[SalesCollectionOut])
+async def list_revenue_collections(
+    currency: str = Query("INR", min_length=3, max_length=3),
+    period_start: datetime | None = None,
+    period_end: datetime | None = None,
+    limit: int = Query(200, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        currency = require_currency(currency)
+    except RevenueError as error:
+        raise_revenue_error(error)
+    query = select(SalesCollection, Lead.company_name).join(Lead, Lead.id == SalesCollection.lead_id).where(SalesCollection.currency == currency)
+    if period_start is not None:
+        if period_start.tzinfo is None or period_start.utcoffset() is None:
+            raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": "period_start must include a timezone"})
+        query = query.where(SalesCollection.collection_date >= period_start.astimezone(timezone.utc))
+    if period_end is not None:
+        if period_end.tzinfo is None or period_end.utcoffset() is None:
+            raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": "period_end must include a timezone"})
+        query = query.where(SalesCollection.collection_date <= period_end.astimezone(timezone.utc))
+    if period_start and period_end and period_start > period_end:
+        raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": "period_start cannot exceed period_end"})
+    rows = (await db.execute(query.order_by(SalesCollection.collection_date.desc(), SalesCollection.id.desc()).limit(limit))).all()
+    return [sales_collection_payload(collection, company_name) for collection, company_name in rows]
+
+
+@app.patch("/api/collections/{collection_id}", response_model=SalesCollectionOut)
+async def patch_sales_collection(collection_id: uuid.UUID, body: SalesCollectionPatch, db: AsyncSession = Depends(get_db)):
+    collection = await db.scalar(select(SalesCollection).where(SalesCollection.id == collection_id).with_for_update())
+    if collection is None:
+        raise HTTPException(404, detail={"code": "COLLECTION_NOT_FOUND", "message": "Collection not found"})
+    lead = await db.get(Lead, collection.lead_id)
+    try:
+        collection = await update_collection(db, collection, body)
+    except RevenueError as error:
+        raise_revenue_error(error)
+    return sales_collection_payload(collection, lead.company_name if lead else None)
+
+
+@app.delete("/api/collections/{collection_id}", status_code=204)
+async def delete_sales_collection(collection_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    collection = await db.get(SalesCollection, collection_id)
+    if collection is None:
+        raise HTTPException(404, detail={"code": "COLLECTION_NOT_FOUND", "message": "Collection not found"})
+    await db.delete(collection)
+    await db.commit()
+    return None
+
+
+@app.get("/api/revenue/summary", response_model=RevenueSummaryOut)
+async def get_revenue_summary(currency: str = Query("INR", min_length=3, max_length=3), db: AsyncSession = Depends(get_db)):
+    try:
+        return await revenue_summary(db, currency)
+    except RevenueError as error:
+        raise_revenue_error(error)
+
+
+@app.get("/api/revenue/pipeline", response_model=list[PipelineStageOut])
+async def get_revenue_pipeline(currency: str = Query("INR", min_length=3, max_length=3), db: AsyncSession = Depends(get_db)):
+    try:
+        return await pipeline_summary(db, currency)
+    except RevenueError as error:
+        raise_revenue_error(error)
+
+
+@app.get("/api/revenue/conversion", response_model=ConversionOut)
+async def get_revenue_conversion(currency: str = Query("INR", min_length=3, max_length=3), db: AsyncSession = Depends(get_db)):
+    try:
+        return await conversion_analytics(db, currency)
+    except RevenueError as error:
+        raise_revenue_error(error)
+
+
+@app.get("/api/revenue/sources", response_model=SourceAnalyticsOut)
+async def get_revenue_sources():
+    return SourceAnalyticsOut(available=False, reason="Lead records do not store a reliable acquisition source, so source attribution is not calculated.", sources=[])
+
+
+@app.get("/api/revenue/targets", response_model=list[RevenueTargetOut])
+async def list_revenue_targets(currency: str | None = Query(None, min_length=3, max_length=3), db: AsyncSession = Depends(get_db)):
+    if currency is not None:
+        try:
+            currency = require_currency(currency)
+        except RevenueError as error:
+            raise_revenue_error(error)
+    query = select(RevenueTarget)
+    if currency:
+        query = query.where(RevenueTarget.currency == currency)
+    return (await db.scalars(query.order_by(RevenueTarget.active.desc(), RevenueTarget.period_start.desc(), RevenueTarget.created_at.desc()))).all()
+
+
+@app.post("/api/revenue/targets", response_model=RevenueTargetOut, status_code=201)
+async def post_revenue_target(body: RevenueTargetCreate, db: AsyncSession = Depends(get_db)):
+    try:
+        return await create_target(db, body)
+    except RevenueError as error:
+        raise_revenue_error(error)
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(409, detail={"code": "ACTIVE_TARGET_EXISTS", "message": "An active target already exists for this currency"})
+
+
+@app.patch("/api/revenue/targets/{target_id}", response_model=RevenueTargetOut)
+async def patch_revenue_target(target_id: uuid.UUID, body: RevenueTargetPatch, db: AsyncSession = Depends(get_db)):
+    target = await db.scalar(select(RevenueTarget).where(RevenueTarget.id == target_id).with_for_update())
+    if target is None:
+        raise HTTPException(404, detail={"code": "TARGET_NOT_FOUND", "message": "Revenue target not found"})
+    try:
+        return await update_target(db, target, body)
+    except RevenueError as error:
+        raise_revenue_error(error)
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(409, detail={"code": "ACTIVE_TARGET_EXISTS", "message": "An active target already exists for this currency"})
 
 
 def sales_task_payload(task, lead_company_name=None):

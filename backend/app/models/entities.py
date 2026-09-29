@@ -1,8 +1,9 @@
 """Database entities for leads, imports, and durable processing jobs."""
 import enum
 import uuid
-from datetime import datetime, timezone
-from sqlalchemy import CheckConstraint, Column, DateTime, Enum, ForeignKey, ForeignKeyConstraint, Index, Integer, String, Text, JSON, Float, Boolean, Uuid, Table, text
+from datetime import date, datetime, timezone
+from decimal import Decimal
+from sqlalchemy import CheckConstraint, Column, Date, DateTime, Enum, ForeignKey, ForeignKeyConstraint, Index, Integer, String, Text, JSON, Float, Boolean, Uuid, Table, text, Numeric
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -85,7 +86,7 @@ class OutreachStatus(str, enum.Enum):
 
 class Lead(Base):
     __tablename__ = "leads"
-    __table_args__ = (Index("ix_leads_email", "email"), Index("ix_leads_company_city", "company_name", "city"), Index("ix_leads_status_created", "status", "created_at"), Index("ix_leads_sales_status", "sales_status"), Index("ix_leads_priority", "priority"), Index("ix_leads_next_follow_up_at", "next_follow_up_at"))
+    __table_args__ = (Index("ix_leads_email", "email"), Index("ix_leads_company_city", "company_name", "city"), Index("ix_leads_status_created", "status", "created_at"), Index("ix_leads_sales_status", "sales_status"), Index("ix_leads_priority", "priority"), Index("ix_leads_next_follow_up_at", "next_follow_up_at"), CheckConstraint("estimated_value IS NULL OR estimated_value >= 0", name="ck_leads_estimated_value_nonnegative"), CheckConstraint("proposal_value IS NULL OR proposal_value >= 0", name="ck_leads_proposal_value_nonnegative"), CheckConstraint("negotiation_value IS NULL OR negotiation_value >= 0", name="ck_leads_negotiation_value_nonnegative"), CheckConstraint("won_value IS NULL OR won_value >= 0", name="ck_leads_won_value_nonnegative"), CheckConstraint("expected_collection IS NULL OR expected_collection >= 0", name="ck_leads_expected_collection_nonnegative"), CheckConstraint("currency = upper(currency) AND length(currency) = 3", name="ck_leads_currency_code"))
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     company_name: Mapped[str] = mapped_column(String(250), nullable=False)
     website: Mapped[str | None] = mapped_column(String(1000))
@@ -102,6 +103,12 @@ class Lead(Base):
     assigned_to: Mapped[str | None] = mapped_column(String(120))
     next_follow_up_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     lost_reason: Mapped[str | None] = mapped_column(String(1000))
+    estimated_value: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    proposal_value: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    negotiation_value: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    won_value: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    expected_collection: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="INR", server_default="INR")
     lead_score: Mapped[int | None] = mapped_column(Integer)
     score_factors: Mapped[dict | None] = mapped_column(JSON)
     ai_summary: Mapped[str | None] = mapped_column(Text)
@@ -131,13 +138,15 @@ class Lead(Base):
 
 class SalesActivity(Base):
     __tablename__ = "sales_activities"
-    __table_args__ = (Index("ix_sales_activities_lead_occurred", "lead_id", "occurred_at"), Index("uq_sales_activities_id_lead", "id", "lead_id", unique=True))
+    __table_args__ = (CheckConstraint("(old_sales_status IS NULL AND new_sales_status IS NULL) OR (old_sales_status IS NOT NULL AND new_sales_status IS NOT NULL AND activity_type = 'STATUS_CHANGE')", name="ck_sales_activities_structured_status_change"), Index("ix_sales_activities_lead_occurred", "lead_id", "occurred_at"), Index("uq_sales_activities_id_lead", "id", "lead_id", unique=True))
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     lead_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("leads.id", ondelete="CASCADE"), nullable=False)
     activity_type: Mapped[SalesActivityType] = mapped_column(Enum(SalesActivityType, name="salesactivitytype"), nullable=False)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
     note: Mapped[str] = mapped_column(Text, nullable=False)
     outcome: Mapped[SalesActivityOutcome | None] = mapped_column(Enum(SalesActivityOutcome, name="salesactivityoutcome"))
+    old_sales_status: Mapped[SalesStatus | None] = mapped_column(Enum(SalesStatus, name="salesstatus"))
+    new_sales_status: Mapped[SalesStatus | None] = mapped_column(Enum(SalesStatus, name="salesstatus"))
     lead: Mapped[Lead] = relationship(back_populates="sales_activities")
 
 
@@ -204,6 +213,48 @@ class SalesTask(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     lead: Mapped[Lead] = relationship(back_populates="sales_tasks")
+
+
+class SalesCollection(Base):
+    """One positive payment/collection event for a won lead."""
+    __tablename__ = "sales_collections"
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="ck_sales_collections_amount_positive"),
+        CheckConstraint("currency = upper(currency) AND length(currency) = 3", name="ck_sales_collections_currency_code"),
+        Index("ix_sales_collections_lead_date", "lead_id", "collection_date"),
+        Index("ix_sales_collections_currency_date", "currency", "collection_date"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lead_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("leads.id", ondelete="CASCADE"), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    collection_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    payment_reference: Mapped[str | None] = mapped_column(String(250))
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc)
+    lead: Mapped[Lead] = relationship()
+
+
+class RevenueTarget(Base):
+    """One active goal per currency, with archived target periods retained."""
+    __tablename__ = "revenue_targets"
+    __table_args__ = (
+        CheckConstraint("target_amount >= 0", name="ck_revenue_targets_amount_nonnegative"),
+        CheckConstraint("period_start <= period_end", name="ck_revenue_targets_period_order"),
+        CheckConstraint("currency = upper(currency) AND length(currency) = 3", name="ck_revenue_targets_currency_code"),
+        Index("uq_revenue_targets_active_currency", "currency", unique=True, postgresql_where=text("active = true"), sqlite_where=text("active = 1")),
+        Index("ix_revenue_targets_period", "currency", "period_start", "period_end"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    label: Mapped[str] = mapped_column(String(200), nullable=False)
+    target_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="INR", server_default="INR")
+    period_start: Mapped[date] = mapped_column(Date, nullable=False)
+    period_end: Mapped[date] = mapped_column(Date, nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc)
 
 
 class ImportJob(Base):

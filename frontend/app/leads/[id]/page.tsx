@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
-import { api, ApiError, IntelligenceClaim, IntelligenceResponse, LeadDetail, OutreachArtifact, OutreachContent, OutreachReadResponse, SalesActivity, SalesActivityOutcome, SalesActivityType, SalesPriority, SalesStatus, SalesTask, SalesTaskCreate, SalesTaskStatus, SalesTaskType, SalesWorkflow } from "@/lib/api";
+import { api, ApiError, CommercialRecord, IntelligenceClaim, IntelligenceResponse, LeadDetail, OutreachArtifact, OutreachContent, OutreachReadResponse, SalesActivity, SalesActivityOutcome, SalesActivityType, SalesCollection, SalesPriority, SalesStatus, SalesTask, SalesTaskCreate, SalesTaskStatus, SalesTaskType, SalesWorkflow } from "@/lib/api";
 
 const NEXT_SALES_STATUS: Record<SalesStatus, SalesStatus[]> = {
   NEW: ["QUALIFIED", "CONTACTED", "LOST"], QUALIFIED: ["CONTACTED", "LOST"],
@@ -17,6 +17,15 @@ function localDateTime(value: string | null) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "";
   return new Date(parsed.getTime() - parsed.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+}
+
+function money(value: string | null | undefined, currency: string) {
+  if (value === null || value === undefined || value === "") return "—";
+  const negative = value.startsWith("-");
+  const [whole = "0", fraction = "00"] = value.replace("-", "").split(".");
+  const integer = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(BigInt(whole || "0"));
+  const symbol = new Intl.NumberFormat("en-IN", { style: "currency", currency, minimumFractionDigits: 2, maximumFractionDigits: 2 }).formatToParts(0).find((part) => part.type === "currency")?.value || currency;
+  return `${negative ? "-" : ""}${symbol}${integer}.${fraction.padEnd(2, "0").slice(0, 2)}`;
 }
 
 function SalesWorkflowPanel({ leadId, intelligence, onTasksChanged }: { leadId: string; intelligence: IntelligenceResponse | null; onTasksChanged: () => void }) {
@@ -56,7 +65,7 @@ function SalesWorkflowPanel({ leadId, intelligence, onTasksChanged }: { leadId: 
     event.preventDefault(); setBusy(true); setError("");
     try {
       await api<SalesWorkflow>(`/api/leads/${encodeURIComponent(leadId)}/sales`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sales_status: status, priority, assigned_to: assignedTo.trim() || null, next_follow_up_at: followUp ? new Date(followUp).toISOString() : null, lost_reason: status === "LOST" ? lostReason.trim() || null : null }) });
-      await reload();
+      await reload(); onTasksChanged();
     } catch (cause) { setError(cause instanceof ApiError ? cause.message : "Sales workflow could not be saved."); }
     finally { setBusy(false); }
   }
@@ -92,6 +101,69 @@ function SalesWorkflowPanel({ leadId, intelligence, onTasksChanged }: { leadId: 
         <form onSubmit={addActivity} className="rounded-lg bg-slate-50 p-4"><h3 className="font-semibold text-ink">Record activity / outcome</h3><label className="mt-3 block text-xs font-semibold text-slate-600">Type<select className={input} value={activityType} onChange={(event) => setActivityType(event.target.value as typeof activityType)}>{["NOTE", "CALL", "EMAIL", "WHATSAPP", "MEETING", "FOLLOW_UP", "PROPOSAL", "OTHER"].map((value) => <option key={value}>{value}</option>)}</select></label><label className="mt-3 block text-xs font-semibold text-slate-600">Outcome<select className={input} value={activityOutcome} onChange={(event) => setActivityOutcome(event.target.value as SalesActivityOutcome | "")}><option value="">No structured outcome</option>{["NO_RESPONSE", "CONNECTED", "INTERESTED", "NOT_INTERESTED", "CALLBACK_REQUESTED", "MEETING_BOOKED", "PROPOSAL_REQUESTED", "PROPOSAL_SENT", "NEGOTIATION_STARTED", "WON", "LOST", "INVALID_CONTACT"].map((value) => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}</select></label><label className="mt-3 block text-xs font-semibold text-slate-600">Note<textarea className={input} required maxLength={5000} value={note} onChange={(event) => setNote(event.target.value)} /></label><button disabled={busy} className="mt-3 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold disabled:opacity-50">Record activity</button><p className="mt-2 text-xs text-slate-500">Outcome rules may suggest a next task; a task is created only by an explicit human action.</p>{nextActionActivity?.suggested_task_type && <div className="mt-3 rounded-md border border-teal/20 bg-white p-3 text-sm"><p>Suggested next action: <strong>{nextActionActivity.suggested_task_type.replaceAll("_", " ")}</strong></p><button type="button" disabled={busy} onClick={() => { void (async () => { setBusy(true); try { await api(`/api/leads/${encodeURIComponent(leadId)}/tasks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ task_type: nextActionActivity.suggested_task_type, title: `${nextActionActivity.suggested_task_type!.replaceAll("_", " ")} — ${nextActionActivity.note.slice(0, 100)}`, due_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), priority, assigned_to: assignedTo.trim() || null, related_activity_id: nextActionActivity.id }) }); setNextActionActivity(null); onTasksChanged(); } catch (cause) { setError(cause instanceof ApiError ? cause.message : "Task could not be created."); } finally { setBusy(false); } })(); }} className="mt-2 rounded-md bg-ink px-3 py-2 text-xs font-semibold text-white">Create suggested task</button></div>}</form>
         <div><h3 className="font-semibold text-ink">Activity timeline</h3>{!sales.recent_activities.length ? <p className="mt-3 text-sm text-slate-500">No sales activities recorded.</p> : <ol className="mt-3 space-y-3">{sales.recent_activities.map((activity) => <li key={activity.id} className={`rounded-lg border p-3 ${activity.activity_type === "STATUS_CHANGE" ? "border-teal/20 bg-teal/5" : "border-slate-200"}`}><div className="flex justify-between gap-3"><span className="text-xs font-bold text-slate-700">{activity.activity_type === "STATUS_CHANGE" ? "System status change" : activity.activity_type.replaceAll("_", " ")}</span><time className="text-xs text-slate-400">{date(activity.occurred_at)}</time></div><p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{activity.note}</p></li>)}</ol>}</div>
       </div>
+    </>}
+  </section>;
+}
+
+function CommercialPanel({ leadId, refreshKey }: { leadId: string; refreshKey: number }) {
+  const [commercial, setCommercial] = useState<CommercialRecord | null>(null);
+  const [collections, setCollections] = useState<SalesCollection[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [currency, setCurrency] = useState("INR");
+  const [collectionAmount, setCollectionAmount] = useState("");
+  const [collectionDate, setCollectionDate] = useState(() => localDateTime(new Date().toISOString()));
+  const [paymentReference, setPaymentReference] = useState("");
+  const [collectionNotes, setCollectionNotes] = useState("");
+  const [editingCollection, setEditingCollection] = useState<SalesCollection | null>(null);
+
+  async function reload() {
+    const [record, rows] = await Promise.all([
+      api<CommercialRecord>(`/api/leads/${encodeURIComponent(leadId)}/commercial`),
+      api<SalesCollection[]>(`/api/leads/${encodeURIComponent(leadId)}/collections`),
+    ]);
+    setCommercial(record); setCollections(rows); setCurrency(record.currency);
+    setValues({ estimated_value: record.estimated_value || "", proposal_value: record.proposal_value || "", negotiation_value: record.negotiation_value || "", won_value: record.won_value || "", expected_collection: record.expected_collection || "" });
+  }
+
+  useEffect(() => {
+    let active = true;
+    Promise.all([
+      api<CommercialRecord>(`/api/leads/${encodeURIComponent(leadId)}/commercial`),
+      api<SalesCollection[]>(`/api/leads/${encodeURIComponent(leadId)}/collections`),
+    ]).then(([record, rows]) => { if (active) { setCommercial(record); setCollections(rows); setCurrency(record.currency); setValues({ estimated_value: record.estimated_value || "", proposal_value: record.proposal_value || "", negotiation_value: record.negotiation_value || "", won_value: record.won_value || "", expected_collection: record.expected_collection || "" }); } })
+      .catch((cause) => { if (active) setError(cause instanceof ApiError ? cause.message : "Commercial details could not be loaded."); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [leadId, refreshKey]);
+
+  async function perform(action: () => Promise<unknown>) {
+    setBusy(true); setError("");
+    try { await action(); await reload(); setEditingCollection(null); }
+    catch (cause) { setError(cause instanceof ApiError ? cause.message : "Commercial update could not be completed."); }
+    finally { setBusy(false); }
+  }
+
+  const input = "mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm";
+  const financialFields = [
+    ["estimated_value", "Estimated value"], ["proposal_value", "Proposal value"],
+    ["negotiation_value", "Negotiation value"], ["won_value", "Won value"],
+    ["expected_collection", "Expected collection"],
+  ] as const;
+  const dateValue = (value: string) => localDateTime(value);
+
+  return <section className="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-bold text-ink">Commercial / revenue</h2><p className="mt-1 text-sm text-slate-500">Human-entered commercial values. Values are not inferred from the sales stage.</p></div><Link href="/revenue" className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-teal">Revenue command center</Link></div>
+    {error && <p role="alert" className="mt-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}
+    {loading ? <p className="mt-4 text-sm text-slate-500">Loading commercial details…</p> : commercial && <>
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{financialFields.map(([key, label]) => <article key={key} className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">{label}</p><p className="mt-1 font-bold text-ink">{money(commercial[key], commercial.currency)}</p></article>)}<article className="rounded-lg bg-emerald-50 p-3"><p className="text-xs text-emerald-700">Collected</p><p className="mt-1 font-bold text-emerald-900">{money(commercial.actual_collected, commercial.currency)}</p></article><article className="rounded-lg bg-amber-50 p-3"><p className="text-xs text-amber-800">Outstanding</p><p className="mt-1 font-bold text-amber-950">{money(commercial.outstanding_collection, commercial.currency)}</p></article><article className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Sales status · currency</p><p className="mt-1 font-bold text-ink">{commercial.sales_status} · {commercial.currency}</p></article></div>
+      <div className="mt-4 flex flex-wrap gap-2"><button disabled={busy} onClick={() => setEditing((state) => !state)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold">{editing ? "Close value editor" : "Edit commercial values"}</button>{commercial.sales_status === "WON" && <span className="self-center text-xs text-slate-500">Collections can be recorded for won deals; no payment processing occurs here.</span>}</div>
+      {editing && <form className="mt-4 grid gap-3 rounded-lg border border-slate-200 p-4 sm:grid-cols-2 lg:grid-cols-3" onSubmit={(event) => { event.preventDefault(); void perform(async () => { await api(`/api/leads/${encodeURIComponent(leadId)}/commercial`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...Object.fromEntries(financialFields.map(([key]) => [key, values[key] === "" ? null : values[key]])), currency }) }); setEditing(false); }); }}><h3 className="font-semibold text-ink sm:col-span-2 lg:col-span-3">Update financial values · {commercial.currency}</h3>{financialFields.map(([key, label]) => <label key={key} className="text-xs font-semibold text-slate-600">{label}<input className={input} type="number" min="0" step="0.01" value={values[key] || ""} onChange={(event) => setValues((current) => ({ ...current, [key]: event.target.value }))} placeholder="Not set" /></label>)}<label className="text-xs font-semibold text-slate-600">Currency<select className={input} value={currency} onChange={(event) => setCurrency(event.target.value)}>{["INR", "USD", "EUR", "GBP", "AED", "AUD", "CAD", "SGD", "JPY", "CHF", "CNY", "NZD", "ZAR"].map((code) => <option key={code}>{code}</option>)}</select></label><div className="flex items-end"><button disabled={busy} className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white">Save values</button></div></form>}
+      <section className="mt-6"><div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold text-ink">Collections ({collections.length})</h3><span className="text-xs text-slate-500">Partial payments are separate records and summed once.</span></div>{commercial.sales_status === "WON" && <form className="mt-3 grid gap-3 rounded-lg bg-slate-50 p-4 sm:grid-cols-2 lg:grid-cols-4" onSubmit={(event) => { event.preventDefault(); void perform(async () => { const body = { amount: collectionAmount, collection_date: new Date(collectionDate).toISOString(), payment_reference: paymentReference.trim() || null, notes: collectionNotes.trim() || null }; if (editingCollection) await api(`/api/collections/${editingCollection.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); else await api(`/api/leads/${encodeURIComponent(leadId)}/collections`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); setCollectionAmount(""); setPaymentReference(""); setCollectionNotes(""); setEditingCollection(null); }); }}><h4 className="font-semibold sm:col-span-2 lg:col-span-4">{editingCollection ? "Edit collection" : "Add collection"}</h4><label className="text-xs font-semibold text-slate-600">Amount<input className={input} type="number" min="0.01" step="0.01" required value={collectionAmount} onChange={(event) => setCollectionAmount(event.target.value)} /></label><label className="text-xs font-semibold text-slate-600">Collection date<input className={input} type="datetime-local" required value={collectionDate} onChange={(event) => setCollectionDate(event.target.value)} /></label><label className="text-xs font-semibold text-slate-600">Payment reference<input className={input} maxLength={250} value={paymentReference} onChange={(event) => setPaymentReference(event.target.value)} /></label><label className="text-xs font-semibold text-slate-600">Notes<input className={input} maxLength={5000} value={collectionNotes} onChange={(event) => setCollectionNotes(event.target.value)} /></label><div className="flex items-end gap-2"><button disabled={busy} className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white">{editingCollection ? "Save collection" : "Add collection"}</button>{editingCollection && <button type="button" onClick={() => setEditingCollection(null)} className="rounded-lg border px-3 py-2 text-sm">Cancel</button>}</div></form>}
+        {collections.length === 0 ? <p className="mt-3 rounded-lg bg-slate-50 p-4 text-sm text-slate-500">No collection records.</p> : <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[620px] text-left text-sm"><thead className="text-xs uppercase text-slate-400"><tr>{["Date", "Amount", "Reference", "Notes", "Actions"].map((header) => <th key={header} className="px-3 py-2">{header}</th>)}</tr></thead><tbody>{collections.map((item) => <tr key={item.id} className="border-t border-slate-100"><td className="px-3 py-3">{date(item.collection_date)}</td><td className="px-3 py-3 font-semibold">{money(item.amount, item.currency)}</td><td className="px-3 py-3">{item.payment_reference || "—"}</td><td className="px-3 py-3">{item.notes || "—"}</td><td className="px-3 py-3"><div className="flex gap-2"><button onClick={() => { setEditingCollection(item); setCollectionAmount(item.amount); setCollectionDate(dateValue(item.collection_date)); setPaymentReference(item.payment_reference || ""); setCollectionNotes(item.notes || ""); }} className="text-xs font-semibold text-teal">Edit</button><button disabled={busy} onClick={() => void perform(() => api(`/api/collections/${item.id}`, { method: "DELETE" }))} className="text-xs font-semibold text-rose-700">Delete</button></div></td></tr>)}</tbody></table></div>}</section>
     </>}
   </section>;
 }
@@ -411,6 +483,7 @@ export default function LeadDetailPage() {
       </section>
 
       <SalesWorkflowPanel leadId={id} intelligence={intel} onTasksChanged={() => setTaskRefreshKey((key) => key + 1)} />
+      <CommercialPanel leadId={id} refreshKey={taskRefreshKey} />
       <SalesTasksPanel leadId={id} leadAssignedTo={lead.assigned_to} leadPriority={lead.priority} refreshKey={taskRefreshKey} />
       <OutreachPanel leadId={id} />
 
