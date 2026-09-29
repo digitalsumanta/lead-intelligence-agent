@@ -1,70 +1,212 @@
-"""Bounded public-web inspection with destination validation at every hop."""
+"""Bounded public-web inspection with connection-pinned destination validation."""
+
+from __future__ import annotations
+
 import asyncio
 import ipaddress
 import re
 import socket
 import time
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlsplit, urlunsplit
+
 import httpx
+
 
 MAX_RESPONSE_BYTES = 1_000_000
 MAX_REDIRECTS = 5
+DNS_TIMEOUT_SECONDS = 5
+ALLOWED_PORTS = frozenset({80, 443})
+LOCAL_HOST_SUFFIXES = (
+    ".localhost", ".local", ".localdomain", ".internal", ".test",
+    ".home", ".lan", ".onion",
+)
+METADATA_HOSTS = frozenset({"metadata.google.internal", "metadata", "instance-data"})
+
 
 class UnsafeWebsiteUrl(ValueError):
     """Raised when a URL does not resolve exclusively to public web addresses."""
 
-def validate_url_syntax(url: str) -> str:
-    parsed = urlparse(url)
-    if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
-        raise UnsafeWebsiteUrl("Only public HTTP(S) website URLs are allowed")
-    host = parsed.hostname.rstrip(".").lower()
-    if parsed.port not in {None, 80, 443}:
-        raise UnsafeWebsiteUrl("Only standard HTTP(S) ports are allowed")
-    if host == "localhost" or host.endswith((".localhost", ".local", ".internal", ".test", ".home", ".lan")):
-        raise UnsafeWebsiteUrl("Local hostnames are not allowed")
-    if host in {"metadata.google.internal", "metadata", "instance-data"}:
-        raise UnsafeWebsiteUrl("Cloud metadata hosts are not allowed")
-    try:
-        address = ipaddress.ip_address(host)
-    except ValueError:
-        return host
-    if not address.is_global:
-        raise UnsafeWebsiteUrl("Non-public IP addresses are not allowed")
-    return host
 
-async def resolve_public_host(host: str, port: int) -> None:
-    """Reject DNS names that resolve to any non-public address."""
+def _is_public_address(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    return not any((
+        not address.is_global,
+        address.is_private,
+        address.is_loopback,
+        address.is_link_local,
+        address.is_multicast,
+        address.is_reserved,
+        address.is_unspecified,
+    ))
+
+
+def _normalized_host(raw_host: str) -> tuple[str, ipaddress.IPv4Address | ipaddress.IPv6Address | None]:
+    host = raw_host.rstrip(".").lower()
+    if not host or "%" in host:
+        raise UnsafeWebsiteUrl("Website hostname is invalid")
     try:
         address = ipaddress.ip_address(host)
-        addresses = [address]
     except ValueError:
-        records = await asyncio.wait_for(asyncio.get_running_loop().getaddrinfo(host, port, type=socket.SOCK_STREAM), timeout=5)
-        addresses = [ipaddress.ip_address(record[4][0].split("%", 1)[0]) for record in records]
-    if not addresses or any(not address.is_global for address in addresses):
+        address = None
+    if address is not None:
+        if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
+            address = address.ipv4_mapped
+            host = address.compressed
+        if not _is_public_address(address):
+            raise UnsafeWebsiteUrl("Non-public IP addresses are not allowed")
+        return address.compressed, address
+
+    # Reject legacy integer, octal, and hexadecimal IPv4 spellings instead of
+    # treating them as DNS names. Strict IPv4 literals were handled above.
+    labels = host.split(".")
+    numeric_label = re.compile(r"(?:[0-9]+|0[xX][0-9a-fA-F]+)\Z")
+    if all(numeric_label.fullmatch(label) for label in labels):
+        raise UnsafeWebsiteUrl("Unusual numeric website addresses are not allowed")
+
+    try:
+        host = host.encode("idna").decode("ascii").lower()
+    except UnicodeError as exc:
+        raise UnsafeWebsiteUrl("Website hostname is invalid") from exc
+    if len(host) > 253 or "." not in host:
+        raise UnsafeWebsiteUrl("Local hostnames are not allowed")
+    if any(not label or len(label) > 63 or not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?", label) for label in host.split(".")):
+        raise UnsafeWebsiteUrl("Website hostname is invalid")
+    if host == "localhost" or host.endswith(LOCAL_HOST_SUFFIXES) or host in METADATA_HOSTS:
+        raise UnsafeWebsiteUrl("Local and cloud metadata hostnames are not allowed")
+    return host, None
+
+
+def _parse_url(url: str) -> tuple[str, str, int, str]:
+    """Validate and normalize a URL, returning URL, host, port, and scheme."""
+    try:
+        parsed = urlsplit(url)
+        scheme = parsed.scheme.lower()
+        raw_host = parsed.hostname
+        port = parsed.port
+    except (TypeError, ValueError) as exc:
+        raise UnsafeWebsiteUrl("Website URL is invalid") from exc
+    if scheme not in {"http", "https"} or not raw_host or parsed.username is not None or parsed.password is not None:
+        raise UnsafeWebsiteUrl("Only public HTTP(S) website URLs without credentials are allowed")
+    host, address = _normalized_host(raw_host)
+    if port is not None and port not in ALLOWED_PORTS:
+        raise UnsafeWebsiteUrl("Only standard HTTP(S) ports are allowed")
+    effective_port = port or (443 if scheme == "https" else 80)
+    authority_host = f"[{host}]" if isinstance(address, ipaddress.IPv6Address) else host
+    authority = f"{authority_host}:{port}" if port is not None else authority_host
+    normalized_url = urlunsplit((scheme, authority, parsed.path or "/", parsed.query, ""))
+    return normalized_url, host, effective_port, scheme
+
+
+def validate_url_syntax(url: str) -> str:
+    """Validate URL syntax and local-address forms; return its normalized host."""
+    return _parse_url(url)[1]
+
+
+async def _lookup_addresses(host: str, port: int) -> list[str]:
+    loop = asyncio.get_running_loop()
+    records = await loop.getaddrinfo(host, port, family=socket.AF_UNSPEC, type=socket.SOCK_STREAM)
+    return [record[4][0].split("%", 1)[0] for record in records]
+
+
+async def resolve_public_host(host: str, port: int) -> list[str]:
+    """Resolve A and AAAA records, reject mixed/private answers, return pinned IPs."""
+    try:
+        literal = ipaddress.ip_address(host)
+    except ValueError:
+        try:
+            raw_addresses = await asyncio.wait_for(_lookup_addresses(host, port), timeout=DNS_TIMEOUT_SECONDS)
+        except (OSError, asyncio.TimeoutError) as exc:
+            raise UnsafeWebsiteUrl("Website host could not be safely resolved") from exc
+    else:
+        raw_addresses = [literal.compressed]
+
+    addresses: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = []
+    for raw_address in raw_addresses:
+        try:
+            address = ipaddress.ip_address(raw_address)
+        except ValueError as exc:
+            raise UnsafeWebsiteUrl("Website host returned an invalid address") from exc
+        if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
+            address = address.ipv4_mapped
+        addresses.append(address)
+    if not addresses or any(not _is_public_address(address) for address in addresses):
         raise UnsafeWebsiteUrl("Website host resolves to a non-public address")
+    return list(dict.fromkeys(address.compressed for address in addresses))
+
+
+class PinnedAddressTransport(httpx.AsyncBaseTransport):
+    """Connect to one vetted IP while retaining hostname-based HTTP and TLS identity."""
+
+    def __init__(self, hostname: str, address: str, *, inner: httpx.AsyncBaseTransport | None = None):
+        self.hostname = hostname
+        self.address = ipaddress.ip_address(address).compressed
+        self.inner = inner or httpx.AsyncHTTPTransport(trust_env=False, proxy=None)
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        parsed = request.url
+        original_host = self.hostname
+        ip_address = ipaddress.ip_address(self.address)
+        connect_host = f"[{self.address}]" if isinstance(ip_address, ipaddress.IPv6Address) else self.address
+        host_header = f"[{original_host}]" if ":" in original_host else original_host
+        if parsed.port is not None:
+            host_header = f"{host_header}:{parsed.port}"
+        request.url = parsed.copy_with(host=connect_host)
+        request.headers["host"] = host_header
+        if parsed.scheme == "https":
+            # httpcore uses this extension as TLS SNI and certificate hostname.
+            request.extensions["sni_hostname"] = original_host.encode("ascii")
+        return await self.inner.handle_async_request(request)
+
+    async def aclose(self) -> None:
+        await self.inner.aclose()
+
 
 class WebsiteAnalyzer:
-    """Inspect public websites with redirect, time, and response-size bounds."""
-    def __init__(self, timeout: float = 10, max_response_bytes: int = MAX_RESPONSE_BYTES, max_redirects: int = MAX_REDIRECTS):
+    """Inspect a public website with bounded fetches and a pinned IP per hop."""
+
+    def __init__(
+        self,
+        timeout: float = 10,
+        max_response_bytes: int = MAX_RESPONSE_BYTES,
+        max_redirects: int = MAX_REDIRECTS,
+        *,
+        client_factory=None,
+        transport_factory=None,
+    ):
+        if timeout <= 0 or max_response_bytes < 1 or max_redirects < 0:
+            raise ValueError("Website fetch bounds must be positive")
         self.timeout = timeout
         self.max_response_bytes = max_response_bytes
         self.max_redirects = max_redirects
+        self.client_factory = client_factory
+        self.transport_factory = transport_factory
 
     async def _fetch(self, url: str) -> tuple[str, int, str]:
         current = url
         timeout = httpx.Timeout(self.timeout)
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False, headers={"User-Agent": "LeadIntelligenceBot/1.0"}) as client:
-            for hop in range(self.max_redirects + 1):
-                host = validate_url_syntax(current)
-                parsed = urlparse(current)
-                await resolve_public_host(host, parsed.port or (443 if parsed.scheme == "https" else 80))
-                async with client.stream("GET", current) as response:
+        for hop in range(self.max_redirects + 1):
+            normalized_url, host, port, scheme = _parse_url(current)
+            addresses = await resolve_public_host(host, port)
+            address = addresses[0]
+            transport = (
+                self.transport_factory(host, address, scheme)
+                if self.transport_factory
+                else PinnedAddressTransport(host, address)
+            )
+            client_factory = self.client_factory or httpx.AsyncClient
+            async with client_factory(
+                timeout=timeout,
+                follow_redirects=False,
+                trust_env=False,
+                headers={"User-Agent": "LeadIntelligenceBot/1.0"},
+                transport=transport,
+            ) as client:
+                async with client.stream("GET", normalized_url) as response:
                     if response.status_code in {301, 302, 303, 307, 308}:
                         location = response.headers.get("location")
                         if not location or hop >= self.max_redirects:
                             raise UnsafeWebsiteUrl("Website exceeded the redirect limit")
-                        target = urljoin(current, location)
-                        validate_url_syntax(target)
+                        target = urljoin(normalized_url, location)
+                        _parse_url(target)
                         current = target
                         continue
                     body = bytearray()
@@ -72,12 +214,13 @@ class WebsiteAnalyzer:
                         if len(body) + len(chunk) > self.max_response_bytes:
                             raise ValueError("Website response exceeded size limit")
                         body.extend(chunk)
-                    return str(response.url), response.status_code, bytes(body).decode(response.encoding or "utf-8", errors="replace")
+                    return normalized_url, response.status_code, bytes(body).decode(response.encoding or "utf-8", errors="replace")
         raise UnsafeWebsiteUrl("Website redirect limit exceeded")
 
     async def analyze(self, url: str | None) -> dict:
         """Return HTTP, metadata, HTTPS, SEO, and social-link observations."""
-        if not url: return {"available": False, "issues": ["No website supplied"]}
+        if not url:
+            return {"available": False, "issues": ["No website supplied"]}
         started = time.perf_counter()
         try:
             final_url, status_code, html = await self._fetch(url)
@@ -85,12 +228,27 @@ class WebsiteAnalyzer:
             description = self._capture(r'<meta[^>]+name=["\']description["\'][^>]+content=["\']([^"\']*)', html, re.I)
             h1 = self._capture(r"<h1[^>]*>(.*?)</h1>", html, re.I | re.S)
             issues = []
-            if not title: issues.append("Missing page title")
-            if not description: issues.append("Missing meta description")
-            if not h1: issues.append("Missing H1 heading")
-            if status_code >= 400: issues.append(f"HTTP status {status_code}")
+            if not title:
+                issues.append("Missing page title")
+            if not description:
+                issues.append("Missing meta description")
+            if not h1:
+                issues.append("Missing H1 heading")
+            if status_code >= 400:
+                issues.append(f"HTTP status {status_code}")
             social = re.findall(r'https?://(?:www\.)?(?:linkedin|facebook|instagram|x|twitter)\.com/[^"\'\s<>]+', html, re.I)
-            return {"available": True, "url": final_url, "status_code": status_code, "title": self._strip(title), "meta_description": self._strip(description), "h1": self._strip(h1), "https": urlparse(final_url).scheme == "https", "issues": issues, "social_links": list(dict.fromkeys(social)), "response_time_ms": round((time.perf_counter()-started)*1000)}
+            return {
+                "available": True,
+                "url": final_url,
+                "status_code": status_code,
+                "title": self._strip(title),
+                "meta_description": self._strip(description),
+                "h1": self._strip(h1),
+                "https": urlsplit(final_url).scheme == "https",
+                "issues": issues,
+                "social_links": list(dict.fromkeys(social)),
+                "response_time_ms": round((time.perf_counter() - started) * 1000),
+            }
         except (httpx.HTTPError, ValueError, OSError):
             return {"available": False, "url": url, "error": "Website could not be reached safely", "issues": ["Website could not be reached"]}
 
@@ -98,6 +256,7 @@ class WebsiteAnalyzer:
     def _capture(pattern, text, flags=0):
         match = re.search(pattern, text, flags)
         return match.group(1).strip() if match else None
+
     @staticmethod
     def _strip(value):
         return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", value or "")).strip() or None

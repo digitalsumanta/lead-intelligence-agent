@@ -98,7 +98,7 @@ def test_website_rejects_nonstandard_service_ports():
 @pytest.mark.asyncio
 async def test_redirect_to_private_address_is_rejected(monkeypatch):
     import app.services.website as module
-    async def resolve(host, port): return None
+    async def resolve(host, port): return ["93.184.216.34"]
     monkeypatch.setattr(module, "resolve_public_host", resolve)
     class Response:
         status_code = 302
@@ -202,7 +202,7 @@ async def test_database_schema_verification_requires_alembic_head(session_factor
     with pytest.raises(RuntimeError, match="not at the required revision"):
         await verify_database_schema()
     async with engine.begin() as connection:
-        await connection.execute(text("UPDATE alembic_version SET version_num='0013_outreach_operations'"))
+        await connection.execute(text("UPDATE alembic_version SET version_num='0014_outreach_outcomes'"))
     await verify_database_schema()
 
 @pytest.mark.asyncio
