@@ -144,8 +144,25 @@ export type OutcomeSuggestion = {
   current_stage_value_field: "estimated_value" | "proposal_value" | "negotiation_value" | "won_value" | null;
   currency: string;
 };
-export type SalesTaskCreate = Pick<SalesTask, "task_type" | "title" | "due_at" | "priority"> & Partial<Pick<SalesTask, "assigned_to" | "description" | "related_activity_id" | "related_outreach_artifact_id">>;
-export type SalesTaskSummary = { today: SalesActionTask[]; overdue: SalesActionTask[]; upcoming: SalesActionTask[]; outcome_suggestions: OutcomeSuggestion[] };
+export type SalesTaskCreate = Pick<SalesTask, "task_type" | "title" | "due_at" | "priority"> & Partial<Pick<SalesTask, "assigned_to" | "description" | "related_activity_id" | "related_outreach_artifact_id">> & { seo_opportunity_id?: string };
+export type SalesTaskSummary = { today: SalesActionTask[]; overdue: SalesActionTask[]; upcoming: SalesActionTask[]; outcome_suggestions: OutcomeSuggestion[]; seo_opportunities: SeoSalesOpportunity[] };
+export type SeoSalesOpportunityEvidence = {
+  finding_id: string; finding_code: string; title: string; page_url: string | null;
+  severity: "INFO" | "LOW" | "MEDIUM" | "HIGH"; observed_values: Record<string, unknown>;
+};
+export type SeoSalesOpportunity = {
+  opportunity_id: string; lead_id: string; seo_run_id: string;
+  type: "TECHNICAL_SEO" | "ON_PAGE_SEO" | "INDEXABILITY" | "PERFORMANCE" | "STRUCTURED_DATA" | "LINKS" | "IMAGES" | "CRAWLABILITY";
+  scope: "SITE"; title: string; summary: string; severity: "INFO" | "LOW" | "MEDIUM" | "HIGH";
+  affected_page_count: number; affected_pages: string[]; finding_count: number;
+  evidence: SeoSalesOpportunityEvidence[]; recommended_service_ids: string[];
+  suggested_task_type: SalesTaskType; suggested_action: string;
+  current_sales_status: SalesStatus; lead_priority: SalesPriority; assigned_to: string | null;
+  next_follow_up_at: string | null; current_stage_value: string | null;
+  current_stage_value_field: string | null; currency: string;
+  current_task_state: "NO_TASK" | SalesTaskStatus; related_task_id: string | null;
+};
+export type LeadSeoOpportunities = { items: SeoSalesOpportunity[] };
 
 export type CommercialRecord = {
   lead_id: string; sales_status: SalesStatus; estimated_value: string | null;

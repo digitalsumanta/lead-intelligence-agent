@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from decimal import Decimal
 
 from app.models import SalesActivityOutcome, SalesActivityType, SalesPriority, SalesStatus, SalesTaskStatus, SalesTaskType
+from app.schemas.seo_opportunities import SeoSalesOpportunity
 
 
 class SalesTaskCreate(BaseModel):
@@ -18,6 +19,7 @@ class SalesTaskCreate(BaseModel):
     priority: SalesPriority = SalesPriority.MEDIUM
     related_activity_id: UUID | None = None
     related_outreach_artifact_id: UUID | None = None
+    seo_opportunity_id: UUID | None = None
 
     @field_validator("due_at")
     @classmethod
@@ -117,3 +119,4 @@ class SalesTaskSummaryOut(BaseModel):
     overdue: list[SalesActionTaskOut]
     upcoming: list[SalesActionTaskOut]
     outcome_suggestions: list[OutcomeSuggestionOut]
+    seo_opportunities: list[SeoSalesOpportunity] = Field(default_factory=list, max_length=200)

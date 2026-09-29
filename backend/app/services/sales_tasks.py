@@ -6,7 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
-    Lead, OutreachArtifact, SalesActivity, SalesActivityOutcome, SalesPriority,
+    Lead, OutreachArtifact, SalesActivity, SalesActivityOutcome, SalesActivityType,
+    SalesPriority, SalesStatus,
     SalesTask, SalesTaskStatus, SalesTaskType,
 )
 from app.models.entities import now_utc
@@ -35,6 +36,19 @@ NEXT_TASK_BY_OUTCOME = {
     SalesActivityOutcome.NEGOTIATION_STARTED: SalesTaskType.FOLLOW_UP,
     SalesActivityOutcome.NO_RESPONSE: SalesTaskType.FOLLOW_UP,
 }
+
+
+def stage_commercial_context(lead: Lead):
+    """Return the existing single current-stage commercial value for Action Center views."""
+    if lead.sales_status in {SalesStatus.NEW, SalesStatus.QUALIFIED, SalesStatus.CONTACTED, SalesStatus.ENGAGED}:
+        return lead.estimated_value, "estimated_value"
+    if lead.sales_status == SalesStatus.PROPOSAL:
+        return lead.proposal_value, "proposal_value"
+    if lead.sales_status == SalesStatus.NEGOTIATION:
+        return lead.negotiation_value, "negotiation_value"
+    if lead.sales_status == SalesStatus.WON:
+        return lead.won_value, "won_value"
+    return None, None
 
 
 def suggested_task_type(outcome: SalesActivityOutcome | None) -> SalesTaskType | None:
@@ -71,8 +85,40 @@ async def _validate_relationships(session: AsyncSession, lead_id: UUID, activity
 
 
 async def create_task(session: AsyncSession, lead_id: UUID, body: SalesTaskCreate) -> SalesTask:
+    if body.seo_opportunity_id is not None:
+        # Resolve against current persisted SEO data under a lead lock. This branch
+        # only runs after the user explicitly submits the existing task form.
+        lead = await session.scalar(select(Lead).where(Lead.id == lead_id).with_for_update())
+        if lead is None:
+            raise SalesTaskError("LEAD_NOT_FOUND", "Lead not found", 404)
+        from app.services.seo_opportunities import read_seo_sales_opportunities
+
+        opportunities = await read_seo_sales_opportunities(session, lead_id=lead_id)
+        opportunity = next((item for item in opportunities if item["opportunity_id"] == body.seo_opportunity_id), None)
+        if opportunity is None:
+            raise SalesTaskError("SEO_OPPORTUNITY_STALE", "This SEO opportunity is no longer current", 409)
+        if opportunity["current_task_state"] != "NO_TASK":
+            raise SalesTaskError("SEO_OPPORTUNITY_ALREADY_HANDLED", "This SEO opportunity already has a linked task", 409)
+        if body.related_activity_id is not None:
+            raise SalesTaskError("SEO_TASK_ACTIVITY_CONFLICT", "SEO opportunity tasks create their own related activity", 422)
+        await _validate_relationships(session, lead_id, None, body.related_outreach_artifact_id)
+        marker = f"[seo-opportunity:{body.seo_opportunity_id}]"
+        activity = SalesActivity(
+            lead_id=lead_id,
+            activity_type=SalesActivityType.NOTE,
+            occurred_at=now_utc(),
+            note=f"SEO opportunity task created {marker}: {opportunity['title']}",
+        )
+        session.add(activity)
+        await session.flush()
+        fields = body.model_dump(exclude={"seo_opportunity_id", "related_activity_id"})
+        task = SalesTask(lead_id=lead_id, related_activity_id=activity.id, **fields)
+        session.add(task)
+        await session.commit()
+        await session.refresh(task)
+        return task
     await _validate_relationships(session, lead_id, body.related_activity_id, body.related_outreach_artifact_id)
-    task = SalesTask(lead_id=lead_id, **body.model_dump())
+    task = SalesTask(lead_id=lead_id, **body.model_dump(exclude={"seo_opportunity_id"}))
     session.add(task)
     await session.commit()
     await session.refresh(task)

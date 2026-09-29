@@ -36,6 +36,7 @@ from app.schemas.revenue import (
 from app.schemas.outreach_analytics import OutreachAnalyticsChannel, OutreachAnalyticsResponse
 from app.schemas.intelligence import IntelligenceResponse
 from app.schemas.seo import LatestSeoOut, SeoRunCreatedOut, SeoRunDetailOut, SeoRunListOut, SeoRunOut
+from app.schemas.seo_opportunities import SeoSalesOpportunityList
 from app.services.lead_intelligence_api import read_intelligence_summary, read_lead_intelligence
 from app.services.csv_import import import_csv
 from app.services.jobs import create_job, update_batch_status
@@ -53,7 +54,7 @@ from app.services.outreach_operations import (
 )
 from app.services.sales_tasks import (
     SalesTaskError, create_task, finish_task, list_tasks_query, suggested_task_type,
-    action_center_rows, task_due_state, update_task,
+    action_center_rows, task_due_state, update_task, stage_commercial_context,
 )
 from app.services.revenue import (
     RevenueError, commercial_values, update_commercial, create_collection,
@@ -63,6 +64,7 @@ from app.services.revenue import (
 from app.services.outreach_analytics import outreach_analytics
 from app.services.seo import SeoServiceError, create_seo_run
 from app.models.entities import SeoAuditRun, SeoFinding, SeoObservation
+from app.services.seo_opportunities import read_seo_sales_opportunities
 
 configure_logging()
 
@@ -587,18 +589,6 @@ async def list_all_tasks(
     return [_action_task_payload(task, lead) for task, lead in rows]
 
 
-def _stage_commercial_context(lead: Lead):
-    if lead.sales_status in {SalesStatus.NEW, SalesStatus.QUALIFIED, SalesStatus.CONTACTED, SalesStatus.ENGAGED}:
-        return lead.estimated_value, "estimated_value"
-    if lead.sales_status == SalesStatus.PROPOSAL:
-        return lead.proposal_value, "proposal_value"
-    if lead.sales_status == SalesStatus.NEGOTIATION:
-        return lead.negotiation_value, "negotiation_value"
-    if lead.sales_status == SalesStatus.WON:
-        return lead.won_value, "won_value"
-    return None, None
-
-
 def _utc_or_none(value):
     if value is None:
         return None
@@ -608,7 +598,7 @@ def _utc_or_none(value):
 
 
 def _action_task_payload(task: SalesTask, lead: Lead):
-    value, value_field = _stage_commercial_context(lead)
+    value, value_field = stage_commercial_context(lead)
     base = sales_task_payload(task, lead.company_name).model_dump()
     return SalesActionTaskOut.model_validate({
         **base,
@@ -623,7 +613,7 @@ def _action_task_payload(task: SalesTask, lead: Lead):
 
 
 def _outcome_suggestion_payload(activity: SalesActivity, lead: Lead):
-    value, value_field = _stage_commercial_context(lead)
+    value, value_field = stage_commercial_context(lead)
     return OutcomeSuggestionOut.model_validate({
         "activity_id": activity.id,
         "lead_id": lead.id,
@@ -650,6 +640,7 @@ async def task_summary(db: AsyncSession = Depends(get_db)):
         for name in ("today", "overdue", "upcoming")
     } | {
         "outcome_suggestions": [_outcome_suggestion_payload(activity, lead) for activity, lead in rows["outcome_suggestions"]],
+        "seo_opportunities": await read_seo_sales_opportunities(db),
     }
 
 
@@ -947,6 +938,13 @@ async def latest_seo_audit(lead_id: uuid.UUID, db: AsyncSession = Depends(get_db
     run = await db.scalar(select(SeoAuditRun).where(SeoAuditRun.lead_id == lead_id, SeoAuditRun.status == "COMPLETED").order_by(SeoAuditRun.created_at.desc(), SeoAuditRun.id.desc()).limit(1))
     findings = [] if run is None else (await db.execute(select(SeoFinding).where(SeoFinding.seo_run_id == run.id).order_by(SeoFinding.severity, SeoFinding.finding_code, SeoFinding.id))).scalars().all()
     return {"audit": run, "findings": findings}
+
+
+@app.get("/api/leads/{lead_id}/seo/opportunities", response_model=SeoSalesOpportunityList)
+async def lead_seo_opportunities(lead_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    if await db.get(Lead, lead_id) is None:
+        raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": "Lead not found"})
+    return {"items": await read_seo_sales_opportunities(db, lead_id=lead_id)}
 
 
 @app.get("/api/leads/{lead_id}/seo/runs", response_model=SeoRunListOut)

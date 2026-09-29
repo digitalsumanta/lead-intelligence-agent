@@ -153,7 +153,7 @@ async def test_filters_lead_scoping_and_authentication(task_client, session_fact
     assert len(filtered.json()) == 1 and filtered.json()[0]["id"] == first.json()["id"]
     assert [item["lead_id"] for item in by_lead.json()] == [str(lead_id)]
     assert unauthorized.status_code == 401
-    assert set(summary.json()) == {"today", "overdue", "upcoming", "outcome_suggestions"}
+    assert set(summary.json()) == {"today", "overdue", "upcoming", "outcome_suggestions", "seo_opportunities"}
 
 
 @pytest.mark.asyncio
