@@ -1,6 +1,6 @@
 """FastAPI application and REST endpoints."""
 import logging, uuid, hmac
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, UploadFile, File, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
@@ -30,6 +30,7 @@ from app.schemas.revenue import (
     SalesCollectionOut, RevenueTargetCreate, RevenueTargetPatch, RevenueTargetOut,
     RevenueSummaryOut, PipelineStageOut, ConversionOut, SourceAnalyticsOut,
 )
+from app.schemas.outreach_analytics import OutreachAnalyticsChannel, OutreachAnalyticsResponse
 from app.schemas.intelligence import IntelligenceResponse
 from app.services.lead_intelligence_api import read_intelligence_summary, read_lead_intelligence
 from app.services.csv_import import import_csv
@@ -55,6 +56,7 @@ from app.services.revenue import (
     update_collection, create_target, update_target, revenue_summary,
     pipeline_summary, conversion_analytics, require_currency,
 )
+from app.services.outreach_analytics import outreach_analytics
 
 configure_logging()
 
@@ -817,6 +819,19 @@ async def create_outreach_outcome(execution_id: uuid.UUID, body: OutreachOutcome
     except OutreachOperationError as error:
         _raise_outreach_operation_error(error)
     return sales_activity_payload(activity)
+
+
+@app.get("/api/outreach/analytics", response_model=OutreachAnalyticsResponse)
+async def get_outreach_analytics(
+    from_date: date | None = Query(None, alias="from"),
+    to: date | None = Query(None),
+    channel: OutreachAnalyticsChannel | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return aggregate sent-execution and human-recorded outcome metrics."""
+    if from_date is not None and to is not None and to < from_date:
+        raise HTTPException(422, detail={"code": "INVALID_DATE_RANGE", "message": "to must be on or after from"})
+    return await outreach_analytics(db, from_date=from_date, to=to, channel=channel)
 
 
 @app.post("/api/outreach/executions/{execution_id}/mark-manual", response_model=OutreachExecutionOut)

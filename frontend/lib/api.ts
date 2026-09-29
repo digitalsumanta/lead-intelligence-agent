@@ -199,6 +199,38 @@ export type OutreachExecution = {
   updated_at: string;
 };
 
+export type OutreachAnalyticsChannel = OutreachChannel;
+export type OutreachAnalyticsStatus = OutreachExecutionStatus;
+export type OutreachAnalyticsOutcome = SalesActivityOutcome;
+export type OutreachAnalytics = {
+  cohort: { from: string | null; to: string | null; channel: OutreachAnalyticsChannel | null; date_field: "sent_at"; timezone: "UTC" };
+  attempts_total: number;
+  attempts_by_channel: Array<{ channel: OutreachAnalyticsChannel; count: number }>;
+  attempts_by_status: Array<{ status: OutreachAnalyticsStatus; count: number }>;
+  recorded_outcomes_total: number;
+  outcomes_by_type: Array<{ outcome: OutreachAnalyticsOutcome; activity_count: number; executions_with_outcome: number; leads_represented: number }>;
+  executions_with_recorded_outcomes: number;
+  leads_represented: number;
+  leads_with_recorded_outcomes: number;
+  outcome_coverage: { eligible_sent_executions: number; executions_with_outcomes: number; executions_without_outcomes: number };
+  limitations: string[];
+};
+
+export type OutreachAnalyticsFilters = {
+  from?: string;
+  to?: string;
+  channel?: OutreachAnalyticsChannel | "";
+};
+
+export function getOutreachAnalytics(filters: OutreachAnalyticsFilters = {}): Promise<OutreachAnalytics> {
+  const query = new URLSearchParams();
+  if (filters.from) query.set("from", filters.from);
+  if (filters.to) query.set("to", filters.to);
+  if (filters.channel) query.set("channel", filters.channel);
+  const suffix = query.size ? `?${query.toString()}` : "";
+  return api<OutreachAnalytics>(`/api/outreach/analytics${suffix}`);
+}
+
 export type IntelligenceClaim = {
   type: "verified_fact" | "supported_inference" | "suggested_language";
   text: string;
