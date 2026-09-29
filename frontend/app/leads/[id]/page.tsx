@@ -28,7 +28,7 @@ function money(value: string | null | undefined, currency: string) {
   return `${negative ? "-" : ""}${symbol}${integer}.${fraction.padEnd(2, "0").slice(0, 2)}`;
 }
 
-function SalesWorkflowPanel({ leadId, intelligence, onTasksChanged }: { leadId: string; intelligence: IntelligenceResponse | null; onTasksChanged: () => void }) {
+function SalesWorkflowPanel({ leadId, intelligence, refreshKey, newOutcomeActivity, onTasksChanged }: { leadId: string; intelligence: IntelligenceResponse | null; refreshKey: number; newOutcomeActivity: SalesActivity | null; onTasksChanged: () => void }) {
   const [sales, setSales] = useState<SalesWorkflow | null>(null);
   const [status, setStatus] = useState<SalesStatus>("NEW");
   const [priority, setPriority] = useState<SalesPriority>("MEDIUM");
@@ -59,7 +59,11 @@ function SalesWorkflowPanel({ leadId, intelligence, onTasksChanged }: { leadId: 
       setFollowUp(localDateTime(data.next_follow_up_at));
     }).catch(() => { if (active) setError("Sales workflow could not be loaded."); }).finally(() => { if (active) setInitialized(true); });
     return () => { active = false; };
-  }, [leadId]);
+  }, [leadId, refreshKey]);
+
+  useEffect(() => {
+    if (newOutcomeActivity?.suggested_task_type) setNextActionActivity(newOutcomeActivity);
+  }, [newOutcomeActivity]);
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError("");
@@ -99,7 +103,7 @@ function SalesWorkflowPanel({ leadId, intelligence, onTasksChanged }: { leadId: 
       {sales.lost_reason && status === "LOST" && <p className="mt-3 text-sm text-slate-600"><span className="font-semibold">Lost reason:</span> {sales.lost_reason}</p>}
       <div className="mt-6 grid gap-6 lg:grid-cols-[.8fr_1.2fr]">
         <form onSubmit={addActivity} className="rounded-lg bg-slate-50 p-4"><h3 className="font-semibold text-ink">Record activity / outcome</h3><label className="mt-3 block text-xs font-semibold text-slate-600">Type<select className={input} value={activityType} onChange={(event) => setActivityType(event.target.value as typeof activityType)}>{["NOTE", "CALL", "EMAIL", "WHATSAPP", "MEETING", "FOLLOW_UP", "PROPOSAL", "OTHER"].map((value) => <option key={value}>{value}</option>)}</select></label><label className="mt-3 block text-xs font-semibold text-slate-600">Outcome<select className={input} value={activityOutcome} onChange={(event) => setActivityOutcome(event.target.value as SalesActivityOutcome | "")}><option value="">No structured outcome</option>{["NO_RESPONSE", "CONNECTED", "INTERESTED", "NOT_INTERESTED", "CALLBACK_REQUESTED", "MEETING_BOOKED", "PROPOSAL_REQUESTED", "PROPOSAL_SENT", "NEGOTIATION_STARTED", "WON", "LOST", "INVALID_CONTACT"].map((value) => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}</select></label><label className="mt-3 block text-xs font-semibold text-slate-600">Note<textarea className={input} required maxLength={5000} value={note} onChange={(event) => setNote(event.target.value)} /></label><button disabled={busy} className="mt-3 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold disabled:opacity-50">Record activity</button><p className="mt-2 text-xs text-slate-500">Outcome rules may suggest a next task; a task is created only by an explicit human action.</p>{nextActionActivity?.suggested_task_type && <div className="mt-3 rounded-md border border-teal/20 bg-white p-3 text-sm"><p>Suggested next action: <strong>{nextActionActivity.suggested_task_type.replaceAll("_", " ")}</strong></p><button type="button" disabled={busy} onClick={() => { void (async () => { setBusy(true); try { await api(`/api/leads/${encodeURIComponent(leadId)}/tasks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ task_type: nextActionActivity.suggested_task_type, title: `${nextActionActivity.suggested_task_type!.replaceAll("_", " ")} — ${nextActionActivity.note.slice(0, 100)}`, due_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), priority, assigned_to: assignedTo.trim() || null, related_activity_id: nextActionActivity.id }) }); setNextActionActivity(null); onTasksChanged(); } catch (cause) { setError(cause instanceof ApiError ? cause.message : "Task could not be created."); } finally { setBusy(false); } })(); }} className="mt-2 rounded-md bg-ink px-3 py-2 text-xs font-semibold text-white">Create suggested task</button></div>}</form>
-        <div><h3 className="font-semibold text-ink">Activity timeline</h3>{!sales.recent_activities.length ? <p className="mt-3 text-sm text-slate-500">No sales activities recorded.</p> : <ol className="mt-3 space-y-3">{sales.recent_activities.map((activity) => <li key={activity.id} className={`rounded-lg border p-3 ${activity.activity_type === "STATUS_CHANGE" ? "border-teal/20 bg-teal/5" : "border-slate-200"}`}><div className="flex justify-between gap-3"><span className="text-xs font-bold text-slate-700">{activity.activity_type === "STATUS_CHANGE" ? "System status change" : activity.activity_type.replaceAll("_", " ")}</span><time className="text-xs text-slate-400">{date(activity.occurred_at)}</time></div><p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{activity.note}</p></li>)}</ol>}</div>
+        <div><h3 className="font-semibold text-ink">Activity timeline</h3>{!sales.recent_activities.length ? <p className="mt-3 text-sm text-slate-500">No sales activities recorded.</p> : <ol className="mt-3 space-y-3">{sales.recent_activities.map((activity) => <li key={activity.id} className={`rounded-lg border p-3 ${activity.activity_type === "STATUS_CHANGE" ? "border-teal/20 bg-teal/5" : "border-slate-200"}`}><div className="flex justify-between gap-3"><span className="text-xs font-bold text-slate-700">{activity.activity_type === "STATUS_CHANGE" ? "System status change" : activity.activity_type.replaceAll("_", " ")}</span><time className="text-xs text-slate-400">{date(activity.occurred_at)}</time></div>{activity.outcome && <p className="mt-1 text-xs font-semibold text-teal">Recorded outcome: {activity.outcome.replaceAll("_", " ")}</p>}<p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{activity.note}</p>{activity.outreach_execution_id && <p className="mt-1 text-[11px] text-slate-400">Outreach execution <code>{activity.outreach_execution_id.slice(0, 8)}</code></p>}</li>)}</ol>}</div>
       </div>
     </>}
   </section>;
@@ -252,7 +256,7 @@ function SalesTasksPanel({ leadId, leadAssignedTo, leadPriority, refreshKey }: {
   </section>;
 }
 
-function OutreachPanel({ leadId, leadEmail, leadPhone }: { leadId: string; leadEmail: string | null; leadPhone: string | null }) {
+function OutreachPanel({ leadId, leadEmail, leadPhone, onOutcomeRecorded }: { leadId: string; leadEmail: string | null; leadPhone: string | null; onOutcomeRecorded: (activity: SalesActivity) => void }) {
   const [data, setData] = useState<OutreachReadResponse | null>(null);
   const [executions, setExecutions] = useState<OutreachExecution[]>([]);
   const [loading, setLoading] = useState(true);
@@ -267,6 +271,12 @@ function OutreachPanel({ leadId, leadEmail, leadPhone }: { leadId: string; leadE
   const [confirmation, setConfirmation] = useState<{ channel: "EMAIL" | "WHATSAPP"; retryId?: string } | null>(null);
   const [manualConfirmId, setManualConfirmId] = useState<string | null>(null);
   const [manualConfirmed, setManualConfirmed] = useState(false);
+  const [outcomeExecutionId, setOutcomeExecutionId] = useState<string | null>(null);
+  const [outcomeActivityType, setOutcomeActivityType] = useState<Exclude<SalesActivityType, "STATUS_CHANGE">>("EMAIL");
+  const [outcomeValue, setOutcomeValue] = useState<SalesActivityOutcome>("CONNECTED");
+  const [outcomeNote, setOutcomeNote] = useState("");
+  const [outcomeOccurredAt, setOutcomeOccurredAt] = useState("");
+  const [outcomeIdempotencyKey, setOutcomeIdempotencyKey] = useState("");
 
   async function reload() {
     const [result, rows] = await Promise.all([
@@ -290,16 +300,38 @@ function OutreachPanel({ leadId, leadEmail, leadPhone }: { leadId: string; leadE
     return () => { active = false; };
   }, [leadId]);
 
-  async function perform(action: () => Promise<unknown>, successMessage?: string) {
+  async function perform<T = unknown>(action: () => Promise<T>, successMessage?: string): Promise<T | null> {
     setBusy(true); setError("");
     try {
-      await action(); await reload();
+      const result = await action(); await reload();
       if (successMessage) setError(successMessage);
       setRejecting(false); setRejectReason("");
+      return result;
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : "The outreach action could not be completed.");
       try { await reload(); } catch { /* Keep the action error visible. */ }
+      return null;
     } finally { setBusy(false); }
+  }
+
+  function beginOutcome(execution: OutreachExecution) {
+    setOutcomeExecutionId(execution.id);
+    setOutcomeActivityType(execution.channel === "MANUAL" ? (execution.manual_method || "OTHER") : execution.channel);
+    setOutcomeValue("CONNECTED"); setOutcomeNote("");
+    setOutcomeOccurredAt(localDateTime(new Date().toISOString()));
+    setOutcomeIdempotencyKey(crypto.randomUUID());
+  }
+
+  async function submitOutcome(event: FormEvent<HTMLFormElement>, execution: OutreachExecution) {
+    event.preventDefault();
+    const recordedActivity = await perform(() => api<SalesActivity>(`/api/outreach/executions/${execution.id}/outcomes`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ activity_type: outcomeActivityType, outcome: outcomeValue, note: outcomeNote, occurred_at: new Date(outcomeOccurredAt).toISOString(), idempotency_key: outcomeIdempotencyKey }),
+    }));
+    if (recordedActivity) {
+      setOutcomeExecutionId(null); setOutcomeNote(""); setOutcomeIdempotencyKey("");
+      onOutcomeRecorded(recordedActivity);
+    }
   }
 
   function beginEdit(artifact: OutreachArtifact) {
@@ -394,6 +426,7 @@ function OutreachPanel({ leadId, leadEmail, leadPhone }: { leadId: string; leadE
           <div className="flex flex-wrap items-center justify-between gap-2"><p className="font-semibold text-ink">{execution.channel}{execution.manual_method ? ` · ${execution.manual_method} method` : ""} · {execution.status.replaceAll("_", " ")}</p><span className="text-xs text-slate-500">Attempt {execution.attempt_number} · {execution.provider}</span></div>
           <dl className="mt-2 grid gap-x-5 gap-y-1 text-xs text-slate-600 sm:grid-cols-2 lg:grid-cols-3"><div>Requested: {date(execution.requested_at)}</div><div>Sent: {date(execution.sent_at)}</div><div>Delivered: {date(execution.delivered_at)}</div><div className="break-all">Recipient: {execution.recipient || "—"}</div><div className="break-all">Message ID: {execution.provider_message_id || "—"}</div><div>Error: {execution.error_message || "—"}</div></dl>
           <details className="mt-2"><summary className="cursor-pointer text-xs font-semibold text-teal">Approved content snapshot</summary><pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-white p-2 text-xs">{execution.content_snapshot.text || JSON.stringify(execution.content_snapshot.content, null, 2)}</pre></details>
+          {(execution.status === "SENT" || execution.status === "DELIVERED") && execution.sent_at && <div className="mt-3">{outcomeExecutionId !== execution.id ? <button type="button" disabled={busy} onClick={() => beginOutcome(execution)} className="rounded-lg border border-teal/40 bg-white px-3 py-1.5 text-xs font-semibold text-teal disabled:opacity-50">Record outcome</button> : <form onSubmit={(event) => void submitOutcome(event, execution)} className="rounded-lg border border-teal/20 bg-white p-3"><p className="text-xs text-slate-600">Record a human-observed activity after this send. This does not attribute the outcome to the message.</p><p className="mt-2 text-xs font-semibold text-slate-700">{execution.channel}{execution.manual_method ? ` · ${execution.manual_method} method` : ""} · sent {date(execution.sent_at)} · execution <code>{execution.id.slice(0, 8)}</code></p><div className="mt-3 grid gap-3 sm:grid-cols-2"><label className="text-xs font-semibold text-slate-600">Activity type<select required className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" value={outcomeActivityType} onChange={(event) => setOutcomeActivityType(event.target.value as Exclude<SalesActivityType, "STATUS_CHANGE">)}>{["NOTE", "CALL", "EMAIL", "WHATSAPP", "MEETING", "FOLLOW_UP", "PROPOSAL", "OTHER"].map((value) => <option key={value}>{value}</option>)}</select></label><label className="text-xs font-semibold text-slate-600">Outcome<select required className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" value={outcomeValue} onChange={(event) => setOutcomeValue(event.target.value as SalesActivityOutcome)}>{["NO_RESPONSE", "CONNECTED", "INTERESTED", "NOT_INTERESTED", "CALLBACK_REQUESTED", "MEETING_BOOKED", "PROPOSAL_REQUESTED", "PROPOSAL_SENT", "NEGOTIATION_STARTED", "WON", "LOST", "INVALID_CONTACT"].map((value) => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}</select></label><label className="text-xs font-semibold text-slate-600">Occurred at<input required type="datetime-local" className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" value={outcomeOccurredAt} onChange={(event) => setOutcomeOccurredAt(event.target.value)} /></label><label className="text-xs font-semibold text-slate-600 sm:col-span-2">Note<textarea required maxLength={5000} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" value={outcomeNote} onChange={(event) => setOutcomeNote(event.target.value)} /></label></div><div className="mt-3 flex gap-2"><button disabled={busy || !outcomeNote.trim() || !outcomeOccurredAt} className="rounded-lg bg-teal px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">{busy ? "Saving…" : "Save outcome"}</button><button type="button" disabled={busy} onClick={() => setOutcomeExecutionId(null)} className="rounded-lg border border-slate-300 px-3 py-2 text-xs">Cancel</button></div></form>}</div>}
           {execution.status === "FAILED" && approvedCurrent && execution.channel !== "MANUAL" && latestFailed?.id === execution.id && <button disabled={busy} onClick={() => setConfirmation({ channel: execution.channel as "EMAIL" | "WHATSAPP", retryId: execution.id })} className="mt-3 rounded-lg border border-amber-400 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 disabled:opacity-50">Retry…</button>}
           {execution.status === "QUEUED" && execution.channel === "MANUAL" && <div className="mt-3"><div className="flex flex-wrap gap-2">{approvedCurrent && <button disabled={busy} onClick={() => { setManualConfirmId(execution.id); setManualConfirmed(false); }} className="rounded-lg border border-teal/40 bg-white px-3 py-1.5 text-xs font-semibold text-teal">Mark as manually sent…</button>}<button disabled={busy} onClick={() => void perform(() => api(`/api/outreach/executions/${execution.id}/cancel`, { method: "POST" }))} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 disabled:opacity-50">Cancel manual preparation</button></div>{manualConfirmId === execution.id && <div className="mt-2 rounded border border-slate-200 bg-white p-3"><label className="flex items-start gap-2 text-xs text-slate-700"><input type="checkbox" checked={manualConfirmed} onChange={(event) => setManualConfirmed(event.target.checked)} /><span>I confirm I sent this approved message manually through {execution.manual_method || "my chosen channel"}.</span></label><div className="mt-2 flex gap-2"><button disabled={busy || !manualConfirmed} onClick={() => void perform(() => api(`/api/outreach/executions/${execution.id}/mark-manual`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirmed: true }) }))} className="rounded bg-teal px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">Confirm manual send</button><button onClick={() => setManualConfirmId(null)} className="rounded border px-3 py-1.5 text-xs">Cancel</button></div></div>}</div>}
         </article>)}</div>
@@ -457,6 +490,7 @@ export default function LeadDetailPage() {
   const [intelligenceState, setIntelligenceState] = useState<"loading" | "available" | "unavailable" | "error">("loading");
   const [intelligenceRetry, setIntelligenceRetry] = useState(0);
   const [taskRefreshKey, setTaskRefreshKey] = useState(0);
+  const [newOutcomeActivity, setNewOutcomeActivity] = useState<SalesActivity | null>(null);
 
   useEffect(() => {
     let current = true;
@@ -554,10 +588,10 @@ export default function LeadDetailPage() {
         </>}
       </section>
 
-      <SalesWorkflowPanel leadId={id} intelligence={intel} onTasksChanged={() => setTaskRefreshKey((key) => key + 1)} />
+      <SalesWorkflowPanel leadId={id} intelligence={intel} refreshKey={taskRefreshKey} newOutcomeActivity={newOutcomeActivity} onTasksChanged={() => setTaskRefreshKey((key) => key + 1)} />
       <CommercialPanel leadId={id} refreshKey={taskRefreshKey} />
       <SalesTasksPanel leadId={id} leadAssignedTo={lead.assigned_to} leadPriority={lead.priority} refreshKey={taskRefreshKey} />
-      <OutreachPanel leadId={id} leadEmail={lead.email} leadPhone={lead.phone} />
+      <OutreachPanel leadId={id} leadEmail={lead.email} leadPhone={lead.phone} onOutcomeRecorded={(activity) => { setNewOutcomeActivity(activity); setTaskRefreshKey((key) => key + 1); }} />
 
       {intelligenceState !== "error" && <>
       <section className="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">

@@ -61,6 +61,7 @@ class SalesActivityOut(BaseModel):
     suggested_task_type: str | None = None
     old_sales_status: SalesStatus | None = None
     new_sales_status: SalesStatus | None = None
+    outreach_execution_id: str | None = None
 
 
 class SalesOut(BaseModel):

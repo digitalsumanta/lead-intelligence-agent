@@ -18,7 +18,7 @@ from app.providers.outreach import (
 )
 from app.schemas.outreach_operations import (
     ManualSendConfirmation, OutreachProviderEventIn, OutreachRetryRequest,
-    OutreachSendRequest,
+    OutreachOutcomeCreate, OutreachSendRequest,
 )
 from app.services.lead_intelligence_api import read_lead_intelligence
 from app.services.outreach import source_state, validate_outreach
@@ -366,6 +366,57 @@ async def cancel_manual_execution(session: AsyncSession, execution_id: uuid.UUID
     await session.commit()
     await session.refresh(execution)
     return execution
+
+
+async def record_outreach_outcome(
+    session: AsyncSession, execution_id: uuid.UUID, body: OutreachOutcomeCreate,
+) -> SalesActivity:
+    """Record a human-reported sales activity without changing the send record."""
+    execution = await session.scalar(select(OutreachExecution).where(
+        OutreachExecution.id == execution_id,
+    ).with_for_update())
+    if execution is None:
+        raise OutreachOperationError("EXECUTION_NOT_FOUND", "Outreach execution not found", 404)
+
+    existing = await session.scalar(select(SalesActivity).where(
+        SalesActivity.outreach_execution_id == execution.id,
+        SalesActivity.outreach_idempotency_key == body.idempotency_key,
+    ))
+    if existing is not None:
+        return existing
+
+    if execution.status not in {"SENT", "DELIVERED"} or execution.sent_at is None:
+        raise OutreachOperationError(
+            "EXECUTION_NOT_SENT", "An outcome can be recorded only for a confirmed sent execution",
+        )
+
+    activity = SalesActivity(
+        lead_id=execution.lead_id,
+        outreach_execution_id=execution.id,
+        outreach_idempotency_key=body.idempotency_key,
+        activity_type=body.activity_type,
+        outcome=body.outcome,
+        note=body.note,
+        occurred_at=body.occurred_at.astimezone(timezone.utc),
+    )
+    session.add(activity)
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        # A concurrent request with the same execution-scoped key wins once;
+        # return that committed activity rather than creating a duplicate.
+        existing = await session.scalar(select(SalesActivity).where(
+            SalesActivity.outreach_execution_id == execution_id,
+            SalesActivity.outreach_idempotency_key == body.idempotency_key,
+        ))
+        if existing is not None:
+            return existing
+        raise OutreachOperationError(
+            "OUTCOME_CONFLICT", "The outcome could not be recorded because its execution link conflicted",
+        ) from None
+    await session.refresh(activity)
+    return activity
 
 
 async def record_provider_event(session: AsyncSession, execution_id: uuid.UUID, body: OutreachProviderEventIn) -> OutreachProviderEvent:

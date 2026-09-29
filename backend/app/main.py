@@ -21,7 +21,7 @@ from app.schemas.lead import LeadOut, ProcessBatchIn
 from app.schemas.sales import SalesPatch, SalesActivityCreate, SalesOut, SalesActivityOut
 from app.schemas.outreach import OutreachArtifactOut, OutreachReadOut, OutreachContextOut, OutreachPatch, OutreachReject
 from app.schemas.outreach_operations import (
-    OutreachSendRequest, OutreachRetryRequest, ManualSendConfirmation,
+    OutreachSendRequest, OutreachRetryRequest, OutreachOutcomeCreate, ManualSendConfirmation,
     OutreachExecutionOut,
 )
 from app.schemas.sales_tasks import SalesTaskCreate, SalesTaskPatch, SalesTaskOut
@@ -44,7 +44,7 @@ from app.services.outreach import (
 )
 from app.services.outreach_operations import (
     OutreachOperationError, send_approved_outreach, retry_outreach_execution,
-    confirm_manual_send, cancel_manual_execution,
+    confirm_manual_send, cancel_manual_execution, record_outreach_outcome,
 )
 from app.services.sales_tasks import (
     SalesTaskError, create_task, finish_task, list_tasks_query, suggested_task_type,
@@ -247,7 +247,7 @@ async def get_lead(lead_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
 
 def sales_activity_payload(activity):
     suggestion = suggested_task_type(activity.outcome) if activity.outcome else None
-    return SalesActivityOut.model_validate({"id": str(activity.id), "lead_id": str(activity.lead_id), "activity_type": activity.activity_type, "occurred_at": activity.occurred_at, "note": activity.note, "outcome": activity.outcome, "suggested_task_type": suggestion.value if suggestion else None, "old_sales_status": activity.old_sales_status, "new_sales_status": activity.new_sales_status})
+    return SalesActivityOut.model_validate({"id": str(activity.id), "lead_id": str(activity.lead_id), "activity_type": activity.activity_type, "occurred_at": activity.occurred_at, "note": activity.note, "outcome": activity.outcome, "suggested_task_type": suggestion.value if suggestion else None, "old_sales_status": activity.old_sales_status, "new_sales_status": activity.new_sales_status, "outreach_execution_id": str(activity.outreach_execution_id) if activity.outreach_execution_id else None})
 
 
 @app.get("/api/leads/{lead_id}/sales", response_model=SalesOut)
@@ -808,6 +808,15 @@ async def retry_outreach_send(execution_id: uuid.UUID, body: OutreachRetryReques
     except OutreachOperationError as error:
         _raise_outreach_operation_error(error)
     return _outreach_execution_payload(execution)
+
+
+@app.post("/api/outreach/executions/{execution_id}/outcomes", response_model=SalesActivityOut, status_code=201)
+async def create_outreach_outcome(execution_id: uuid.UUID, body: OutreachOutcomeCreate, db: AsyncSession = Depends(get_db)):
+    try:
+        activity = await record_outreach_outcome(db, execution_id, body)
+    except OutreachOperationError as error:
+        _raise_outreach_operation_error(error)
+    return sales_activity_payload(activity)
 
 
 @app.post("/api/outreach/executions/{execution_id}/mark-manual", response_model=OutreachExecutionOut)

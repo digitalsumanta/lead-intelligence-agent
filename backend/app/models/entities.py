@@ -138,7 +138,7 @@ class Lead(Base):
 
 class SalesActivity(Base):
     __tablename__ = "sales_activities"
-    __table_args__ = (CheckConstraint("(old_sales_status IS NULL AND new_sales_status IS NULL) OR (old_sales_status IS NOT NULL AND new_sales_status IS NOT NULL AND activity_type = 'STATUS_CHANGE')", name="ck_sales_activities_structured_status_change"), Index("ix_sales_activities_lead_occurred", "lead_id", "occurred_at"), Index("uq_sales_activities_id_lead", "id", "lead_id", unique=True), Index("uq_sales_activities_execution", "outreach_execution_id", unique=True), ForeignKeyConstraint(["outreach_execution_id", "lead_id"], ["outreach_executions.id", "outreach_executions.lead_id"], name="fk_sales_activities_execution_lead", ondelete="CASCADE"))
+    __table_args__ = (CheckConstraint("(old_sales_status IS NULL AND new_sales_status IS NULL) OR (old_sales_status IS NOT NULL AND new_sales_status IS NOT NULL AND activity_type = 'STATUS_CHANGE')", name="ck_sales_activities_structured_status_change"), Index("ix_sales_activities_lead_occurred", "lead_id", "occurred_at"), Index("uq_sales_activities_id_lead", "id", "lead_id", unique=True), Index("ix_sales_activities_execution_occurred", "outreach_execution_id", "occurred_at"), Index("uq_sales_activities_execution_idempotency", "outreach_execution_id", "outreach_idempotency_key", unique=True, postgresql_where=text("outreach_idempotency_key IS NOT NULL"), sqlite_where=text("outreach_idempotency_key IS NOT NULL")), ForeignKeyConstraint(["outreach_execution_id", "lead_id"], ["outreach_executions.id", "outreach_executions.lead_id"], name="fk_sales_activities_execution_lead", ondelete="CASCADE"))
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     lead_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("leads.id", ondelete="CASCADE"), nullable=False)
     activity_type: Mapped[SalesActivityType] = mapped_column(Enum(SalesActivityType, name="salesactivitytype"), nullable=False)
@@ -148,6 +148,7 @@ class SalesActivity(Base):
     old_sales_status: Mapped[SalesStatus | None] = mapped_column(Enum(SalesStatus, name="salesstatus"))
     new_sales_status: Mapped[SalesStatus | None] = mapped_column(Enum(SalesStatus, name="salesstatus"))
     outreach_execution_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
+    outreach_idempotency_key: Mapped[str | None] = mapped_column(String(100))
     lead: Mapped[Lead] = relationship(back_populates="sales_activities")
 
 

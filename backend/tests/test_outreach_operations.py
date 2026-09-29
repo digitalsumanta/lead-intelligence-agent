@@ -1,6 +1,6 @@
 """Authenticated send, retry, manual confirmation, and event-boundary tests."""
 from datetime import datetime, timezone
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 import httpx
@@ -16,7 +16,7 @@ from app.main import app
 from app.models import (
     EnrichmentRun, Evidence, Lead, LeadScore, Opportunity, OutreachArtifact,
     OutreachExecution, OutreachProviderEvent, OutreachStatus, SalesActivity,
-    SalesActivityType, SalesStatus, ServiceCatalogEntry, ServiceRecommendation,
+    SalesActivityType, SalesStatus, SalesTask, ServiceCatalogEntry, ServiceRecommendation,
 )
 from app.providers.outreach import (
     HttpJsonOutreachProvider, OutreachMessage, OutreachProviderFailure,
@@ -136,6 +136,25 @@ def auth():
 
 def send_body(channel="EMAIL", key="send-key-0001", **values):
     return {"channel": channel, "idempotency_key": key, **values}
+
+
+def outcome_body(key="outcome-key-0001", **values):
+    return {
+        "activity_type": "CALL", "outcome": "CALLBACK_REQUESTED",
+        "note": "Buyer asked for a follow-up call.",
+        "occurred_at": datetime.now(timezone.utc).isoformat(),
+        "idempotency_key": key, **values,
+    }
+
+
+async def send_for_outcome(client, session_factory, monkeypatch, *, channel="EMAIL"):
+    lead_id, artifact_id = await make_approved_artifact(session_factory)
+    monkeypatch.setattr("app.services.outreach_operations.resolve_outreach_provider", lambda channel: FakeProvider(message_id=f"provider-{uuid4()}"))
+    sent = await client.post(
+        f"/api/outreach/{artifact_id}/send", headers=auth(), json=send_body(channel),
+    )
+    assert sent.status_code == 201, sent.text
+    return lead_id, sent.json()
 
 
 @pytest.mark.asyncio
@@ -416,3 +435,156 @@ async def _artifact_lead(session_factory, artifact_id):
 
 async def _artifact_for_lead(session, lead_id):
     return await session.scalar(select(OutreachArtifact.id).where(OutreachArtifact.lead_id == lead_id))
+
+
+@pytest.mark.asyncio
+async def test_outreach_outcome_is_execution_scoped_idempotent_and_preserves_send_activity(operations_client, session_factory, monkeypatch):
+    async with operations_client as client:
+        lead_id, execution = await send_for_outcome(client, session_factory, monkeypatch)
+        body = outcome_body()
+        first = await client.post(f"/api/outreach/executions/{execution['id']}/outcomes", headers=auth(), json=body)
+        duplicate = await client.post(f"/api/outreach/executions/{execution['id']}/outcomes", headers=auth(), json={**body, "note": "Changed retry payload is ignored."})
+        second = await client.post(f"/api/outreach/executions/{execution['id']}/outcomes", headers=auth(), json=outcome_body("outcome-key-0002", outcome="MEETING_BOOKED"))
+        timeline = await client.get(f"/api/leads/{lead_id}/activities", headers=auth())
+
+    assert first.status_code == duplicate.status_code == second.status_code == 201
+    assert first.json()["id"] == duplicate.json()["id"]
+    assert first.json()["lead_id"] == str(lead_id)
+    assert first.json()["outreach_execution_id"] == execution["id"]
+    assert first.json()["suggested_task_type"] == "FOLLOW_UP"
+    assert second.json()["id"] != first.json()["id"]
+    linked = [item for item in timeline.json() if item["outreach_execution_id"] == execution["id"]]
+    assert len(linked) == 3
+    async with session_factory() as session:
+        activities = (await session.scalars(select(SalesActivity).where(
+            SalesActivity.outreach_execution_id == UUID(execution["id"]),
+        ))).all()
+        send_activity = next(item for item in activities if item.outreach_idempotency_key is None)
+        outcomes = [item for item in activities if item.outreach_idempotency_key is not None]
+        stored_execution = await session.get(OutreachExecution, UUID(execution["id"]))
+        assert send_activity.outcome is None
+        assert send_activity.note == f"Approved outreach confirmed sent via email. Execution {execution['id']}."
+        assert send_activity.occurred_at == stored_execution.sent_at
+        assert {item.outreach_idempotency_key for item in outcomes} == {"outcome-key-0001", "outcome-key-0002"}
+        assert await session.scalar(select(SalesTask.id).where(SalesTask.lead_id == lead_id)) is None
+
+
+@pytest.mark.asyncio
+async def test_outreach_outcome_rejects_nonexistent_execution(operations_client):
+    async with operations_client as client:
+        response = await client.post(
+            f"/api/outreach/executions/{UUID(int=999)}/outcomes",
+            headers=auth(), json=outcome_body(),
+        )
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "EXECUTION_NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_outreach_idempotency_key_is_scoped_to_execution(operations_client, session_factory, monkeypatch):
+    async with operations_client as client:
+        first_lead, first_execution = await send_for_outcome(client, session_factory, monkeypatch)
+        second_lead, second_execution = await send_for_outcome(client, session_factory, monkeypatch)
+        first = await client.post(
+            f"/api/outreach/executions/{first_execution['id']}/outcomes",
+            headers=auth(), json=outcome_body("shared-outcome-key"),
+        )
+        second = await client.post(
+            f"/api/outreach/executions/{second_execution['id']}/outcomes",
+            headers=auth(), json=outcome_body("shared-outcome-key"),
+        )
+    assert first.status_code == second.status_code == 201
+    assert first.json()["lead_id"] == str(first_lead)
+    assert second.json()["lead_id"] == str(second_lead)
+    assert first.json()["id"] != second.json()["id"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["QUEUED", "SENDING", "FAILED", "CANCELLED"])
+async def test_outreach_outcome_rejects_unsent_execution(operations_client, session_factory, status):
+    lead_id, artifact_id = await make_approved_artifact(session_factory)
+    async with session_factory() as session:
+        execution = OutreachExecution(
+            lead_id=lead_id, outreach_artifact_id=artifact_id, channel="MANUAL",
+            provider="manual", status=status, attempt_number=1,
+            idempotency_key=f"unsent-key-{status.lower()}", content_snapshot={"text": "not sent"},
+        )
+        session.add(execution)
+        await session.commit()
+        execution_id = execution.id
+    async with operations_client as client:
+        response = await client.post(
+            f"/api/outreach/executions/{execution_id}/outcomes",
+            headers=auth(), json=outcome_body(),
+        )
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "EXECUTION_NOT_SENT"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("invalid", [
+    {"outcome": None}, {"activity_type": "STATUS_CHANGE"},
+    {"activity_type": "MADE_UP"}, {"outcome": "MADE_UP"},
+    {"note": "   "}, {"occurred_at": "2026-09-29T10:00:00"},
+    {"idempotency_key": "short"}, {"lead_id": "00000000-0000-0000-0000-000000000000"},
+])
+async def test_outreach_outcome_request_is_strict(operations_client, session_factory, monkeypatch, invalid):
+    async with operations_client as client:
+        _, execution = await send_for_outcome(client, session_factory, monkeypatch)
+        response = await client.post(
+            f"/api/outreach/executions/{execution['id']}/outcomes",
+            headers=auth(), json={**outcome_body(), **invalid},
+        )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("required_field", [
+    "activity_type", "outcome", "note", "occurred_at", "idempotency_key",
+])
+async def test_outreach_outcome_requires_all_contract_fields(operations_client, session_factory, monkeypatch, required_field):
+    async with operations_client as client:
+        _, execution = await send_for_outcome(client, session_factory, monkeypatch)
+        body = outcome_body()
+        del body[required_field]
+        response = await client.post(
+            f"/api/outreach/executions/{execution['id']}/outcomes",
+            headers=auth(), json=body,
+        )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_manual_outcome_requires_explicit_send_confirmation(operations_client, session_factory):
+    lead_id, artifact_id = await make_approved_artifact(session_factory)
+    async with operations_client as client:
+        queued = await client.post(
+            f"/api/outreach/{artifact_id}/send", headers=auth(),
+            json=send_body("MANUAL", manual_method="EMAIL"),
+        )
+        rejected = await client.post(
+            f"/api/outreach/executions/{queued.json()['id']}/outcomes",
+            headers=auth(), json=outcome_body(),
+        )
+        confirmed = await client.post(
+            f"/api/outreach/executions/{queued.json()['id']}/mark-manual",
+            headers=auth(), json={"confirmed": True},
+        )
+        accepted = await client.post(
+            f"/api/outreach/executions/{queued.json()['id']}/outcomes",
+            headers=auth(), json=outcome_body(),
+        )
+    assert rejected.status_code == 409
+    assert confirmed.status_code == 200
+    assert accepted.status_code == 201
+    assert accepted.json()["lead_id"] == str(lead_id)
+
+
+@pytest.mark.asyncio
+async def test_outreach_outcome_requires_bearer_auth(operations_client, session_factory, monkeypatch):
+    async with operations_client as client:
+        _, execution = await send_for_outcome(client, session_factory, monkeypatch)
+        response = await client.post(
+            f"/api/outreach/executions/{execution['id']}/outcomes", json=outcome_body(),
+        )
+    assert response.status_code == 401
