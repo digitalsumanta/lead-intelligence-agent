@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { api, ApiError, CommercialRecord, IntelligenceClaim, IntelligenceResponse, LeadDetail, OutreachArtifact, OutreachChannel, OutreachContent, OutreachExecution, OutreachReadResponse, SalesActivity, SalesActivityOutcome, SalesActivityType, SalesCollection, SalesPriority, SalesStatus, SalesTask, SalesTaskCreate, SalesTaskStatus, SalesTaskType, SalesWorkflow } from "@/lib/api";
+import SeoSection from "./seo-section";
 
 const NEXT_SALES_STATUS: Record<SalesStatus, SalesStatus[]> = {
   NEW: ["QUALIFIED", "CONTACTED", "LOST"], QUALIFIED: ["CONTACTED", "LOST"],
@@ -592,6 +593,7 @@ export default function LeadDetailPage() {
       <CommercialPanel leadId={id} refreshKey={taskRefreshKey} />
       <SalesTasksPanel leadId={id} leadAssignedTo={lead.assigned_to} leadPriority={lead.priority} refreshKey={taskRefreshKey} />
       <OutreachPanel leadId={id} leadEmail={lead.email} leadPhone={lead.phone} onOutcomeRecorded={(activity) => { setNewOutcomeActivity(activity); setTaskRefreshKey((key) => key + 1); }} />
+      <SeoSection leadId={id} website={lead.website} />
 
       {intelligenceState !== "error" && <>
       <section className="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">

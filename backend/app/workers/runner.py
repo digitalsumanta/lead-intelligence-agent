@@ -9,6 +9,7 @@ from app.config import settings
 from app.database import SessionLocal, verify_database_schema, update_worker_heartbeat
 from app.models.entities import now_utc
 from app.services.jobs import process_many, claim_jobs, recover_stale_jobs
+from app.services.seo import claim_seo_runs, execute_seo_run, recover_expired_seo_runs
 from app.utils.logging_config import configure_logging
 
 logger = logging.getLogger("lead_agent.worker")
@@ -33,10 +34,15 @@ async def run_retry_worker(poll_seconds: float = 5) -> None:
                 now = now_utc()
                 stale_before = now - timedelta(minutes=10)
                 await recover_stale_jobs(session, stale_before, now)
+                await recover_expired_seo_runs(session, now)
                 claimed = await claim_jobs(session, settings.max_concurrency, now)
             if claimed:
                 logger.info("claimed due jobs", extra={"checkpoint": "PROCESSING", "duration_ms": 0})
                 await process_many(SessionLocal, [type("JobRef", (), {"id": job_id}) for job_id in claimed], settings.max_concurrency, attempt_already_counted=True)
+            async with SessionLocal() as session:
+                seo_ids = await claim_seo_runs(session, settings.max_concurrency)
+            if seo_ids:
+                await asyncio.gather(*(execute_seo_run(SessionLocal, run_id) for run_id in seo_ids))
             await asyncio.sleep(poll_seconds)
     finally:
         heartbeat_task.cancel()

@@ -7,6 +7,7 @@ import ipaddress
 import re
 import socket
 import time
+from dataclasses import dataclass
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
 import httpx
@@ -21,6 +22,18 @@ LOCAL_HOST_SUFFIXES = (
     ".home", ".lan", ".onion",
 )
 METADATA_HOSTS = frozenset({"metadata.google.internal", "metadata", "instance-data"})
+
+
+@dataclass(frozen=True)
+class SafeFetchResult:
+    requested_url: str
+    final_url: str
+    status_code: int
+    content_type: str | None
+    x_robots_tag: str | None
+    encoding: str | None
+    redirect_chain: tuple[str, ...]
+    body: bytes
 
 
 class UnsafeWebsiteUrl(ValueError):
@@ -99,6 +112,20 @@ def _parse_url(url: str) -> tuple[str, str, int, str]:
 def validate_url_syntax(url: str) -> str:
     """Validate URL syntax and local-address forms; return its normalized host."""
     return _parse_url(url)[1]
+
+
+def normalize_public_url(url: str, *, remove_query: bool = False) -> str:
+    """Normalize a public HTTP(S) URL and remove its fragment."""
+    normalized, _host, _port, _scheme = _parse_url(url)
+    if remove_query:
+        parts = urlsplit(normalized)
+        normalized = urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+    return normalized
+
+
+def sanitized_public_url(url: str) -> str:
+    """Return a safe persisted/display URL without query strings or fragments."""
+    return normalize_public_url(url, remove_query=True)
 
 
 async def _lookup_addresses(host: str, port: int) -> list[str]:
@@ -181,16 +208,44 @@ class WebsiteAnalyzer:
         self.transport_factory = transport_factory
 
     async def _fetch(self, url: str) -> tuple[str, int, str]:
-        current = url
+        response = await self.fetch_document(url)
+        return response.final_url, response.status_code, response.body.decode(response.encoding or "utf-8", errors="replace")
+
+    async def fetch_document(
+        self,
+        url: str,
+        *,
+        allowed_host: str | None = None,
+        allowed_origins: set[tuple[str, str, int]] | None = None,
+        max_response_bytes: int | None = None,
+        max_redirects: int | None = None,
+    ) -> SafeFetchResult:
+        """Safely fetch one document, pinning and revalidating every redirect hop."""
+        requested_url = normalize_public_url(url)
+        current = requested_url
+        byte_limit = max_response_bytes if max_response_bytes is not None else self.max_response_bytes
+        redirect_limit = max_redirects if max_redirects is not None else self.max_redirects
+        if byte_limit < 1 or redirect_limit < 0:
+            raise ValueError("Website fetch bounds must be positive")
+        if allowed_host:
+            allowed_host = _normalized_host(allowed_host)[0]
         timeout = httpx.Timeout(self.timeout)
-        for hop in range(self.max_redirects + 1):
+        visited: set[str] = set()
+        redirect_chain: list[str] = []
+        for hop in range(redirect_limit + 1):
             normalized_url, host, port, scheme = _parse_url(current)
+            if allowed_host and host != allowed_host:
+                raise UnsafeWebsiteUrl("Website redirect left the allowed host")
+            if allowed_origins is not None and (scheme, host, port) not in allowed_origins:
+                raise UnsafeWebsiteUrl("Website URL left the allowed origin set")
+            if normalized_url in visited:
+                raise UnsafeWebsiteUrl("Website redirect loop detected")
+            visited.add(normalized_url)
             addresses = await resolve_public_host(host, port)
-            address = addresses[0]
             transport = (
-                self.transport_factory(host, address, scheme)
+                self.transport_factory(host, addresses[0], scheme)
                 if self.transport_factory
-                else PinnedAddressTransport(host, address)
+                else PinnedAddressTransport(host, addresses[0])
             )
             client_factory = self.client_factory or httpx.AsyncClient
             async with client_factory(
@@ -203,18 +258,34 @@ class WebsiteAnalyzer:
                 async with client.stream("GET", normalized_url) as response:
                     if response.status_code in {301, 302, 303, 307, 308}:
                         location = response.headers.get("location")
-                        if not location or hop >= self.max_redirects:
+                        if not location or hop >= redirect_limit:
                             raise UnsafeWebsiteUrl("Website exceeded the redirect limit")
-                        target = urljoin(normalized_url, location)
-                        _parse_url(target)
+                        target = normalize_public_url(urljoin(normalized_url, location))
+                        target_host = validate_url_syntax(target)
+                        if allowed_host and target_host != allowed_host:
+                            raise UnsafeWebsiteUrl("Website redirect left the allowed host")
+                        target_origin = _parse_url(target)[1:3]
+                        target_scheme = urlsplit(target).scheme
+                        if allowed_origins is not None and (target_scheme, *target_origin) not in allowed_origins:
+                            raise UnsafeWebsiteUrl("Website redirect left the allowed origin set")
+                        redirect_chain.append(normalized_url)
                         current = target
                         continue
                     body = bytearray()
                     async for chunk in response.aiter_bytes():
-                        if len(body) + len(chunk) > self.max_response_bytes:
+                        if len(body) + len(chunk) > byte_limit:
                             raise ValueError("Website response exceeded size limit")
                         body.extend(chunk)
-                    return normalized_url, response.status_code, bytes(body).decode(response.encoding or "utf-8", errors="replace")
+                    return SafeFetchResult(
+                        requested_url=requested_url,
+                        final_url=normalized_url,
+                        status_code=response.status_code,
+                        content_type=response.headers.get("content-type"),
+                        x_robots_tag=response.headers.get("x-robots-tag"),
+                        encoding=response.encoding,
+                        redirect_chain=tuple([*redirect_chain, normalized_url]),
+                        body=bytes(body),
+                    )
         raise UnsafeWebsiteUrl("Website redirect limit exceeded")
 
     async def analyze(self, url: str | None) -> dict:

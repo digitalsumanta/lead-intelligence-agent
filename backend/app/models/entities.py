@@ -664,3 +664,100 @@ class Personalization(Base):
     generated: Mapped[dict | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
     evidence_records: Mapped[list[Evidence]] = relationship(secondary=personalization_evidence_links, lazy="selectin")
+
+
+class SeoAuditRun(Base):
+    """Independently versioned, durable SEO audit for one lead website."""
+
+    __tablename__ = "seo_audit_runs"
+    __table_args__ = (
+        CheckConstraint("status IN ('QUEUED','RUNNING','COMPLETED','FAILED')", name="ck_seo_audit_runs_status"),
+        CheckConstraint("pages_crawled >= 0 AND pages_discovered >= 0 AND findings_count >= 0", name="ck_seo_audit_runs_counts_nonnegative"),
+        Index("ix_seo_audit_runs_lead_created", "lead_id", "created_at"),
+        Index("ix_seo_audit_runs_status_created", "status", "created_at"),
+        Index("uq_seo_audit_runs_id_lead", "id", "lead_id", unique=True),
+        Index(
+            "uq_seo_audit_runs_active_lead",
+            "lead_id",
+            unique=True,
+            postgresql_where=text("status IN ('QUEUED','RUNNING')"),
+            sqlite_where=text("status IN ('QUEUED','RUNNING')"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lead_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("leads.id", ondelete="CASCADE"), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="QUEUED", server_default="QUEUED")
+    audit_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    root_url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    normalized_root_url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    pages_crawled: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    pages_discovered: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    findings_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    metadata_json: Mapped[dict] = mapped_column("metadata", JSON, nullable=False, default=dict)
+    error_code: Mapped[str | None] = mapped_column(String(120))
+    error_message: Mapped[str | None] = mapped_column(String(1000))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+
+    lead: Mapped[Lead] = relationship()
+    observations: Mapped[list["SeoObservation"]] = relationship(back_populates="run", cascade="all, delete-orphan")
+    findings: Mapped[list["SeoFinding"]] = relationship(back_populates="run", cascade="all, delete-orphan", overlaps="observation,findings")
+
+
+class SeoObservation(Base):
+    """Bounded normalized facts collected for one SEO audit run."""
+
+    __tablename__ = "seo_observations"
+    __table_args__ = (
+        Index("uq_seo_observations_run_key", "seo_run_id", "observation_key", unique=True),
+        Index("uq_seo_observations_id_run", "id", "seo_run_id", unique=True),
+        Index("ix_seo_observations_run_type", "seo_run_id", "observation_type"),
+        ForeignKeyConstraint(["seo_run_id"], ["seo_audit_runs.id"], name="fk_seo_observations_run", ondelete="CASCADE"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    seo_run_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    observation_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    observation_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    page_url: Mapped[str | None] = mapped_column(String(2048))
+    observed_value: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+
+    run: Mapped[SeoAuditRun] = relationship(back_populates="observations")
+    findings: Mapped[list["SeoFinding"]] = relationship(back_populates="observation", overlaps="run,findings")
+
+
+class SeoFinding(Base):
+    """Deterministic, evidence-backed finding associated with exactly one run."""
+
+    __tablename__ = "seo_findings"
+    __table_args__ = (
+        CheckConstraint("severity IN ('INFO','LOW','MEDIUM','HIGH')", name="ck_seo_findings_severity"),
+        CheckConstraint("category IN ('TECHNICAL','ON_PAGE','CRAWLABILITY','INDEXABILITY','PERFORMANCE','STRUCTURED_DATA','LINKS','IMAGES')", name="ck_seo_findings_category"),
+        Index("ix_seo_findings_run_severity", "seo_run_id", "severity"),
+        Index("ix_seo_findings_run_category", "seo_run_id", "category"),
+        Index("ix_seo_findings_run_code", "seo_run_id", "finding_code"),
+        ForeignKeyConstraint(["seo_run_id"], ["seo_audit_runs.id"], name="fk_seo_findings_run", ondelete="CASCADE"),
+        ForeignKeyConstraint(
+            ["observation_id", "seo_run_id"], ["seo_observations.id", "seo_observations.seo_run_id"],
+            name="fk_seo_findings_observation_run", ondelete="CASCADE",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    seo_run_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    observation_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
+    page_url: Mapped[str | None] = mapped_column(String(2048))
+    finding_code: Mapped[str] = mapped_column(String(120), nullable=False)
+    category: Mapped[str] = mapped_column(String(40), nullable=False)
+    severity: Mapped[str] = mapped_column(String(20), nullable=False)
+    title: Mapped[str] = mapped_column(String(250), nullable=False)
+    description: Mapped[str] = mapped_column(String(1000), nullable=False)
+    evidence: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+
+    run: Mapped[SeoAuditRun] = relationship(back_populates="findings", foreign_keys=[seo_run_id], overlaps="observation,findings")
+    observation: Mapped[SeoObservation | None] = relationship(back_populates="findings", overlaps="run,findings")

@@ -45,6 +45,23 @@ export type DashboardStats = {
   average_lead_score: number | null;
 };
 
+export type SeoAuditRun = {
+  id: string; lead_id: string; status: "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
+  audit_version: string; root_url: string; normalized_root_url: string;
+  pages_crawled: number; pages_discovered: number; findings_count: number;
+  metadata: Record<string, unknown>; error_code: string | null; error_message: string | null;
+  started_at: string | null; completed_at: string | null; created_at: string;
+};
+export type SeoFinding = {
+  id: string; observation_id: string | null; page_url: string | null; finding_code: string;
+  category: string; severity: "INFO" | "LOW" | "MEDIUM" | "HIGH";
+  title: string; description: string; evidence: Record<string, unknown>; created_at: string;
+};
+export type SeoObservation = { id: string; observation_type: string; page_url: string | null; observed_value: Record<string, unknown>; created_at: string };
+export type LatestSeo = { audit: SeoAuditRun | null; findings: SeoFinding[] };
+export type SeoRunList = { items: SeoAuditRun[]; page: number; page_size: number };
+export type SeoRunDetail = { run: SeoAuditRun; observations: SeoObservation[]; findings: SeoFinding[] };
+
 export type LeadListItem = {
   id: string;
   company_name: string;
