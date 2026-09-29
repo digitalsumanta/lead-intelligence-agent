@@ -191,6 +191,24 @@ export type AISalesIntelligenceArtifact = {
 };
 export type AISalesIntelligenceHistory = { items: AISalesIntelligenceArtifact[] };
 
+export type CopilotIntent = "NEXT_STEP" | "WHY_FOLLOW_UP" | "MAIN_OPPORTUNITIES" | "MISSING_INFORMATION" | "PREVIOUS_OUTREACH" | "CURRENT_SEO_OPPORTUNITIES" | "REVIEW_BEFORE_CONTACT" | "UNSUPPORTED";
+export type CopilotReviewActionType = "REVIEW_LEAD" | "REVIEW_OPPORTUNITY" | "REVIEW_SEO" | "REVIEW_OUTREACH" | "REVIEW_COMMERCIAL_CONTEXT" | "VERIFY_MISSING_INFORMATION";
+export type CopilotReviewAction = { action: CopilotReviewActionType; evidence_refs: string[]; service_ids: string[] };
+export type CopilotResponse = {
+  contract_version: "ai-sales-copilot-v1"; prompt_version: "ai-sales-copilot-prompt-v1";
+  intent: CopilotIntent; answer: string; key_facts: string[]; relevant_opportunities: string[];
+  recommended_review_actions: CopilotReviewAction[]; missing_information: string[]; evidence_refs: string[];
+};
+export type CopilotInteraction = {
+  id: string; lead_id: string; question: string; context_version: string;
+  contract_version: string; prompt_version: string; provider: string; model: string;
+  intent: CopilotIntent; status: "validated" | "failed" | "unsupported"; source_fingerprint: string; is_stale: boolean;
+  response: CopilotResponse | null; evidence_catalog: AISalesEvidenceCatalogEntry[];
+  usage_metadata: Record<string, unknown>; error_code: string | null; error_message: string | null;
+  created_at: string;
+};
+export type CopilotHistory = { items: CopilotInteraction[] };
+
 export type CommercialRecord = {
   lead_id: string; sales_status: SalesStatus; estimated_value: string | null;
   proposal_value: string | null; negotiation_value: string | null; won_value: string | null;

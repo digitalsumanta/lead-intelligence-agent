@@ -165,6 +165,7 @@ def test_enrichment_migration_is_the_single_head_after_worker_heartbeat():
         ("0014_outreach_outcomes", "0013_outreach_operations"),
         ("0015_seo_intelligence", "0014_outreach_outcomes"),
         ("0016_ai_sales_intelligence", "0015_seo_intelligence"),
+        ("0017_ai_sales_copilot", "0016_ai_sales_intelligence"),
     ]
     actual = []
     for revision, _ in expected:
@@ -175,4 +176,4 @@ def test_enrichment_migration_is_the_single_head_after_worker_heartbeat():
         actual.append((module.revision, module.down_revision))
 
     assert actual == expected
-    assert SCHEMA_REVISION == "0016_ai_sales_intelligence"
+    assert SCHEMA_REVISION == "0017_ai_sales_copilot"

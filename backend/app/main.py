@@ -38,6 +38,7 @@ from app.schemas.intelligence import IntelligenceResponse
 from app.schemas.seo import LatestSeoOut, SeoRunCreatedOut, SeoRunDetailOut, SeoRunListOut, SeoRunOut
 from app.schemas.seo_opportunities import SeoSalesOpportunityList
 from app.schemas.ai_sales_intelligence import AISalesIntelligenceHistoryOut, AISalesIntelligenceOut
+from app.schemas.ai_sales_copilot import CopilotAsk, CopilotHistoryOut, CopilotInteractionOut
 from app.services.lead_intelligence_api import read_intelligence_summary, read_lead_intelligence
 from app.services.csv_import import import_csv
 from app.services.jobs import create_job, update_batch_status
@@ -70,6 +71,7 @@ from app.services.ai_sales_intelligence import (
     ai_sales_intelligence_by_id, ai_sales_intelligence_history,
     current_ai_sales_intelligence, generate_ai_sales_intelligence,
 )
+from app.services.ai_sales_copilot import ai_sales_copilot_history, ask_ai_sales_copilot
 
 configure_logging()
 
@@ -1003,6 +1005,43 @@ async def get_lead_ai_sales_intelligence_artifact(
     if artifact is None:
         raise HTTPException(404, detail={"code": "AI_SALES_INTELLIGENCE_NOT_FOUND", "message": "AI sales intelligence artifact not found for this lead"})
     return _ai_sales_intelligence_payload(artifact, stale)
+
+
+def _ai_sales_copilot_payload(artifact, fingerprint: str) -> CopilotInteractionOut:
+    return CopilotInteractionOut(
+        id=artifact.id, lead_id=artifact.lead_id, question=artifact.question,
+        intent=artifact.intent, context_version=artifact.context_version,
+        contract_version=artifact.contract_version, prompt_version=artifact.prompt_version,
+        provider=artifact.provider, model=artifact.model, status=artifact.status,
+        source_fingerprint=artifact.source_fingerprint,
+        is_stale=artifact.source_fingerprint != fingerprint,
+        response=artifact.response,
+        evidence_catalog=tuple(artifact.evidence_catalog or ()),
+        usage_metadata=artifact.usage_metadata or {}, error_code=artifact.error_code,
+        error_message=artifact.error_message, created_at=artifact.created_at,
+    )
+
+
+@app.post("/api/leads/{lead_id}/ai-copilot", response_model=CopilotInteractionOut, status_code=201)
+async def ask_lead_ai_copilot(
+    lead_id: uuid.UUID, request: CopilotAsk, db: AsyncSession = Depends(get_db),
+):
+    try:
+        artifact = await ask_ai_sales_copilot(db, lead_id, request.question)
+        return _ai_sales_copilot_payload(artifact, artifact.source_fingerprint)
+    except LookupError as error:
+        raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": str(error)}) from None
+
+
+@app.get("/api/leads/{lead_id}/ai-copilot/history", response_model=CopilotHistoryOut)
+async def get_lead_ai_copilot_history(
+    lead_id: uuid.UUID, limit: int = Query(50, ge=1, le=100), db: AsyncSession = Depends(get_db),
+):
+    try:
+        artifacts, fingerprint = await ai_sales_copilot_history(db, lead_id, limit)
+    except LookupError as error:
+        raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": str(error)}) from None
+    return {"items": [_ai_sales_copilot_payload(item, fingerprint) for item in artifacts]}
 
 
 @app.get("/api/leads/{lead_id}/seo/opportunities", response_model=SeoSalesOpportunityList)

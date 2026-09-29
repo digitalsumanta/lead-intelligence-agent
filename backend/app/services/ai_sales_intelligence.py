@@ -366,6 +366,45 @@ def _used_evidence_refs(response: AISalesIntelligenceResponse) -> set[str]:
     return refs
 
 
+def validate_context_references(
+    refs: set[str] | tuple[str, ...],
+    context: AISalesContext,
+    catalog: dict[str, dict[str, Any]],
+    lead_id: UUID,
+) -> set[str]:
+    """Validate catalog refs against the exact lead and current run snapshots."""
+    allowed = {
+        item.id for item in (
+            *context.verified_facts, *context.uncertain_or_missing,
+            *context.deterministic_opportunities, *context.historical_events,
+            *context.commercial_data, *context.seo_data,
+        )
+    }
+    selected = set(refs)
+    if not selected.issubset(allowed):
+        raise AIValidationError("AI output contains evidence IDs that were not supplied")
+    enrichment_ref = next((item.id for item in context.verified_facts if item.source_type == "enrichment_run"), None)
+    current_enrichment_run = UUID(enrichment_ref.split(":", 1)[1]) if enrichment_ref else None
+    seo_ref = next((item.id for item in context.seo_data if item.source_type == "seo_audit_run"), None)
+    current_seo_run = UUID(seo_ref.split(":", 1)[1]) if seo_ref else None
+    enrichment_types = {
+        "enrichment_run", "deterministic_score", "enrichment_evidence",
+        "lead_intelligence_opportunity", "deterministic_service_recommendation",
+    }
+    seo_types = {"seo_audit_run", "seo_finding", "seo_opportunity"}
+    for ref in selected:
+        owner = catalog.get(ref)
+        if owner is None or owner.get("lead_id") != lead_id:
+            raise AIValidationError("AI evidence reference does not belong to this lead")
+        run_id = owner.get("run_id")
+        source_type = owner.get("source_type")
+        if source_type in enrichment_types and (current_enrichment_run is None or run_id != current_enrichment_run):
+            raise AIValidationError("AI enrichment evidence belongs to another enrichment run")
+        if source_type in seo_types and (current_seo_run is None or run_id != current_seo_run):
+            raise AIValidationError("AI SEO evidence belongs to another audit run")
+    return selected
+
+
 def validate_ai_sales_response(response: AISalesIntelligenceResponse, context: AISalesContext,
                                catalog: dict[str, dict[str, Any]], lead_id: UUID) -> set[str]:
     """Reject model-controlled references outside the exact supplied lead/run context."""
@@ -383,16 +422,7 @@ def validate_ai_sales_response(response: AISalesIntelligenceResponse, context: A
         raise AIValidationError("AI output contains evidence IDs that were not supplied")
     if context.uncertain_or_missing and not response.uncertainties:
         raise AIValidationError("AI output must explicitly acknowledge missing or uncertain context")
-    for ref in used:
-        owner = catalog.get(ref)
-        if owner is None or owner.get("lead_id") != lead_id:
-            raise AIValidationError("AI evidence reference does not belong to this lead")
-        if owner.get("run_id") is not None:
-            if ref.startswith("enrichment-"):
-                current_run_ref = next((item.id for item in context.verified_facts if item.source_type == "enrichment_run"), None)
-                current_run_id = UUID(current_run_ref.split(":", 1)[1]) if current_run_ref else None
-                if current_run_id is None or owner["run_id"] != current_run_id:
-                    raise AIValidationError("AI enrichment evidence belongs to another enrichment run")
+    validate_context_references(used, context, catalog, lead_id)
     for item in response.opportunities:
         if not set(item.source_refs).issubset(allowed_sources):
             raise AIValidationError("AI output contains source references that were not supplied")

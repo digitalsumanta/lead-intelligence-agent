@@ -6,6 +6,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { api, ApiError, CommercialRecord, IntelligenceClaim, IntelligenceResponse, LeadDetail, OutreachArtifact, OutreachChannel, OutreachContent, OutreachExecution, OutreachReadResponse, SalesActivity, SalesActivityOutcome, SalesActivityType, SalesCollection, SalesPriority, SalesStatus, SalesTask, SalesTaskCreate, SalesTaskStatus, SalesTaskType, SalesWorkflow } from "@/lib/api";
 import SeoSection from "./seo-section";
 import AISalesIntelligence from "./ai-sales-intelligence";
+import AISalesCopilot from "./ai-sales-copilot";
 
 const NEXT_SALES_STATUS: Record<SalesStatus, SalesStatus[]> = {
   NEW: ["QUALIFIED", "CONTACTED", "LOST"], QUALIFIED: ["CONTACTED", "LOST"],
@@ -86,7 +87,7 @@ function SalesWorkflowPanel({ leadId, intelligence, refreshKey, newOutcomeActivi
   }
 
   const input = "mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm";
-  return <section className="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+  return <section id="sales-workflow" className="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
     <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-bold text-ink">Sales workflow</h2><p className="mt-1 text-sm text-slate-500">Manage pipeline state and activity. Intelligence remains read-only and independent.</p></div>{sales && <span className="rounded-full bg-teal/10 px-3 py-1 text-xs font-semibold text-teal">{sales.sales_status} · {sales.priority}</span>}</div>
     {error && <p role="alert" className="mt-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}
     {!initialized ? <p className="mt-4 text-sm text-slate-500">Loading sales workflow…</p> : sales && <>
@@ -161,7 +162,7 @@ function CommercialPanel({ leadId, refreshKey }: { leadId: string; refreshKey: n
   ] as const;
   const dateValue = (value: string) => localDateTime(value);
 
-  return <section className="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+  return <section id="commercial" className="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
     <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-bold text-ink">Commercial / revenue</h2><p className="mt-1 text-sm text-slate-500">Human-entered commercial values. Values are not inferred from the sales stage.</p></div><Link href="/revenue" className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-teal">Revenue command center</Link></div>
     {error && <p role="alert" className="mt-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}
     {loading ? <p className="mt-4 text-sm text-slate-500">Loading commercial details…</p> : commercial && <>
@@ -245,7 +246,7 @@ function SalesTasksPanel({ leadId, leadAssignedTo, leadPriority, refreshKey }: {
     </article>;
   }
 
-  return <section className="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+  return <section id="sales-tasks" className="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
     <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-bold text-ink">Sales actions</h2><p className="mt-1 text-sm text-slate-500">Human-managed tasks and outcomes. Prepared and approved outreach is never sent by this system.</p></div><Link href="/leads/tasks" className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-teal">Daily task view</Link></div>
     {error && <p role="alert" className="mt-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}
     {loading ? <p className="mt-4 text-sm text-slate-500">Loading tasks…</p> : <>
@@ -382,7 +383,7 @@ function OutreachPanel({ leadId, leadEmail, leadPhone, onOutcomeRecorded }: { le
     setConfirmation(null);
   }
 
-  return <section className="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+  return <section id="outreach" className="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
     <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-bold text-ink">Outreach preparation</h2><p className="mt-1 text-sm font-semibold text-teal">Prepared for review — not sent.</p></div>{artifact && <span className={`rounded-full px-3 py-1 text-xs font-semibold ${artifact.status === "APPROVED" ? "bg-emerald-50 text-emerald-700" : artifact.status === "STALE" ? "bg-rose-50 text-rose-700" : "bg-amber-50 text-amber-800"}`}>{artifact.status.replaceAll("_", " ")} · {current ? "Current" : "Stale"}</span>}</div>
     {error && <p role="alert" className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}
     {loading ? <p className="mt-4 text-sm text-slate-500">Loading outreach…</p> : <>
@@ -562,7 +563,7 @@ export default function LeadDetailPage() {
       {intelligenceState === "error" && <div role="alert" className="mt-5 flex flex-col gap-3 rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold">Intelligence could not be loaded.</p><p className="mt-1">The request failed, so intelligence data is not shown. Your business details remain available.</p></div><button onClick={() => setIntelligenceRetry((attempt) => attempt + 1)} className="shrink-0 rounded-lg border border-rose-300 bg-white px-4 py-2 font-semibold hover:bg-rose-100">Retry intelligence</button></div>}
 
       <section className="mt-7 grid gap-4 lg:grid-cols-[1.3fr_1fr]">
-        <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <article id="business-summary" className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="font-bold text-ink">Business summary</h2>
           <dl className="mt-4 grid gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
             <div><dt className="text-xs font-semibold uppercase text-slate-400">Website</dt><dd className="mt-1 break-all">{lead.website ? websiteUrl ? <a className="text-teal hover:underline" href={websiteUrl} target="_blank" rel="noreferrer">{lead.website}</a> : lead.website : "—"}</dd></div>
@@ -594,11 +595,12 @@ export default function LeadDetailPage() {
       <CommercialPanel leadId={id} refreshKey={taskRefreshKey} />
       <SalesTasksPanel leadId={id} leadAssignedTo={lead.assigned_to} leadPriority={lead.priority} refreshKey={taskRefreshKey} />
       <OutreachPanel leadId={id} leadEmail={lead.email} leadPhone={lead.phone} onOutcomeRecorded={(activity) => { setNewOutcomeActivity(activity); setTaskRefreshKey((key) => key + 1); }} />
-      <SeoSection leadId={id} website={lead.website} />
+      <div id="seo"><SeoSection leadId={id} website={lead.website} /></div>
       <AISalesIntelligence leadId={id} onTaskCreated={() => setTaskRefreshKey((key) => key + 1)} />
+      <AISalesCopilot leadId={id} />
 
       {intelligenceState !== "error" && <>
-      <section className="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <section id="opportunities" className="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex items-center justify-between gap-3"><div><h2 className="font-bold text-ink">Opportunities</h2><p className="mt-1 text-sm text-slate-500">Deterministic findings from this enrichment run.</p></div><span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800">{intel?.opportunities.length ?? 0}</span></div>
         {!intel?.opportunities.length ? <p className="mt-5 rounded-lg bg-slate-50 p-4 text-sm text-slate-500">No opportunities are available for this run.</p> : <div className="mt-4 grid gap-3 md:grid-cols-2">
           {intel.opportunities.map((opportunity) => <article key={opportunity.id} className="rounded-lg border border-slate-200 p-4">
