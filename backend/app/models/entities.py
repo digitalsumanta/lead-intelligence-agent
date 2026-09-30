@@ -274,6 +274,8 @@ class SalesTask(Base):
         Index("uq_sales_tasks_id_lead", "id", "lead_id", unique=True),
         ForeignKeyConstraint(["related_activity_id", "lead_id"], ["sales_activities.id", "sales_activities.lead_id"], name="fk_sales_tasks_activity_lead"),
         ForeignKeyConstraint(["related_outreach_artifact_id", "lead_id"], ["outreach_artifacts.id", "outreach_artifacts.lead_id"], name="fk_sales_tasks_outreach_lead"),
+        CheckConstraint("agent_source_type IS NULL OR agent_source_type IN ('AI_SALES_ACTION_PLAN','AI_SALES_SUPERVISOR')", name="ck_sales_tasks_agent_source_type"),
+        Index("uq_sales_tasks_agent_source_action", "lead_id", "agent_source_type", "agent_source_id", "agent_source_action_id", unique=True, postgresql_where=text("agent_source_id IS NOT NULL"), sqlite_where=text("agent_source_id IS NOT NULL")),
     )
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     lead_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("leads.id", ondelete="CASCADE"), nullable=False)
@@ -289,6 +291,11 @@ class SalesTask(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by_agent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
+    agent_source_type: Mapped[str | None] = mapped_column(String(40))
+    agent_source_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
+    agent_source_action_id: Mapped[str | None] = mapped_column(String(180))
+    agent_evidence_refs: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     lead: Mapped[Lead] = relationship(back_populates="sales_tasks")
 
 
@@ -854,6 +861,42 @@ class AiSalesSupervisorRun(Base):
     error_message: Mapped[str | None] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+
+
+class AutonomousTaskExecution(Base):
+    """Append-only audit for one internal task-agent execution attempt."""
+
+    __tablename__ = "autonomous_task_executions"
+    __table_args__ = (
+        CheckConstraint("action_type IN ('FOLLOW_UP','CALL_PROSPECT','REVIEW_SEO_OPPORTUNITY','REVIEW_OUTREACH','PREPARE_PROPOSAL','INVESTIGATE_MISSING_INFORMATION','REVIEW_COMMERCIAL_CONTEXT')", name="ck_autonomous_task_action"),
+        CheckConstraint("source_type IN ('AI_SALES_ACTION_PLAN','AI_SALES_SUPERVISOR')", name="ck_autonomous_task_source_type"),
+        CheckConstraint("execution_status IN ('CREATED','ALREADY_EXISTS','DENIED','REQUIRES_HUMAN_APPROVAL','STALE_CONTEXT','INVALID_REQUEST','FAILED')", name="ck_autonomous_task_status"),
+        CheckConstraint("policy_decision IS NULL OR policy_decision IN ('ALLOW','DENY','REQUIRE_HUMAN_APPROVAL')", name="ck_autonomous_task_policy_decision"),
+        Index("ix_autonomous_task_executions_lead_created", "lead_id", "created_at"),
+        Index("ix_autonomous_task_executions_source", "source_type", "source_id"),
+        Index("uq_autonomous_task_executions_created_key", "idempotency_key", unique=True, postgresql_where=text("execution_status = 'CREATED'"), sqlite_where=text("execution_status = 'CREATED'")),
+        ForeignKeyConstraint(["lead_id"], ["leads.id"], name="fk_autonomous_task_execution_lead", ondelete="CASCADE"),
+        ForeignKeyConstraint(["task_id", "lead_id"], ["sales_tasks.id", "sales_tasks.lead_id"], name="fk_autonomous_task_execution_task_lead"),
+        ForeignKeyConstraint(["policy_evaluation_id"], ["agent_policy_evaluations.id"], name="fk_autonomous_task_execution_policy"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lead_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    action_type: Mapped[str] = mapped_column(String(60), nullable=False)
+    source_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    source_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    source_action_id: Mapped[str] = mapped_column(String(180), nullable=False)
+    task_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
+    policy_evaluation_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
+    policy_decision: Mapped[str | None] = mapped_column(String(30))
+    context_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    evidence_refs: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    execution_status: Mapped[str] = mapped_column(String(40), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    requested_by: Mapped[str] = mapped_column(String(80), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+    executed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class SeoAuditRun(Base):

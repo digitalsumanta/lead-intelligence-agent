@@ -43,6 +43,9 @@ from app.schemas.ai_sales_action_planner import ActionPlanHistoryOut, ActionPlan
 from app.schemas.ai_proposal_intelligence import ProposalIntelligenceHistoryOut, ProposalIntelligenceOut
 from app.schemas.agent_policy import PolicyEvaluationHistory, PolicyEvaluationOut, PolicyEvaluationRequest
 from app.schemas.ai_sales_supervisor import SupervisorRunHistory, SupervisorRunOut, SupervisorRunRequest
+from app.schemas.autonomous_task_agent import (
+    SupervisorTaskExecutionSummary, TaskExecutionHistory, TaskExecutionRequest, TaskExecutionResult,
+)
 from app.services.lead_intelligence_api import read_intelligence_summary, read_lead_intelligence
 from app.services.csv_import import import_csv
 from app.services.jobs import create_job, update_batch_status
@@ -86,6 +89,9 @@ from app.services.agent_policy import evaluate_policy, policy_history
 from app.services.ai_sales_supervisor import (
     build_pipeline_context, current_supervisor_run, run_supervisor, run_to_output,
     supervisor_history, supervisor_run_by_id,
+)
+from app.services.autonomous_task_agent import (
+    execute_supervisor_run_tasks, execute_task_action, task_execution_by_id, task_execution_history,
 )
 
 configure_logging()
@@ -1227,6 +1233,64 @@ async def get_sales_supervisor_run(run_id: uuid.UUID, db: AsyncSession = Depends
     if run is None:
         raise HTTPException(404, detail={"code": "SUPERVISOR_RUN_NOT_FOUND", "message": "Sales Supervisor run not found"})
     return run_to_output(run, fingerprint)
+
+
+@app.post("/api/agent/tasks/execute", response_model=TaskExecutionResult, status_code=201)
+async def execute_agent_task(body: TaskExecutionRequest, db: AsyncSession = Depends(get_db)):
+    try:
+        return await execute_task_action(db, body)
+    except LookupError as error:
+        raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": str(error)}) from None
+
+
+@app.get("/api/agent/tasks/executions", response_model=TaskExecutionHistory)
+async def list_agent_task_executions(
+    limit: int = Query(50, ge=1, le=100), db: AsyncSession = Depends(get_db),
+):
+    return {"items": await task_execution_history(db, limit=limit)}
+
+
+@app.get("/api/agent/tasks/executions/{execution_id}", response_model=TaskExecutionResult)
+async def get_agent_task_execution(execution_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    row = await task_execution_by_id(db, execution_id)
+    if row is None:
+        raise HTTPException(404, detail={"code": "TASK_EXECUTION_NOT_FOUND", "message": "Task Agent execution not found"})
+    from app.services.autonomous_task_agent import _audit_result
+    return _audit_result(row)
+
+
+@app.post("/api/leads/{lead_id}/agent/tasks/execute", response_model=TaskExecutionResult, status_code=201)
+async def execute_lead_agent_task(lead_id: uuid.UUID, body: TaskExecutionRequest, db: AsyncSession = Depends(get_db)):
+    if body.lead_id != lead_id:
+        raise HTTPException(422, detail={"code": "LEAD_SCOPE_MISMATCH", "message": "Request lead_id must match the path lead_id"})
+    return await execute_agent_task(body, db)
+
+
+@app.get("/api/leads/{lead_id}/agent/tasks/executions", response_model=TaskExecutionHistory)
+async def list_lead_agent_task_executions(
+    lead_id: uuid.UUID, limit: int = Query(50, ge=1, le=100), db: AsyncSession = Depends(get_db),
+):
+    if await db.get(Lead, lead_id) is None:
+        raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": "Lead not found"})
+    return {"items": await task_execution_history(db, lead_id=lead_id, limit=limit)}
+
+
+@app.post("/api/sales-supervisor/tasks/execute", response_model=SupervisorTaskExecutionSummary, status_code=201)
+async def execute_sales_supervisor_tasks(db: AsyncSession = Depends(get_db)):
+    total, eligible, results = await execute_supervisor_run_tasks(db)
+    counts = {status: 0 for status in ("CREATED", "ALREADY_EXISTS", "DENIED", "REQUIRES_HUMAN_APPROVAL", "STALE_CONTEXT", "FAILED")}
+    for result in results:
+        if result.execution_status.value in counts:
+            counts[result.execution_status.value] += 1
+    not_processed = max(eligible - len(results), 0)
+    counts["FAILED"] += not_processed
+    return {
+        "total_findings": total, "eligible": eligible,
+        "created": counts["CREATED"], "already_exists": counts["ALREADY_EXISTS"],
+        "denied": counts["DENIED"], "requires_human_approval": counts["REQUIRES_HUMAN_APPROVAL"],
+        "stale_context": counts["STALE_CONTEXT"], "failed": counts["FAILED"],
+        "execution_ids": tuple(result.execution_id for result in results),
+    }
 
 
 @app.get("/api/leads/{lead_id}/seo/opportunities", response_model=SeoSalesOpportunityList)

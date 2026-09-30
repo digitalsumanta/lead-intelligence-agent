@@ -288,6 +288,20 @@ export type SalesSupervisorRun = {
   created_at: string; updated_at: string;
 };
 export type SalesSupervisorHistory = { items: SalesSupervisorRun[] };
+export type TaskAgentExecution = {
+  execution_id: string; lead_id: string; action_type: PlannerActionType;
+  execution_status: "CREATED" | "ALREADY_EXISTS" | "DENIED" | "REQUIRES_HUMAN_APPROVAL" | "STALE_CONTEXT" | "INVALID_REQUEST" | "FAILED";
+  policy_decision: AgentPolicyDecision | null; task_id: string | null; created: boolean;
+  existing_task_id: string | null; context_fingerprint: string; evidence_ids: string[];
+  source_artifact_id: string; source_action_id: string; policy_evaluation_id: string | null;
+  reason: string; executed_at: string | null; created_at: string;
+};
+export type TaskAgentExecutionHistory = { items: TaskAgentExecution[] };
+export type SupervisorTaskExecutionSummary = {
+  total_findings: number; eligible: number; created: number; already_exists: number;
+  denied: number; requires_human_approval: number; stale_context: number; failed: number;
+  execution_ids: string[];
+};
 
 export type CommercialRecord = {
   lead_id: string; sales_status: SalesStatus; estimated_value: string | null;

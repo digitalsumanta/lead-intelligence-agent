@@ -2,9 +2,9 @@
 import os
 import asyncio
 import pytest
-from sqlalchemy import text, delete
+from sqlalchemy import text, delete, func, select
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
-from app.models import ApiKey, AiSalesSupervisorRun, Lead, ProcessingJob, JobStatus
+from app.models import ApiKey, AiSalesActionPlan, AiSalesSupervisorRun, AgentPolicyEvaluation, AutonomousTaskExecution, Lead, ProcessingJob, JobStatus, SalesTask
 from app.services.key_pool import ApiKeyPool
 from app.services.jobs import claim_jobs
 
@@ -21,9 +21,11 @@ async def test_postgresql_schema_is_migrated_to_head():
     try:
         async with engine.connect() as connection:
             version = await connection.scalar(text("SELECT version_num FROM alembic_version"))
-            assert version == "0021_ai_sales_supervisor"
+            assert version == "0022_autonomous_task_executions"
             tables = set(await connection.run_sync(lambda conn: __import__("sqlalchemy").inspect(conn).get_table_names()))
-            assert {"leads", "lead_processing_jobs", "lead_batches", "lead_events", "enrichment_runs", "evidence", "provider_operation_state", "personalizations", "personalization_evidence_links", "sales_activities", "outreach_artifacts", "outreach_executions", "outreach_provider_events", "sales_tasks", "sales_collections", "revenue_targets", "seo_audit_runs", "seo_observations", "seo_findings", "ai_sales_intelligence", "ai_sales_copilot", "ai_sales_action_plans", "ai_proposal_intelligence", "agent_policy_evaluations", "ai_sales_supervisor_runs"}.issubset(tables)
+            assert {"leads", "lead_processing_jobs", "lead_batches", "lead_events", "enrichment_runs", "evidence", "provider_operation_state", "personalizations", "personalization_evidence_links", "sales_activities", "outreach_artifacts", "outreach_executions", "outreach_provider_events", "sales_tasks", "sales_collections", "revenue_targets", "seo_audit_runs", "seo_observations", "seo_findings", "ai_sales_intelligence", "ai_sales_copilot", "ai_sales_action_plans", "ai_proposal_intelligence", "agent_policy_evaluations", "ai_sales_supervisor_runs", "autonomous_task_executions"}.issubset(tables)
+            task_columns = await connection.run_sync(lambda conn: {item["name"] for item in __import__("sqlalchemy").inspect(conn).get_columns("sales_tasks")})
+            assert {"created_by_agent", "agent_source_type", "agent_source_id", "agent_source_action_id", "agent_evidence_refs"}.issubset(task_columns)
             lead_columns = await connection.run_sync(lambda conn: {item["name"] for item in __import__("sqlalchemy").inspect(conn).get_columns("leads")})
             assert {"email_opted_out", "whatsapp_opted_out", "phone_opted_out"}.issubset(lead_columns)
             lead_indexes = await connection.run_sync(lambda conn: __import__("sqlalchemy").inspect(conn).get_indexes("leads"))
@@ -89,6 +91,74 @@ async def test_postgresql_supervisor_run_persistence_and_history():
         if run_ids:
             async with factory() as session:
                 await session.execute(delete(AiSalesSupervisorRun).where(AiSalesSupervisorRun.id.in_(run_ids)))
+                await session.commit()
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_postgresql_task_agent_creation_audit_and_idempotent_retry():
+    url = os.getenv("TEST_POSTGRES_URL")
+    if not url:
+        pytest.skip("Set TEST_POSTGRES_URL to an explicitly provisioned PostgreSQL database")
+    if not url.startswith("postgresql+asyncpg://"):
+        pytest.fail("TEST_POSTGRES_URL must use the asyncpg PostgreSQL dialect")
+    from app.domain.ai_sales_action_planner import ActionPlanOutput, RecommendedAction, ActionType
+    from app.schemas.autonomous_task_agent import TaskAgentSourceType, TaskExecutionRequest
+    from app.services.ai_sales_intelligence import AISalesContextBuilder
+    from app.services.autonomous_task_agent import _plan_action_id, execute_task_action
+
+    engine = create_async_engine(url)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    lead_id = plan_id = None
+    try:
+        async with factory() as session:
+            lead = Lead(company_name="PostgreSQL Task Agent integration")
+            session.add(lead)
+            await session.flush()
+            lead_id = lead.id
+            context, fingerprint, _ = await AISalesContextBuilder().build(session, lead.id)
+            evidence_id = next(item.id for item in context.commercial_data if item.source_type == "commercial_context")
+            lead_priority = next(item.data["priority"] for item in context.commercial_data if item.source_type == "commercial_context")
+            action = RecommendedAction(
+                action_type=ActionType.REVIEW_COMMERCIAL_CONTEXT, priority=lead_priority,
+                title="Review commercial context", rationale="The cited records may warrant human review.",
+                evidence_ids=(evidence_id,), opportunity_ids=(), service_ids=(),
+                preparation_items=("Check the current sales and commercial context.",),
+            )
+            plan = AiSalesActionPlan(
+                lead_id=lead.id, contract_version="ai-sales-action-planner-v1",
+                prompt_version="ai-sales-action-planner-prompt-v1", context_version="ai-sales-context-v1",
+                provider="integration-test", model="no-network", status="validated",
+                source_fingerprint=fingerprint, action_plan=ActionPlanOutput(actions=(action,)).model_dump(mode="json"),
+                evidence_catalog=[], evidence_refs=[evidence_id], usage_metadata={},
+            )
+            session.add(plan)
+            await session.commit()
+            plan_id = plan.id
+            request = TaskExecutionRequest(
+                lead_id=lead.id, action_type=action.action_type, source_type=TaskAgentSourceType.AI_SALES_ACTION_PLAN,
+                source_id=plan.id, source_action_id=_plan_action_id(action), context_fingerprint=fingerprint,
+                evidence_ids=(evidence_id,),
+            )
+            created = await execute_task_action(session, request)
+            retried = await execute_task_action(session, request)
+            task = await session.get(SalesTask, created.task_id)
+            attempts = (await session.scalars(
+                select(AutonomousTaskExecution).where(AutonomousTaskExecution.lead_id == lead.id)
+            )).all()
+            assert created.execution_status == "CREATED" and task is not None
+            assert task.created_by_agent is True and task.agent_source_id == plan.id
+            assert retried.execution_status == "ALREADY_EXISTS" and retried.existing_task_id == task.id
+            assert len(attempts) == 2
+            assert {attempt.execution_status for attempt in attempts} == {"CREATED", "ALREADY_EXISTS"}
+            assert all(attempt.task_id == task.id for attempt in attempts)
+            assert await session.scalar(
+                select(func.count()).select_from(AgentPolicyEvaluation).where(AgentPolicyEvaluation.lead_id == lead.id)
+            ) == 1
+    finally:
+        if lead_id is not None:
+            async with factory() as session:
+                await session.execute(delete(Lead).where(Lead.id == lead_id))
                 await session.commit()
         await engine.dispose()
 

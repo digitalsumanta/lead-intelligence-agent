@@ -84,7 +84,7 @@ async def _validate_relationships(session: AsyncSession, lead_id: UUID, activity
             raise SalesTaskError("OUTREACH_NOT_FOUND", "Related outreach artifact does not belong to this lead", 422)
 
 
-async def create_task(session: AsyncSession, lead_id: UUID, body: SalesTaskCreate) -> SalesTask:
+async def create_task(session: AsyncSession, lead_id: UUID, body: SalesTaskCreate, *, commit: bool = True) -> SalesTask:
     if body.seo_opportunity_id is not None:
         # Resolve against current persisted SEO data under a lead lock. This branch
         # only runs after the user explicitly submits the existing task form.
@@ -114,14 +114,20 @@ async def create_task(session: AsyncSession, lead_id: UUID, body: SalesTaskCreat
         fields = body.model_dump(exclude={"seo_opportunity_id", "related_activity_id"})
         task = SalesTask(lead_id=lead_id, related_activity_id=activity.id, **fields)
         session.add(task)
-        await session.commit()
-        await session.refresh(task)
+        if commit:
+            await session.commit()
+            await session.refresh(task)
+        else:
+            await session.flush()
         return task
     await _validate_relationships(session, lead_id, body.related_activity_id, body.related_outreach_artifact_id)
     task = SalesTask(lead_id=lead_id, **body.model_dump(exclude={"seo_opportunity_id"}))
     session.add(task)
-    await session.commit()
-    await session.refresh(task)
+    if commit:
+        await session.commit()
+        await session.refresh(task)
+    else:
+        await session.flush()
     return task
 
 

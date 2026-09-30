@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { api, ApiError, SalesSupervisorRun, SalesSupervisorHistory } from "@/lib/api";
+import { api, ApiError, SalesSupervisorRun, SalesSupervisorHistory, SupervisorTaskExecutionSummary, TaskAgentExecution, TaskAgentExecutionHistory } from "@/lib/api";
 
 const card = "rounded-xl border border-slate-200 bg-white p-5 shadow-sm";
 const label = "text-sm text-slate-500";
@@ -15,6 +15,7 @@ function freshness(run: SalesSupervisorRun) {
 export default function SalesSupervisorPage() {
   const [run, setRun] = useState<SalesSupervisorRun | null>(null);
   const [history, setHistory] = useState<SalesSupervisorRun[]>([]);
+  const [executions, setExecutions] = useState<TaskAgentExecution[]>([]);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
@@ -27,8 +28,10 @@ export default function SalesSupervisorPage() {
         api<SalesSupervisorRun | null>("/api/sales-supervisor/current"),
         api<SalesSupervisorHistory>("/api/sales-supervisor/history?limit=20"),
       ]);
+      const taskRuns = await api<TaskAgentExecutionHistory>("/api/agent/tasks/executions?limit=30");
       setRun(current);
       setHistory(past.items);
+      setExecutions(taskRuns.items);
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : "Sales Supervisor data could not be loaded.");
     } finally {
@@ -62,6 +65,20 @@ export default function SalesSupervisorPage() {
       setRun(await api<SalesSupervisorRun>(`/api/sales-supervisor/history/${encodeURIComponent(runId)}`));
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : "That supervisor run could not be loaded.");
+    }
+  }
+
+  async function executeTasks() {
+    setRunning(true);
+    setError("");
+    try {
+      await api<SupervisorTaskExecutionSummary>("/api/sales-supervisor/tasks/execute", { method: "POST" });
+      const taskRuns = await api<TaskAgentExecutionHistory>("/api/agent/tasks/executions?limit=30");
+      setExecutions(taskRuns.items);
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.message : "Internal task execution could not complete.");
+    } finally {
+      setRunning(false);
     }
   }
 
@@ -137,6 +154,12 @@ export default function SalesSupervisorPage() {
       </>}
 
       <section className="mt-8" aria-labelledby="history-title"><h2 id="history-title" className="text-lg font-bold text-ink">Run history</h2>{history.length === 0 ? <p className="mt-2 text-sm text-slate-500">No saved runs.</p> : <ul className="mt-3 divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white">{history.map((item) => <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 p-4 text-sm"><span>{new Date(item.created_at).toLocaleString()} · {item.status} · {freshness(item)}</span><button onClick={() => void openHistoricalRun(item.id)} className="font-mono text-xs text-teal underline">Inspect {item.id.slice(0, 8)}</button></li>)}</ul>}</section>
+
+      <section className={`${card} mt-8`} aria-labelledby="task-agent-title">
+        <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 id="task-agent-title" className="text-lg font-bold text-ink">Task Agent</h2><p className="mt-1 text-sm text-slate-600">This creates internal sales tasks only. It does not contact prospects.</p></div><button onClick={() => void executeTasks()} disabled={running || loading || !run?.result} className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{running ? "Processing…" : "Run approved internal tasks"}</button></div>
+        <p className="mt-2 text-xs text-slate-500">Each source action is revalidated against current evidence and policy. Denied, stale, and human-approval-required actions do not create tasks.</p>
+        {executions.length === 0 ? <p className="mt-4 text-sm text-slate-500">No Task Agent executions recorded.</p> : <ul className="mt-4 divide-y divide-slate-100">{executions.map((item) => <li key={item.execution_id} className="grid gap-1 py-3 text-sm sm:grid-cols-[1fr_auto]"><div><p className="font-semibold text-ink">{item.action_type.replaceAll("_", " ")} · {item.execution_status.replaceAll("_", " ")}</p><p className="text-xs text-slate-500">Policy: {item.policy_decision || "Not evaluated"} · Execution: {item.created ? "Internal task created" : "No task created"}</p>{item.task_id && <p className="font-mono text-xs text-slate-500">Task {item.task_id}</p>}{item.execution_status === "REQUIRES_HUMAN_APPROVAL" && <p className="text-xs text-amber-700">Human approval required — task not created.</p>}{item.execution_status === "DENIED" && <p className="text-xs text-rose-700">Policy denied — task not created.</p>}{item.execution_status === "STALE_CONTEXT" && <p className="text-xs text-amber-700">Context changed — refresh supervisor recommendation.</p>}<p className="text-xs text-slate-500">{item.reason}</p></div><Link href={`/leads/${encodeURIComponent(item.lead_id)}`} className="text-xs font-semibold text-teal underline">Open lead</Link></li>)}</ul>}
+      </section>
     </main>
   );
 }
