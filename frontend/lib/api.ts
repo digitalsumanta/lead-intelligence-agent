@@ -218,6 +218,28 @@ export type ActionPlan = {
   error_code: string | null; error_message: string | null; created_at: string; updated_at: string;
 };
 export type ActionPlanHistory = { items: ActionPlan[] };
+export type ProposalItem = { item_type: string; text: string; evidence_refs: string[] };
+export type ProposalService = { service_id: string; evidence_refs: string[] };
+export type ProposalOpportunityEvidence = { opportunity_id: string; label: string; evidence_refs: string[] };
+export type ProposalCommercialReference = { evidence_ref: string; label: string; display_value: string };
+export type ProposalBrief = {
+  lead_id: string; proposal_type: "SEO_REVIEW" | "WEBSITE_IMPROVEMENT" | "COMMERCIAL_REVIEW" | "GENERAL_REVIEW";
+  executive_summary: string; identified_needs: ProposalItem[]; recommended_services: ProposalService[];
+  opportunity_evidence: ProposalOpportunityEvidence[]; proposed_scope: ProposalItem[];
+  deliverables: string[]; assumptions: string[]; exclusions: string[]; timeline_guidance: string;
+  commercial_context: ProposalCommercialReference[]; missing_information: ProposalItem[];
+  evidence_refs: string[]; review_notes: string[];
+};
+export type ProposalIntelligence = {
+  id: string; lead_id: string; contract_version: "ai-proposal-intelligence-v1";
+  prompt_version: "ai-proposal-intelligence-prompt-v1"; context_version: "ai-sales-context-v1";
+  provider: string; model: string; status: "validated" | "failed"; source_fingerprint: string;
+  is_stale: boolean; is_current: boolean; proposal_brief: ProposalBrief | null;
+  evidence_catalog: AISalesEvidenceCatalogEntry[]; evidence_refs: string[];
+  usage_metadata: Record<string, unknown>; error_code: string | null; error_message: string | null;
+  created_at: string; updated_at: string;
+};
+export type ProposalIntelligenceHistory = { items: ProposalIntelligence[] };
 
 export type CommercialRecord = {
   lead_id: string; sales_status: SalesStatus; estimated_value: string | null;

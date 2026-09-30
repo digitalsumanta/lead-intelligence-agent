@@ -40,6 +40,7 @@ from app.schemas.seo_opportunities import SeoSalesOpportunityList
 from app.schemas.ai_sales_intelligence import AISalesIntelligenceHistoryOut, AISalesIntelligenceOut
 from app.schemas.ai_sales_copilot import CopilotAsk, CopilotHistoryOut, CopilotInteractionOut
 from app.schemas.ai_sales_action_planner import ActionPlanHistoryOut, ActionPlanOut
+from app.schemas.ai_proposal_intelligence import ProposalIntelligenceHistoryOut, ProposalIntelligenceOut
 from app.services.lead_intelligence_api import read_intelligence_summary, read_lead_intelligence
 from app.services.csv_import import import_csv
 from app.services.jobs import create_job, update_batch_status
@@ -75,6 +76,9 @@ from app.services.ai_sales_intelligence import (
 from app.services.ai_sales_copilot import ai_sales_copilot_history, ask_ai_sales_copilot
 from app.services.ai_sales_action_planner import (
     action_plan_by_id, action_plan_history, current_action_plan, generate_action_plan,
+)
+from app.services.ai_proposal_intelligence import (
+    current_proposal, generate_proposal, proposal_by_id, proposal_history,
 )
 
 configure_logging()
@@ -1105,6 +1109,66 @@ async def get_lead_ai_sales_action_plan_artifact(
     if artifact is None:
         raise HTTPException(404, detail={"code": "AI_SALES_ACTION_PLAN_NOT_FOUND", "message": "Action plan not found for this lead"})
     return _ai_sales_action_plan_payload(artifact, fingerprint)
+
+
+def _ai_proposal_intelligence_payload(artifact, fingerprint: str) -> ProposalIntelligenceOut:
+    stale = artifact.source_fingerprint != fingerprint
+    return ProposalIntelligenceOut(
+        id=artifact.id, lead_id=artifact.lead_id,
+        contract_version=artifact.contract_version, prompt_version=artifact.prompt_version,
+        context_version=artifact.context_version, provider=artifact.provider, model=artifact.model,
+        status=artifact.status, source_fingerprint=artifact.source_fingerprint,
+        is_stale=stale, is_current=not stale and artifact.status == "validated",
+        proposal_brief=artifact.proposal_brief,
+        evidence_catalog=tuple(artifact.evidence_catalog or ()),
+        evidence_refs=tuple(artifact.evidence_refs or ()),
+        usage_metadata=artifact.usage_metadata or {}, error_code=artifact.error_code,
+        error_message=artifact.error_message, created_at=artifact.created_at,
+        updated_at=artifact.updated_at,
+    )
+
+
+@app.post("/api/leads/{lead_id}/ai-proposal", response_model=ProposalIntelligenceOut, status_code=201)
+async def create_lead_ai_proposal(lead_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    try:
+        artifact = await generate_proposal(db, lead_id)
+        _, current_fingerprint = await proposal_history(db, lead_id, limit=1)
+        return _ai_proposal_intelligence_payload(artifact, current_fingerprint)
+    except LookupError as error:
+        raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": str(error)}) from None
+
+
+@app.get("/api/leads/{lead_id}/ai-proposal", response_model=ProposalIntelligenceOut | None)
+async def get_lead_ai_proposal(lead_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    try:
+        artifact, fingerprint = await current_proposal(db, lead_id)
+    except LookupError as error:
+        raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": str(error)}) from None
+    return _ai_proposal_intelligence_payload(artifact, fingerprint) if artifact else None
+
+
+@app.get("/api/leads/{lead_id}/ai-proposal/history", response_model=ProposalIntelligenceHistoryOut)
+async def get_lead_ai_proposal_history(
+    lead_id: uuid.UUID, limit: int = Query(50, ge=1, le=100), db: AsyncSession = Depends(get_db),
+):
+    try:
+        rows, fingerprint = await proposal_history(db, lead_id, limit)
+    except LookupError as error:
+        raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": str(error)}) from None
+    return {"items": [_ai_proposal_intelligence_payload(item, fingerprint) for item in rows]}
+
+
+@app.get("/api/leads/{lead_id}/ai-proposal/history/{artifact_id}", response_model=ProposalIntelligenceOut)
+async def get_lead_ai_proposal_artifact(
+    lead_id: uuid.UUID, artifact_id: uuid.UUID, db: AsyncSession = Depends(get_db),
+):
+    try:
+        artifact, fingerprint = await proposal_by_id(db, lead_id, artifact_id)
+    except LookupError as error:
+        raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": str(error)}) from None
+    if artifact is None:
+        raise HTTPException(404, detail={"code": "AI_PROPOSAL_NOT_FOUND", "message": "Proposal intelligence artifact not found for this lead"})
+    return _ai_proposal_intelligence_payload(artifact, fingerprint)
 
 
 @app.get("/api/leads/{lead_id}/seo/opportunities", response_model=SeoSalesOpportunityList)
