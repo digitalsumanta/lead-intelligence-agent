@@ -9,6 +9,7 @@ import AISalesIntelligence from "./ai-sales-intelligence";
 import AISalesCopilot from "./ai-sales-copilot";
 import AISalesActionPlanner from "./ai-sales-action-planner";
 import AIProposalIntelligence from "./ai-proposal-intelligence";
+import AgentPolicy from "./agent-policy";
 
 const NEXT_SALES_STATUS: Record<SalesStatus, SalesStatus[]> = {
   NEW: ["QUALIFIED", "CONTACTED", "LOST"], QUALIFIED: ["CONTACTED", "LOST"],
@@ -602,6 +603,7 @@ export default function LeadDetailPage() {
       <AISalesCopilot leadId={id} />
       <AISalesActionPlanner leadId={id} onTaskCreated={() => setTaskRefreshKey((key) => key + 1)} />
       <AIProposalIntelligence leadId={id} onTaskCreated={() => setTaskRefreshKey((key) => key + 1)} />
+      <AgentPolicy leadId={id} />
 
       {intelligenceState !== "error" && <>
       <section id="opportunities" className="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">

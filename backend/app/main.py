@@ -41,6 +41,7 @@ from app.schemas.ai_sales_intelligence import AISalesIntelligenceHistoryOut, AIS
 from app.schemas.ai_sales_copilot import CopilotAsk, CopilotHistoryOut, CopilotInteractionOut
 from app.schemas.ai_sales_action_planner import ActionPlanHistoryOut, ActionPlanOut
 from app.schemas.ai_proposal_intelligence import ProposalIntelligenceHistoryOut, ProposalIntelligenceOut
+from app.schemas.agent_policy import PolicyEvaluationHistory, PolicyEvaluationOut, PolicyEvaluationRequest
 from app.services.lead_intelligence_api import read_intelligence_summary, read_lead_intelligence
 from app.services.csv_import import import_csv
 from app.services.jobs import create_job, update_batch_status
@@ -80,6 +81,7 @@ from app.services.ai_sales_action_planner import (
 from app.services.ai_proposal_intelligence import (
     current_proposal, generate_proposal, proposal_by_id, proposal_history,
 )
+from app.services.agent_policy import evaluate_policy, policy_history
 
 configure_logging()
 
@@ -1169,6 +1171,26 @@ async def get_lead_ai_proposal_artifact(
     if artifact is None:
         raise HTTPException(404, detail={"code": "AI_PROPOSAL_NOT_FOUND", "message": "Proposal intelligence artifact not found for this lead"})
     return _ai_proposal_intelligence_payload(artifact, fingerprint)
+
+
+@app.post("/api/leads/{lead_id}/agent-policy/evaluate", response_model=PolicyEvaluationOut, status_code=201)
+async def evaluate_lead_agent_policy(
+    lead_id: uuid.UUID, body: PolicyEvaluationRequest, db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await evaluate_policy(db, lead_id, body)
+    except LookupError as error:
+        raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": str(error)}) from None
+
+
+@app.get("/api/leads/{lead_id}/agent-policy/history", response_model=PolicyEvaluationHistory)
+async def get_lead_agent_policy_history(
+    lead_id: uuid.UUID, limit: int = Query(50, ge=1, le=100), db: AsyncSession = Depends(get_db),
+):
+    try:
+        return {"items": await policy_history(db, lead_id, limit)}
+    except LookupError as error:
+        raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": str(error)}) from None
 
 
 @app.get("/api/leads/{lead_id}/seo/opportunities", response_model=SeoSalesOpportunityList)

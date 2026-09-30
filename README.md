@@ -175,3 +175,10 @@ Migration `0017_ai_sales_copilot` adds append-only, lead-scoped interaction hist
 ## Current limitations
 
 Provider adapters currently support Ollama, Gemini, and generic OpenAI-compatible chat completions. Provider request controls support API-key leases and typed retries, but `api_keys.key` is still stored as plaintext in PostgreSQL; use only trusted credentials until encrypted storage or a secret-manager reference is implemented. API bearer-token auth is a lightweight local gate, not multi-user or production-grade authentication. Website requests resolve and pin a validated public destination per request, then repeat validation for redirects. Reports and settings pages are not implemented.
+## Phase 10A: Agent Policy Engine
+
+The authenticated `POST /api/leads/{lead_id}/agent-policy/evaluate` endpoint evaluates a strict structured action request against the current deterministic Phase 9A context. It records an append-only decision; `GET /api/leads/{lead_id}/agent-policy/history` reads those audit records. Policy evaluation never creates tasks, sends outreach, changes sales stages, or invokes an AI provider.
+
+Policy version `agent-policy-v1` returns `ALLOW`, `DENY`, or `REQUIRE_HUMAN_APPROVAL`. Review actions can be allowed when their current evidence references validate. Follow-up and call actions are always `HUMAN_ONLY` and require explicit human approval; opt-outs, terminal sales states, duplicate active tasks, and recent-contact cooldowns deny the request. The cooldown is server-side and configurable with `AGENT_CONTACT_COOLDOWN_MINUTES` (default: 1440). Channel opt-out booleans (`email_opted_out`, `whatsapp_opted_out`, `phone_opted_out`) default to false and are administrative state; evaluation requests cannot set or override them.
+
+Migration `0020_agent_policy_evaluations` adds the policy audit table and those opt-out fields. The lead detail page displays the latest recorded decision read-only; it has no evaluation or execution control.

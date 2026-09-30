@@ -218,6 +218,15 @@ export type ActionPlan = {
   error_code: string | null; error_message: string | null; created_at: string; updated_at: string;
 };
 export type ActionPlanHistory = { items: ActionPlan[] };
+export type AgentPolicyDecision = "ALLOW" | "DENY" | "REQUIRE_HUMAN_APPROVAL";
+export type AgentPolicyEvaluation = {
+  evaluation_id: string; lead_id: string; action_type: string; requested_channel: string | null;
+  decision: AgentPolicyDecision; reason: string; evidence_ids: string[]; opportunity_ids: string[];
+  service_ids: string[]; policy_version: "agent-policy-v1"; autonomy_level: "HUMAN_ONLY" | "ASSISTED" | "SUPERVISED" | "AUTONOMOUS";
+  source_fingerprint: string | null; request_fingerprint: string; requested_by: string;
+  rule_results: { rule: string; passed: boolean; result: string; reason: string }[]; evaluated_at: string;
+};
+export type AgentPolicyHistory = { items: AgentPolicyEvaluation[] };
 export type ProposalItem = { item_type: string; text: string; evidence_refs: string[] };
 export type ProposalService = { service_id: string; evidence_refs: string[] };
 export type ProposalOpportunityEvidence = { opportunity_id: string; label: string; evidence_refs: string[] };

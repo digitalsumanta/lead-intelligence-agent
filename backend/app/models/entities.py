@@ -92,6 +92,9 @@ class Lead(Base):
     website: Mapped[str | None] = mapped_column(String(1000))
     phone: Mapped[str | None] = mapped_column(String(80))
     email: Mapped[str | None] = mapped_column(String(320))
+    email_opted_out: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
+    whatsapp_opted_out: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
+    phone_opted_out: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
     address: Mapped[str | None] = mapped_column(String(500))
     city: Mapped[str | None] = mapped_column(String(120))
     state: Mapped[str | None] = mapped_column(String(120))
@@ -785,6 +788,38 @@ class AiProposalIntelligence(Base):
     error_message: Mapped[str | None] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+
+
+class AgentPolicyEvaluation(Base):
+    """Append-only audit record for deterministic policy decisions."""
+
+    __tablename__ = "agent_policy_evaluations"
+    __table_args__ = (
+        CheckConstraint("action_type IN ('FOLLOW_UP','CALL_PROSPECT','REVIEW_SEO_OPPORTUNITY','REVIEW_OUTREACH','PREPARE_PROPOSAL','INVESTIGATE_MISSING_INFORMATION','REVIEW_COMMERCIAL_CONTEXT')", name="ck_agent_policy_action"),
+        CheckConstraint("decision IN ('ALLOW','DENY','REQUIRE_HUMAN_APPROVAL')", name="ck_agent_policy_decision"),
+        CheckConstraint("autonomy_level IN ('HUMAN_ONLY','ASSISTED','SUPERVISED','AUTONOMOUS')", name="ck_agent_policy_autonomy"),
+        CheckConstraint("requested_channel IS NULL OR requested_channel IN ('EMAIL','WHATSAPP','PHONE')", name="ck_agent_policy_channel"),
+        Index("ix_agent_policy_evaluations_lead_created", "lead_id", "created_at"),
+        Index("ix_agent_policy_evaluations_request_fingerprint", "request_fingerprint"),
+        ForeignKeyConstraint(["lead_id"], ["leads.id"], name="fk_agent_policy_evaluations_lead", ondelete="CASCADE"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lead_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    action_type: Mapped[str] = mapped_column(String(60), nullable=False)
+    requested_channel: Mapped[str | None] = mapped_column(String(20))
+    decision: Mapped[str] = mapped_column(String(30), nullable=False)
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    evidence_refs: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    opportunity_refs: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    service_refs: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    policy_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    autonomy_level: Mapped[str] = mapped_column(String(30), nullable=False)
+    source_fingerprint: Mapped[str | None] = mapped_column(String(64))
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    requested_by: Mapped[str] = mapped_column(String(80), nullable=False)
+    rule_results: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
 
 
 class SeoAuditRun(Base):

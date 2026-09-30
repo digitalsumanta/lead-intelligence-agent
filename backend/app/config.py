@@ -62,6 +62,7 @@ class Settings(BaseSettings):
     outreach_whatsapp_phone_number_id: str = ""
     outreach_whatsapp_enabled: bool = False
     api_auth_token: str = ""
+    agent_contact_cooldown_minutes: int = Field(default=1440, ge=0, le=525600)
 
     @property
     def cors_origin_list(self) -> list[str]:
