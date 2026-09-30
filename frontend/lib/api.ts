@@ -250,6 +250,45 @@ export type ProposalIntelligence = {
 };
 export type ProposalIntelligenceHistory = { items: ProposalIntelligence[] };
 
+export type SalesSupervisorUrgency = "LOW" | "MEDIUM" | "HIGH";
+export type SalesSupervisorAttention =
+  | "FOLLOW_UP_DUE" | "FOLLOW_UP_OVERDUE" | "RECENT_OUTREACH"
+  | "OUTREACH_RESPONSE_PENDING" | "PROPOSAL_REVIEW" | "SEO_OPPORTUNITY"
+  | "MISSING_INFORMATION" | "COMMERCIAL_REVIEW" | "STALE_INTELLIGENCE"
+  | "POLICY_BLOCKED" | "HUMAN_APPROVAL_REQUIRED" | "NO_ACTION_REQUIRED";
+export type SalesSupervisorFinding = {
+  finding_id: string; lead_id: string; attention_type: SalesSupervisorAttention;
+  urgency: SalesSupervisorUrgency; title: string; summary: string; rationale: string;
+  evidence_ids: string[]; action_type: PlannerActionType | null;
+  action_priority: SalesSupervisorUrgency; opportunity_ids: string[]; service_ids: string[];
+  missing_information: string[]; policy_decision: AgentPolicyDecision | null;
+  autonomy_level: "HUMAN_ONLY" | "ASSISTED" | "SUPERVISED" | "AUTONOMOUS" | null;
+  review_required: boolean;
+};
+export type SalesSupervisorResult = {
+  artifact_version: "ai-sales-supervisor-v1";
+  prompt_version: "ai-sales-supervisor-prompt-v1";
+  context_version: "ai-sales-context-v1"; generated_at: string;
+  context_fingerprint: string; findings: SalesSupervisorFinding[];
+  pipeline_summary: {
+    pipeline_total_leads: number; total_leads_reviewed: number; leads_needing_attention: number;
+    overdue_followups: number; followups_due: number; proposal_reviews: number;
+    seo_opportunity_reviews: number; missing_information_cases: number;
+    policy_blocked_cases: number; human_approval_cases: number;
+  };
+  review_notes: string[]; evidence_refs: string[]; usage: Record<string, unknown>;
+};
+export type SalesSupervisorRun = {
+  id: string; lead_id: string | null; scope: "PIPELINE" | "LEAD";
+  status: "COMPLETED" | "FAILED"; artifact_version: "ai-sales-supervisor-v1";
+  prompt_version: "ai-sales-supervisor-prompt-v1"; context_version: "ai-sales-context-v1";
+  context_fingerprint: string; result: SalesSupervisorResult | null; evidence_refs: string[];
+  usage: Record<string, unknown>; provider: string; model: string; error_code: string | null;
+  error_message: string | null; is_current: boolean; is_stale: boolean;
+  created_at: string; updated_at: string;
+};
+export type SalesSupervisorHistory = { items: SalesSupervisorRun[] };
+
 export type CommercialRecord = {
   lead_id: string; sales_status: SalesStatus; estimated_value: string | null;
   proposal_value: string | null; negotiation_value: string | null; won_value: string | null;

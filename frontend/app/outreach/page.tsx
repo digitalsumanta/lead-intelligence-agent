@@ -52,6 +52,7 @@ export default function OutreachPerformancePage() {
         <nav className="flex gap-2 text-sm">
           <Link href="/leads" className="rounded-lg border border-slate-300 px-4 py-2 font-semibold">Leads</Link>
           <Link href="/revenue" className="rounded-lg border border-slate-300 px-4 py-2 font-semibold">Revenue</Link>
+          <Link href="/sales/supervisor" className="rounded-lg border border-slate-300 px-4 py-2 font-semibold">Sales Supervisor</Link>
         </nav>
       </header>
 

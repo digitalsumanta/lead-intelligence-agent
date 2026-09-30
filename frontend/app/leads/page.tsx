@@ -111,6 +111,7 @@ export default function LeadsDashboard() {
         <div className="flex items-center gap-3 text-sm">
           <Link href="/outreach" className="rounded-lg border border-slate-300 bg-white px-4 py-2 font-semibold text-teal hover:bg-slate-50">Outreach</Link>
           <Link href="/leads/tasks" className="rounded-lg border border-slate-300 bg-white px-4 py-2 font-semibold text-teal hover:bg-slate-50">Sales tasks</Link>
+          <Link href="/sales/supervisor" className="rounded-lg border border-slate-300 bg-white px-4 py-2 font-semibold text-teal hover:bg-slate-50">Sales supervisor</Link>
           <span className="rounded-full bg-white px-3 py-1.5 text-slate-500 ring-1 ring-slate-200">API-backed · read-only</span>
           <button onClick={() => void load()} disabled={loading} className="rounded-lg border border-slate-300 bg-white px-4 py-2 font-semibold text-ink hover:bg-slate-50 disabled:opacity-50">
             {loading ? "Refreshing…" : "Refresh"}

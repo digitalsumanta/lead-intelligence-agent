@@ -42,6 +42,7 @@ from app.schemas.ai_sales_copilot import CopilotAsk, CopilotHistoryOut, CopilotI
 from app.schemas.ai_sales_action_planner import ActionPlanHistoryOut, ActionPlanOut
 from app.schemas.ai_proposal_intelligence import ProposalIntelligenceHistoryOut, ProposalIntelligenceOut
 from app.schemas.agent_policy import PolicyEvaluationHistory, PolicyEvaluationOut, PolicyEvaluationRequest
+from app.schemas.ai_sales_supervisor import SupervisorRunHistory, SupervisorRunOut, SupervisorRunRequest
 from app.services.lead_intelligence_api import read_intelligence_summary, read_lead_intelligence
 from app.services.csv_import import import_csv
 from app.services.jobs import create_job, update_batch_status
@@ -82,6 +83,10 @@ from app.services.ai_proposal_intelligence import (
     current_proposal, generate_proposal, proposal_by_id, proposal_history,
 )
 from app.services.agent_policy import evaluate_policy, policy_history
+from app.services.ai_sales_supervisor import (
+    build_pipeline_context, current_supervisor_run, run_supervisor, run_to_output,
+    supervisor_history, supervisor_run_by_id,
+)
 
 configure_logging()
 
@@ -1191,6 +1196,37 @@ async def get_lead_agent_policy_history(
         return {"items": await policy_history(db, lead_id, limit)}
     except LookupError as error:
         raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": str(error)}) from None
+
+
+@app.post("/api/sales-supervisor/run", response_model=SupervisorRunOut, status_code=201)
+async def create_sales_supervisor_run(
+    body: SupervisorRunRequest, db: AsyncSession = Depends(get_db),
+):
+    run = await run_supervisor(db)
+    _, _, current_fingerprint = await build_pipeline_context(db)
+    return run_to_output(run, current_fingerprint)
+
+
+@app.get("/api/sales-supervisor/current", response_model=SupervisorRunOut | None)
+async def get_current_sales_supervisor_run(db: AsyncSession = Depends(get_db)):
+    run, fingerprint = await current_supervisor_run(db)
+    return run_to_output(run, fingerprint) if run else None
+
+
+@app.get("/api/sales-supervisor/history", response_model=SupervisorRunHistory)
+async def get_sales_supervisor_history(
+    limit: int = Query(20, ge=1, le=50), db: AsyncSession = Depends(get_db),
+):
+    rows, fingerprint = await supervisor_history(db, limit)
+    return {"items": [run_to_output(row, fingerprint) for row in rows]}
+
+
+@app.get("/api/sales-supervisor/history/{run_id}", response_model=SupervisorRunOut)
+async def get_sales_supervisor_run(run_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    run, fingerprint = await supervisor_run_by_id(db, run_id)
+    if run is None:
+        raise HTTPException(404, detail={"code": "SUPERVISOR_RUN_NOT_FOUND", "message": "Sales Supervisor run not found"})
+    return run_to_output(run, fingerprint)
 
 
 @app.get("/api/leads/{lead_id}/seo/opportunities", response_model=SeoSalesOpportunityList)

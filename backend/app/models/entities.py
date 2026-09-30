@@ -822,6 +822,40 @@ class AgentPolicyEvaluation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
 
 
+class AiSalesSupervisorRun(Base):
+    """Append-only provider-assisted supervisor result for a bounded pipeline snapshot."""
+
+    __tablename__ = "ai_sales_supervisor_runs"
+    __table_args__ = (
+        CheckConstraint("scope IN ('PIPELINE','LEAD')", name="ck_ai_sales_supervisor_scope"),
+        CheckConstraint("(scope = 'PIPELINE' AND lead_id IS NULL) OR (scope = 'LEAD' AND lead_id IS NOT NULL)", name="ck_ai_sales_supervisor_scope_lead"),
+        CheckConstraint("status IN ('COMPLETED','FAILED')", name="ck_ai_sales_supervisor_status"),
+        Index("ix_ai_sales_supervisor_scope_created", "scope", "created_at"),
+        Index("ix_ai_sales_supervisor_lead_created", "lead_id", "created_at"),
+        Index("ix_ai_sales_supervisor_fingerprint", "context_fingerprint"),
+        ForeignKeyConstraint(["lead_id"], ["leads.id"], name="fk_ai_sales_supervisor_lead", ondelete="CASCADE"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lead_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    scope: Mapped[str] = mapped_column(String(20), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    artifact_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    context_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    context_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    result_json: Mapped[dict | None] = mapped_column(JSON)
+    evidence_refs: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    usage_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    scope_metadata: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    provider: Mapped[str] = mapped_column(String(80), nullable=False)
+    model: Mapped[str] = mapped_column(String(200), nullable=False)
+    error_code: Mapped[str | None] = mapped_column(String(80))
+    error_message: Mapped[str | None] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+
+
 class SeoAuditRun(Base):
     """Independently versioned, durable SEO audit for one lead website."""
 

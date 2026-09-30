@@ -4,7 +4,7 @@ import asyncio
 import pytest
 from sqlalchemy import text, delete
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
-from app.models import ApiKey, Lead, ProcessingJob, JobStatus
+from app.models import ApiKey, AiSalesSupervisorRun, Lead, ProcessingJob, JobStatus
 from app.services.key_pool import ApiKeyPool
 from app.services.jobs import claim_jobs
 
@@ -21,9 +21,9 @@ async def test_postgresql_schema_is_migrated_to_head():
     try:
         async with engine.connect() as connection:
             version = await connection.scalar(text("SELECT version_num FROM alembic_version"))
-            assert version == "0020_agent_policy_evaluations"
+            assert version == "0021_ai_sales_supervisor"
             tables = set(await connection.run_sync(lambda conn: __import__("sqlalchemy").inspect(conn).get_table_names()))
-            assert {"leads", "lead_processing_jobs", "lead_batches", "lead_events", "enrichment_runs", "evidence", "provider_operation_state", "personalizations", "personalization_evidence_links", "sales_activities", "outreach_artifacts", "outreach_executions", "outreach_provider_events", "sales_tasks", "sales_collections", "revenue_targets", "seo_audit_runs", "seo_observations", "seo_findings", "ai_sales_intelligence", "ai_sales_copilot", "ai_sales_action_plans", "ai_proposal_intelligence", "agent_policy_evaluations"}.issubset(tables)
+            assert {"leads", "lead_processing_jobs", "lead_batches", "lead_events", "enrichment_runs", "evidence", "provider_operation_state", "personalizations", "personalization_evidence_links", "sales_activities", "outreach_artifacts", "outreach_executions", "outreach_provider_events", "sales_tasks", "sales_collections", "revenue_targets", "seo_audit_runs", "seo_observations", "seo_findings", "ai_sales_intelligence", "ai_sales_copilot", "ai_sales_action_plans", "ai_proposal_intelligence", "agent_policy_evaluations", "ai_sales_supervisor_runs"}.issubset(tables)
             lead_columns = await connection.run_sync(lambda conn: {item["name"] for item in __import__("sqlalchemy").inspect(conn).get_columns("leads")})
             assert {"email_opted_out", "whatsapp_opted_out", "phone_opted_out"}.issubset(lead_columns)
             lead_indexes = await connection.run_sync(lambda conn: __import__("sqlalchemy").inspect(conn).get_indexes("leads"))
@@ -52,6 +52,44 @@ async def test_postgresql_schema_is_migrated_to_head():
             link_fks = await connection.run_sync(lambda conn: inspector(conn).get_foreign_keys("personalization_evidence_links"))
             assert {item["referred_table"] for item in link_fks} == {"personalizations", "evidence"}
     finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_postgresql_supervisor_run_persistence_and_history():
+    url = os.getenv("TEST_POSTGRES_URL")
+    if not url:
+        pytest.skip("Set TEST_POSTGRES_URL to an explicitly provisioned PostgreSQL database")
+    if not url.startswith("postgresql+asyncpg://"):
+        pytest.fail("TEST_POSTGRES_URL must use the asyncpg PostgreSQL dialect")
+    from types import SimpleNamespace
+    from app.services.ai_sales_supervisor import run_supervisor, supervisor_history
+
+    class EmptyProvider:
+        name = "integration-test"
+        model = "no-network"
+        async def generate(self, _request):
+            return SimpleNamespace(parsed_json={"findings": []}, usage=None, request_metadata=None)
+
+    engine = create_async_engine(url)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    run_ids = []
+    try:
+        async with factory() as session:
+            first = await run_supervisor(session, provider=EmptyProvider())
+            second = await run_supervisor(session, provider=EmptyProvider())
+            run_ids = [first.id, second.id]
+            rows, _ = await supervisor_history(session, limit=50)
+            assert first.status == second.status == "COMPLETED"
+            assert first.id != second.id
+            assert len([row for row in rows if row.id in set(run_ids)]) == 2
+            assert first.scope == second.scope == "PIPELINE"
+            assert first.lead_id is second.lead_id is None
+    finally:
+        if run_ids:
+            async with factory() as session:
+                await session.execute(delete(AiSalesSupervisorRun).where(AiSalesSupervisorRun.id.in_(run_ids)))
+                await session.commit()
         await engine.dispose()
 
 @pytest.mark.asyncio
