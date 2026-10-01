@@ -2,7 +2,7 @@
 import logging, uuid, hmac
 from datetime import date, datetime, timezone
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, UploadFile, File, HTTPException, Query, Request
+from fastapi import FastAPI, Depends, UploadFile, File, HTTPException, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -52,6 +52,7 @@ from app.schemas.ai_outreach_execution import (
     OutreachExecutionHistory as AiOutreachExecutionHistory,
     OutreachExecutionOut as AiOutreachExecutionOut,
 )
+from app.schemas.email_delivery_event import EmailDeliveryEventCreate, EmailDeliveryEventHistory, EmailDeliveryEventOut
 from app.services.lead_intelligence_api import read_intelligence_summary, read_lead_intelligence
 from app.services.csv_import import import_csv
 from app.services.jobs import create_job, update_batch_status
@@ -107,6 +108,7 @@ from app.services.ai_outreach_execution import (
     execute_approved_email, execution_by_id, execution_history_for_lead,
     execution_history_for_preparation,
 )
+from app.services.email_delivery_events import EmailDeliveryEventError, email_delivery_event_service
 
 configure_logging()
 
@@ -1385,6 +1387,29 @@ async def get_agent_outreach_execution(execution_id: uuid.UUID, db: AsyncSession
     if row is None:
         raise HTTPException(404, detail={"code": "EXECUTION_NOT_FOUND", "message": "Outreach execution not found"})
     return row
+
+
+@app.post("/api/email-delivery-events", response_model=EmailDeliveryEventOut)
+async def create_email_delivery_event(
+    body: EmailDeliveryEventCreate, response: Response, db: AsyncSession = Depends(get_db),
+):
+    try:
+        event, created = await email_delivery_event_service.record(db, body)
+    except EmailDeliveryEventError as error:
+        raise HTTPException(error.status_code, detail={"code": error.code, "message": str(error)}) from None
+    response.status_code = 201 if created else 200
+    return event
+
+
+@app.get(
+    "/api/outreach-executions/{execution_id}/delivery-events",
+    response_model=EmailDeliveryEventHistory,
+)
+async def list_email_delivery_events(execution_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    try:
+        return {"items": await email_delivery_event_service.history(db, execution_id)}
+    except EmailDeliveryEventError as error:
+        raise HTTPException(error.status_code, detail={"code": error.code, "message": str(error)}) from None
 
 
 @app.get("/api/agent/outreach/preparations/{preparation_id}/executions", response_model=AiOutreachExecutionHistory)

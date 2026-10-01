@@ -14,7 +14,7 @@ from app.config import settings
 from app.database import SCHEMA_REVISION, get_db
 from app.models import (
     AgentPolicyEvaluation, AiOutreachApproval, AiOutreachExecution,
-    AiOutreachPreparation, Lead, SalesActivity, SalesActivityType,
+    AiOutreachPreparation, EmailDeliveryEvent, Lead, SalesActivity, SalesActivityType,
     SalesTask, SalesTaskStatus,
 )
 from app.providers.outreach import OutreachProviderFailure
@@ -197,6 +197,10 @@ async def test_provider_timeout_is_uncertain_and_never_retried(session_factory):
     assert first.status == replay.status == "UNCERTAIN"
     assert first.failure_code == "PROVIDER_TIMEOUT"
     assert len(mailer.calls) == 1
+    async with session_factory() as session:
+        assert await session.scalar(select(func.count()).select_from(EmailDeliveryEvent).where(
+            EmailDeliveryEvent.execution_id == first.id,
+        )) == 0
 
 
 @pytest.mark.asyncio
@@ -211,6 +215,12 @@ async def test_provider_rejection_is_failed_and_never_automatically_retried(sess
     assert first.status == replay.status == "FAILED"
     assert first.failure_code == "PROVIDER_REJECTED"
     assert len(mailer.calls) == 1
+    async with session_factory() as session:
+        failed_event = await session.scalar(select(EmailDeliveryEvent).where(
+            EmailDeliveryEvent.execution_id == first.id,
+            EmailDeliveryEvent.event_type == "FAILED",
+        ))
+        assert failed_event is not None
 
 
 @pytest.mark.asyncio
@@ -270,6 +280,6 @@ def test_phase_10e_migration_is_reversible_and_models_match():
     migration = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(migration)
     assert (migration.revision, migration.down_revision) == ("0024_ai_outreach_executions", "0023_ai_outreach_preparations")
-    assert SCHEMA_REVISION == "0025_email_provider_status"
+    assert SCHEMA_REVISION == "0026_email_delivery_events"
     assert {"ai_outreach_approvals", "ai_outreach_executions"}.issubset(Base.metadata.tables)
     assert "UNIQUE" in str(Base.metadata.tables["ai_outreach_executions"].constraints).upper()

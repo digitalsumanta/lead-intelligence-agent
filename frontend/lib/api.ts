@@ -341,11 +341,18 @@ export type AgentOutreachExecution = {
   channel: "EMAIL"; recipient: string; subject: string; content_hash: string;
   context_fingerprint: string; execution_version: string; policy_evaluation_id: string;
   policy_decision: "ALLOW" | "DENY" | "REQUIRE_HUMAN_APPROVAL"; provider: string;
-  provider_message_id: string | null; status: AgentOutreachExecutionStatus;
+  provider_message_id: string | null; provider_status: string | null; status: AgentOutreachExecutionStatus;
   failure_code: string | null; failure_reason: string | null; idempotency_key: string;
   started_at: string; completed_at: string | null; created_at: string;
 };
 export type AgentOutreachExecutionHistory = { items: AgentOutreachExecution[] };
+export type EmailDeliveryEventType = "SENT" | "DELIVERED" | "BOUNCED" | "FAILED" | "COMPLAINED" | "UNSUBSCRIBED";
+export type EmailDeliveryEvent = {
+  id: string; execution_id: string; event_type: EmailDeliveryEventType; recipient_email: string;
+  provider_message_id: string | null; provider_event_id: string | null; provider_status: string | null;
+  occurred_at: string; recorded_at: string; source: "PROVIDER" | "INTERNAL";
+};
+export type EmailDeliveryEventHistory = { items: EmailDeliveryEvent[] };
 
 export function getOutreachApproval(preparationId: string): Promise<OutreachApproval | null> {
   return api<OutreachApproval | null>(`/api/agent/outreach/preparations/${encodeURIComponent(preparationId)}/approval`);
@@ -359,6 +366,10 @@ export function approveOutreachPreparation(preparationId: string): Promise<Outre
 
 export function getPreparationExecutions(preparationId: string): Promise<AgentOutreachExecutionHistory> {
   return api<AgentOutreachExecutionHistory>(`/api/agent/outreach/preparations/${encodeURIComponent(preparationId)}/executions`);
+}
+
+export function getEmailDeliveryEvents(executionId: string): Promise<EmailDeliveryEventHistory> {
+  return api<EmailDeliveryEventHistory>(`/api/outreach-executions/${encodeURIComponent(executionId)}/delivery-events`);
 }
 
 export function executeApprovedOutreach(approvalId: string): Promise<AgentOutreachExecution> {

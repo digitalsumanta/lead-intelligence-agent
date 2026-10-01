@@ -343,6 +343,6 @@ def test_migration_0023_remains_in_chain_and_matches_registered_model():
     migration = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(migration)
     assert (migration.revision, migration.down_revision) == ("0023_ai_outreach_preparations", "0022_autonomous_task_executions")
-    assert SCHEMA_REVISION == "0025_email_provider_status"
+    assert SCHEMA_REVISION == "0026_email_delivery_events"
     assert "ai_outreach_preparations" in Base.metadata.tables
     assert "SENT" not in str(Base.metadata.tables["ai_outreach_preparations"].constraints)

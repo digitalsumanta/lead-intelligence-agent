@@ -1019,6 +1019,40 @@ class AiOutreachExecution(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
 
 
+class EmailDeliveryEvent(Base):
+    """Append-only provider-neutral lifecycle fact for one email execution."""
+
+    __tablename__ = "email_delivery_events"
+    __table_args__ = (
+        CheckConstraint("event_type IN ('SENT','DELIVERED','BOUNCED','FAILED','COMPLAINED','UNSUBSCRIBED')", name="ck_email_delivery_events_type"),
+        CheckConstraint("source IN ('PROVIDER','INTERNAL')", name="ck_email_delivery_events_source"),
+        Index("ix_email_delivery_events_execution_occurred", "execution_id", "occurred_at", "id"),
+        Index("ix_email_delivery_events_type", "event_type"),
+        Index(
+            "uq_email_delivery_events_provider_id",
+            "execution_id", "source", "provider_event_id", unique=True,
+            postgresql_where=text("provider_event_id IS NOT NULL"),
+            sqlite_where=text("provider_event_id IS NOT NULL"),
+        ),
+        ForeignKeyConstraint(
+            ["execution_id"], ["ai_outreach_executions.id"],
+            name="fk_email_delivery_events_execution", ondelete="RESTRICT",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    execution_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    recipient_email: Mapped[str] = mapped_column(String(320), nullable=False)
+    provider_message_id: Mapped[str | None] = mapped_column(String(512))
+    provider_event_id: Mapped[str | None] = mapped_column(String(512))
+    provider_status: Mapped[str | None] = mapped_column(String(80))
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+    metadata_json: Mapped[dict | None] = mapped_column("metadata", JSON)
+    source: Mapped[str] = mapped_column(String(20), nullable=False)
+
+
 class SeoAuditRun(Base):
     """Independently versioned, durable SEO audit for one lead website."""
 

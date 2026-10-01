@@ -21,9 +21,11 @@ async def test_postgresql_schema_is_migrated_to_head():
     try:
         async with engine.connect() as connection:
             version = await connection.scalar(text("SELECT version_num FROM alembic_version"))
-            assert version == "0025_email_provider_status"
+            assert version == "0026_email_delivery_events"
             tables = set(await connection.run_sync(lambda conn: __import__("sqlalchemy").inspect(conn).get_table_names()))
-            assert {"leads", "lead_processing_jobs", "lead_batches", "lead_events", "enrichment_runs", "evidence", "provider_operation_state", "personalizations", "personalization_evidence_links", "sales_activities", "outreach_artifacts", "outreach_executions", "outreach_provider_events", "sales_tasks", "sales_collections", "revenue_targets", "seo_audit_runs", "seo_observations", "seo_findings", "ai_sales_intelligence", "ai_sales_copilot", "ai_sales_action_plans", "ai_proposal_intelligence", "agent_policy_evaluations", "ai_sales_supervisor_runs", "autonomous_task_executions", "ai_outreach_preparations", "ai_outreach_approvals", "ai_outreach_executions"}.issubset(tables)
+            assert {"leads", "lead_processing_jobs", "lead_batches", "lead_events", "enrichment_runs", "evidence", "provider_operation_state", "personalizations", "personalization_evidence_links", "sales_activities", "outreach_artifacts", "outreach_executions", "outreach_provider_events", "sales_tasks", "sales_collections", "revenue_targets", "seo_audit_runs", "seo_observations", "seo_findings", "ai_sales_intelligence", "ai_sales_copilot", "ai_sales_action_plans", "ai_proposal_intelligence", "agent_policy_evaluations", "ai_sales_supervisor_runs", "autonomous_task_executions", "ai_outreach_preparations", "ai_outreach_approvals", "ai_outreach_executions", "email_delivery_events"}.issubset(tables)
+            event_foreign_keys = await connection.run_sync(lambda conn: __import__("sqlalchemy").inspect(conn).get_foreign_keys("email_delivery_events"))
+            assert any(item["constrained_columns"] == ["execution_id"] and item["referred_table"] == "ai_outreach_executions" for item in event_foreign_keys)
             execution_columns = await connection.run_sync(lambda conn: {item["name"] for item in __import__("sqlalchemy").inspect(conn).get_columns("ai_outreach_executions")})
             assert "provider_status" in execution_columns
             task_columns = await connection.run_sync(lambda conn: {item["name"] for item in __import__("sqlalchemy").inspect(conn).get_columns("sales_tasks")})
@@ -187,12 +189,14 @@ async def test_postgresql_human_approved_email_execution_is_single_attempt():
     from types import SimpleNamespace
     from app.domain.ai_outreach_preparation import OutreachPreparationRequest, PreparationChannel, PreparationSourceType
     from app.domain.ai_sales_action_planner import ActionPlanOutput, RecommendedAction, ActionType
-    from app.models import AiOutreachApproval, AiOutreachExecution, AiOutreachPreparation
+    from app.models import AiOutreachApproval, AiOutreachExecution, AiOutreachPreparation, EmailDeliveryEvent
     from app.providers.email import EmailProviderResult
+    from app.schemas.email_delivery_event import EmailDeliveryEventCreate
     from app.services.ai_outreach_execution import approve_preparation, execute_approved_email
     from app.services.ai_outreach_preparation import prepare_outreach
     from app.services.ai_sales_intelligence import AISalesContextBuilder
     from app.services.autonomous_task_agent import _plan_action_id
+    from app.services.email_delivery_events import email_delivery_event_service
 
     class SelectionProvider:
         name = "integration-test"
@@ -268,6 +272,19 @@ async def test_postgresql_human_approved_email_execution_is_single_attempt():
         async with factory() as session:
             replay = await execute_approved_email(session, approval.id, provider=email_provider)
             assert first.status == "SENT" and replay.id == first.id
+            events = await email_delivery_event_service.history(session, first.id)
+            assert [event.event_type for event in events] == ["SENT"]
+            delivered, created = await email_delivery_event_service.record(session, EmailDeliveryEventCreate(
+                execution_id=first.id, event_type="DELIVERED", provider_event_id="pg-delivered-event",
+                provider_status="delivered", source="PROVIDER",
+            ))
+            assert created and delivered.recipient_email == first.recipient
+            replayed, created = await email_delivery_event_service.record(session, EmailDeliveryEventCreate(
+                execution_id=first.id, event_type="DELIVERED", provider_event_id="pg-delivered-event",
+                provider_status="delivered", source="PROVIDER",
+            ))
+            assert not created and replayed.id == delivered.id
+            assert [event.event_type for event in await email_delivery_event_service.history(session, first.id)] == ["SENT", "DELIVERED"]
             assert await session.scalar(select(func.count()).select_from(AiOutreachApproval).where(AiOutreachApproval.lead_id == lead_id)) == 1
             assert await session.scalar(select(func.count()).select_from(AiOutreachExecution).where(AiOutreachExecution.lead_id == lead_id)) == 1
             assert await session.scalar(select(func.count()).select_from(AiOutreachPreparation).where(AiOutreachPreparation.lead_id == lead_id)) == 1
@@ -275,6 +292,9 @@ async def test_postgresql_human_approved_email_execution_is_single_attempt():
     finally:
         if lead_id is not None:
             async with factory() as session:
+                await session.execute(delete(EmailDeliveryEvent).where(EmailDeliveryEvent.execution_id.in_(
+                    select(AiOutreachExecution.id).where(AiOutreachExecution.lead_id == lead_id)
+                )))
                 await session.execute(delete(AiOutreachExecution).where(AiOutreachExecution.lead_id == lead_id))
                 await session.execute(delete(AiOutreachApproval).where(AiOutreachApproval.lead_id == lead_id))
                 await session.execute(delete(AiOutreachPreparation).where(AiOutreachPreparation.lead_id == lead_id))

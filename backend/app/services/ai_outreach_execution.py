@@ -25,6 +25,7 @@ from app.models import (
 from app.models.entities import now_utc
 from app.providers.outreach import OutreachProviderFailure
 from app.providers.email import EmailProviderResult, EmailSendRequest, resolve_email_provider
+from app.services.email_delivery_events import add_execution_delivery_event
 from app.schemas.agent_policy import PolicyChannel, PolicyDecision, PolicyEvaluationRequest
 from app.schemas.ai_outreach_execution import (
     APPROVAL_VERSION, EXECUTION_VERSION, OutreachApprovalOut, OutreachExecutionOut,
@@ -443,6 +444,9 @@ async def execute_approved_email(session: AsyncSession, approval_id: UUID, *, pr
             note=f"Human-approved Phase 10E email sent. Execution {execution.id}.",
             occurred_at=execution.completed_at,
         ))
+        add_execution_delivery_event(session, execution, "SENT")
+    elif execution.status == "FAILED":
+        add_execution_delivery_event(session, execution, "FAILED")
     await session.commit()
     await session.refresh(execution)
     return _execution_output(execution)

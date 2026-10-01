@@ -210,9 +210,9 @@ async def test_database_readiness_accepts_current_revision(monkeypatch):
         await connection.run_sync(Base.metadata.create_all)
         await connection.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)"))
         await connection.execute(
-            text("INSERT INTO alembic_version (version_num) VALUES ('0025_email_provider_status')")
+            text("INSERT INTO alembic_version (version_num) VALUES ('0026_email_delivery_events')")
         )
 
-    assert database.SCHEMA_REVISION == "0025_email_provider_status"
+    assert database.SCHEMA_REVISION == "0026_email_delivery_events"
     await database.verify_database_schema()
     await engine.dispose()
