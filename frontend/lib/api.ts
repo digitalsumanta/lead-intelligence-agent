@@ -327,6 +327,46 @@ export type OutreachPreparation = {
   policy_evaluation_id: string | null; validation_result: Record<string, unknown>; created_at: string;
 };
 
+export type OutreachApprovalStatus = "APPROVED" | "STALE";
+export type OutreachApproval = {
+  id: string; preparation_id: string; lead_id: string; status: OutreachApprovalStatus;
+  approved_by_user_id: string; channel: "EMAIL"; recipient: string;
+  context_fingerprint: string; preparation_version: string; content_hash: string;
+  approval_version: string; policy_evaluation_id: string;
+  policy_decision: "ALLOW" | "REQUIRE_HUMAN_APPROVAL"; approved_at: string;
+};
+export type AgentOutreachExecutionStatus = "EXECUTING" | "SENT" | "FAILED" | "UNCERTAIN" | "STALE" | "BLOCKED";
+export type AgentOutreachExecution = {
+  id: string; approval_id: string; preparation_id: string; lead_id: string;
+  channel: "EMAIL"; recipient: string; subject: string; content_hash: string;
+  context_fingerprint: string; execution_version: string; policy_evaluation_id: string;
+  policy_decision: "ALLOW" | "DENY" | "REQUIRE_HUMAN_APPROVAL"; provider: string;
+  provider_message_id: string | null; status: AgentOutreachExecutionStatus;
+  failure_code: string | null; failure_reason: string | null; idempotency_key: string;
+  started_at: string; completed_at: string | null; created_at: string;
+};
+export type AgentOutreachExecutionHistory = { items: AgentOutreachExecution[] };
+
+export function getOutreachApproval(preparationId: string): Promise<OutreachApproval | null> {
+  return api<OutreachApproval | null>(`/api/agent/outreach/preparations/${encodeURIComponent(preparationId)}/approval`);
+}
+
+export function approveOutreachPreparation(preparationId: string): Promise<OutreachApproval> {
+  return api<OutreachApproval>(`/api/agent/outreach/preparations/${encodeURIComponent(preparationId)}/approve`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),
+  });
+}
+
+export function getPreparationExecutions(preparationId: string): Promise<AgentOutreachExecutionHistory> {
+  return api<AgentOutreachExecutionHistory>(`/api/agent/outreach/preparations/${encodeURIComponent(preparationId)}/executions`);
+}
+
+export function executeApprovedOutreach(approvalId: string): Promise<AgentOutreachExecution> {
+  return api<AgentOutreachExecution>(`/api/agent/outreach/approvals/${encodeURIComponent(approvalId)}/execute`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),
+  });
+}
+
 export type CommercialRecord = {
   lead_id: string; sales_status: SalesStatus; estimated_value: string | null;
   proposal_value: string | null; negotiation_value: string | null; won_value: string | null;

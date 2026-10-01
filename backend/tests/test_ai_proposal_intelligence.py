@@ -272,4 +272,4 @@ def test_migration_and_schema_registration():
     assert (module.revision, module.down_revision) == ("0019_ai_proposal_intelligence", "0018_ai_sales_action_plans")
     table = Base.metadata.tables["ai_proposal_intelligence"]
     assert {"lead_id", "source_fingerprint", "proposal_brief", "evidence_refs", "created_at", "updated_at"}.issubset(table.columns.keys())
-    assert (SCHEMA_REVISION, module.revision) == ("0023_ai_outreach_preparations", "0019_ai_proposal_intelligence")
+    assert (SCHEMA_REVISION, module.revision) == ("0024_ai_outreach_executions", "0019_ai_proposal_intelligence")

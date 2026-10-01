@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.domain.ai_sales_intelligence import AIValidationError
 from app.models import (
-    AgentPolicyEvaluation, Lead, LeadStatus, OutreachExecution, SalesActivity, SalesActivityType,
+    AgentPolicyEvaluation, AiOutreachExecution, Lead, LeadStatus, OutreachExecution, SalesActivity, SalesActivityType,
     SalesTask, SalesTaskStatus, SalesTaskType,
 )
 from app.models.entities import now_utc
@@ -61,7 +61,12 @@ async def _latest_contact(session: AsyncSession, lead_id: UUID) -> datetime | No
         OutreachExecution.lead_id == lead_id,
         OutreachExecution.sent_at.is_not(None),
     ).order_by(OutreachExecution.sent_at.desc()).limit(1))
-    values = [value for value in (activity_time, sent_time) if value is not None]
+    phase_10e_sent_time = await session.scalar(select(AiOutreachExecution.completed_at).where(
+        AiOutreachExecution.lead_id == lead_id,
+        AiOutreachExecution.status == "SENT",
+        AiOutreachExecution.completed_at.is_not(None),
+    ).order_by(AiOutreachExecution.completed_at.desc()).limit(1))
+    values = [value for value in (activity_time, sent_time, phase_10e_sent_time) if value is not None]
     normalized = [value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value for value in values]
     return max(normalized) if normalized else None
 

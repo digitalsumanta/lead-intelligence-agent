@@ -947,6 +947,77 @@ class AiOutreachPreparation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
 
 
+class AiOutreachApproval(Base):
+    """Immutable human approval bound to one exact email preparation."""
+
+    __tablename__ = "ai_outreach_approvals"
+    __table_args__ = (
+        CheckConstraint("channel = 'EMAIL'", name="ck_ai_outreach_approvals_email_only"),
+        CheckConstraint("status IN ('APPROVED','REJECTED','STALE','CANCELLED')", name="ck_ai_outreach_approvals_status"),
+        CheckConstraint("policy_decision IN ('ALLOW','REQUIRE_HUMAN_APPROVAL')", name="ck_ai_outreach_approvals_policy_decision"),
+        Index("ix_ai_outreach_approvals_lead_created", "lead_id", "created_at"),
+        Index("uq_ai_outreach_approvals_id_lead", "id", "lead_id", unique=True),
+        Index("uq_ai_outreach_approvals_active_preparation", "preparation_id", unique=True,
+              postgresql_where=text("status = 'APPROVED'"), sqlite_where=text("status = 'APPROVED'")),
+        ForeignKeyConstraint(["preparation_id", "lead_id"], ["ai_outreach_preparations.id", "ai_outreach_preparations.lead_id"], name="fk_ai_outreach_approvals_preparation_lead", ondelete="CASCADE"),
+        ForeignKeyConstraint(["policy_evaluation_id"], ["agent_policy_evaluations.id"], name="fk_ai_outreach_approvals_policy"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    preparation_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    lead_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    approved_by_user_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    channel: Mapped[str] = mapped_column(String(20), nullable=False)
+    recipient: Mapped[str] = mapped_column(String(320), nullable=False)
+    context_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    preparation_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    approval_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    policy_evaluation_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    policy_decision: Mapped[str] = mapped_column(String(30), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="APPROVED", server_default="APPROVED")
+    approved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+
+
+class AiOutreachExecution(Base):
+    """Append-only single-attempt audit; uncertain sends are never replayed."""
+
+    __tablename__ = "ai_outreach_executions"
+    __table_args__ = (
+        CheckConstraint("channel = 'EMAIL'", name="ck_ai_outreach_executions_email_only"),
+        CheckConstraint("status IN ('EXECUTING','SENT','FAILED','UNCERTAIN','STALE','BLOCKED')", name="ck_ai_outreach_executions_status"),
+        CheckConstraint("policy_decision IN ('ALLOW','DENY','REQUIRE_HUMAN_APPROVAL')", name="ck_ai_outreach_executions_policy_decision"),
+        Index("ix_ai_outreach_executions_lead_created", "lead_id", "created_at"),
+        Index("uq_ai_outreach_executions_id_lead", "id", "lead_id", unique=True),
+        UniqueConstraint("approval_id", name="uq_ai_outreach_executions_approval"),
+        UniqueConstraint("idempotency_key", name="uq_ai_outreach_executions_idempotency"),
+        ForeignKeyConstraint(["approval_id", "lead_id"], ["ai_outreach_approvals.id", "ai_outreach_approvals.lead_id"], name="fk_ai_outreach_executions_approval_lead", ondelete="CASCADE"),
+        ForeignKeyConstraint(["preparation_id", "lead_id"], ["ai_outreach_preparations.id", "ai_outreach_preparations.lead_id"], name="fk_ai_outreach_executions_preparation_lead", ondelete="CASCADE"),
+        ForeignKeyConstraint(["policy_evaluation_id"], ["agent_policy_evaluations.id"], name="fk_ai_outreach_executions_policy"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    approval_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    preparation_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    lead_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    channel: Mapped[str] = mapped_column(String(20), nullable=False)
+    recipient: Mapped[str] = mapped_column(String(320), nullable=False)
+    subject: Mapped[str] = mapped_column(String(200), nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    context_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    execution_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    policy_evaluation_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    policy_decision: Mapped[str] = mapped_column(String(30), nullable=False)
+    provider: Mapped[str] = mapped_column(String(80), nullable=False)
+    provider_message_id: Mapped[str | None] = mapped_column(String(512))
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    failure_code: Mapped[str | None] = mapped_column(String(80))
+    failure_reason: Mapped[str | None] = mapped_column(String(500))
+    idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+
+
 class SeoAuditRun(Base):
     """Independently versioned, durable SEO audit for one lead website."""
 

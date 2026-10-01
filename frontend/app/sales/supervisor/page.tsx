@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { api, ApiError, SalesSupervisorRun, SalesSupervisorHistory, SupervisorTaskExecutionSummary, TaskAgentExecution, TaskAgentExecutionHistory, OutreachPreparation, OutreachPreparationChannel } from "@/lib/api";
+import { api, ApiError, SalesSupervisorRun, SalesSupervisorHistory, SupervisorTaskExecutionSummary, TaskAgentExecution, TaskAgentExecutionHistory, OutreachPreparation, OutreachPreparationChannel, OutreachApproval, AgentOutreachExecution, approveOutreachPreparation, executeApprovedOutreach, getOutreachApproval, getPreparationExecutions } from "@/lib/api";
 
 const card = "rounded-xl border border-slate-200 bg-white p-5 shadow-sm";
 const label = "text-sm text-slate-500";
@@ -17,11 +17,41 @@ export default function SalesSupervisorPage() {
   const [history, setHistory] = useState<SalesSupervisorRun[]>([]);
   const [executions, setExecutions] = useState<TaskAgentExecution[]>([]);
   const [preparations, setPreparations] = useState<OutreachPreparation[]>([]);
+  const [approvals, setApprovals] = useState<Record<string, OutreachApproval | null>>({});
+  const [outreachExecutions, setOutreachExecutions] = useState<Record<string, AgentOutreachExecution | null>>({});
   const [preparing, setPreparing] = useState("");
+  const [approving, setApproving] = useState("");
+  const [sending, setSending] = useState("");
   const [preparationChannels, setPreparationChannels] = useState<Record<string, OutreachPreparationChannel>>({});
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
+
+  const loadOutreachState = useCallback(async (supervisorRun: SalesSupervisorRun | null) => {
+    const findings = supervisorRun?.result?.findings || [];
+    const leadIds = [...new Set(findings.map((finding) => finding.lead_id))];
+    const histories = await Promise.all(leadIds.map(async (leadId) => {
+      try {
+        return await api<OutreachPreparation[]>(`/api/agent/outreach/preparations/${encodeURIComponent(leadId)}/history?limit=20`);
+      } catch {
+        return [];
+      }
+    }));
+    const drafts = [...new Map(histories.flat().map((item) => [item.id, item])).values()];
+    setPreparations(drafts);
+    const emailDrafts = drafts.filter((item) => item.channel === "EMAIL");
+    const states = await Promise.all(emailDrafts.map(async (item) => {
+      try {
+        const approval = await getOutreachApproval(item.id);
+        const executions = approval ? await getPreparationExecutions(item.id) : { items: [] };
+        return [item.id, approval, executions.items[0] || null] as const;
+      } catch {
+        return [item.id, null, null] as const;
+      }
+    }));
+    setApprovals(Object.fromEntries(states.map(([id, approval]) => [id, approval])));
+    setOutreachExecutions(Object.fromEntries(states.map(([id, , execution]) => [id, execution])));
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -35,12 +65,13 @@ export default function SalesSupervisorPage() {
       setRun(current);
       setHistory(past.items);
       setExecutions(taskRuns.items);
+      await loadOutreachState(current);
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : "Sales Supervisor data could not be loaded.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loadOutreachState]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -55,6 +86,7 @@ export default function SalesSupervisorPage() {
       setRun(created);
       const past = await api<SalesSupervisorHistory>("/api/sales-supervisor/history?limit=20");
       setHistory(past.items);
+      await loadOutreachState(created);
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : "Sales Supervisor review could not be completed.");
     } finally {
@@ -65,7 +97,9 @@ export default function SalesSupervisorPage() {
   async function openHistoricalRun(runId: string) {
     setError("");
     try {
-      setRun(await api<SalesSupervisorRun>(`/api/sales-supervisor/history/${encodeURIComponent(runId)}`));
+      const historical = await api<SalesSupervisorRun>(`/api/sales-supervisor/history/${encodeURIComponent(runId)}`);
+      setRun(historical);
+      await loadOutreachState(historical);
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : "That supervisor run could not be loaded.");
     }
@@ -101,10 +135,44 @@ export default function SalesSupervisorPage() {
         }),
       });
       setPreparations((previous) => [draft, ...previous.filter((item) => item.id !== draft.id)]);
+      if (draft.channel === "EMAIL") {
+        const approval = await getOutreachApproval(draft.id).catch(() => null);
+        const history = approval ? await getPreparationExecutions(draft.id).catch(() => ({ items: [] })) : { items: [] };
+        setApprovals((previous) => ({ ...previous, [draft.id]: approval }));
+        setOutreachExecutions((previous) => ({ ...previous, [draft.id]: history.items[0] || null }));
+      }
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : "Outreach preparation could not be completed.");
     } finally {
       setPreparing("");
+    }
+  }
+
+  async function approveEmail(preparation: OutreachPreparation) {
+    setApproving(preparation.id);
+    setError("");
+    try {
+      const approval = await approveOutreachPreparation(preparation.id);
+      setApprovals((previous) => ({ ...previous, [preparation.id]: approval }));
+      const history = await getPreparationExecutions(preparation.id);
+      setOutreachExecutions((previous) => ({ ...previous, [preparation.id]: history.items[0] || null }));
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.message : "The email could not be approved.");
+    } finally {
+      setApproving("");
+    }
+  }
+
+  async function sendApprovedEmail(preparation: OutreachPreparation, approval: OutreachApproval) {
+    setSending(preparation.id);
+    setError("");
+    try {
+      const execution = await executeApprovedOutreach(approval.id);
+      setOutreachExecutions((previous) => ({ ...previous, [preparation.id]: execution }));
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.message : "The approved email execution could not be completed.");
+    } finally {
+      setSending("");
     }
   }
 
@@ -217,8 +285,19 @@ export default function SalesSupervisorPage() {
           </div>;
         })}
         {preparations.length > 0 && <div className="mt-5 space-y-3" aria-label="Prepared outreach history">
-          {preparations.map((item) => <article key={item.id} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-            <div className="flex flex-wrap justify-between gap-2"><h3 className="font-semibold">{item.channel.replaceAll("_", " ")} · {item.purpose.replaceAll("_", " ")}</h3><span className="text-xs font-semibold">{item.status.replaceAll("_", " ")}</span></div>
+          {preparations.map((item) => {
+            const approval = approvals[item.id] || null;
+            const execution = outreachExecutions[item.id] || null;
+            const preparationDisplay = item.status === "STALE_CONTEXT" ? "STALE"
+              : ["REJECTED", "INVALID_REQUEST", "POLICY_DENIED"].includes(item.status) ? "BLOCKED" : "DRAFT";
+            const displayStatus = execution?.status === "EXECUTING" ? "SENDING"
+              : execution?.status || approval?.status || (item.channel === "EMAIL" ? preparationDisplay : item.status);
+            const canApprove = item.channel === "EMAIL" && !approval && !execution
+              && ["READY_FOR_HUMAN_REVIEW", "REQUIRES_HUMAN_APPROVAL"].includes(item.status)
+              && item.policy_decision !== "DENY";
+            const canSend = approval?.status === "APPROVED" && !execution;
+            return <article key={item.id} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-wrap justify-between gap-2"><h3 className="font-semibold">{item.channel.replaceAll("_", " ")} · {item.purpose.replaceAll("_", " ")}</h3><span className="text-xs font-semibold">{displayStatus.replaceAll("_", " ")}</span></div>
             {item.subject && <p className="mt-2 text-sm font-semibold">Subject: {item.subject}</p>}
             {item.body && <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{item.body}</p>}
             {item.call_script && <pre className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{JSON.stringify(item.call_script, null, 2)}</pre>}
@@ -229,9 +308,19 @@ export default function SalesSupervisorPage() {
               <div><dt className="font-semibold">Source recommendation</dt><dd className="break-all font-mono">{item.source_type} · {item.source_action_id}</dd></div>
               <div className="sm:col-span-2"><dt className="font-semibold">Context fingerprint</dt><dd className="break-all font-mono">{item.context_fingerprint}</dd></div>
               <div><dt className="font-semibold">Created</dt><dd>{new Date(item.created_at).toLocaleString()}</dd></div>
+              {approval && <><div><dt className="font-semibold">Recipient</dt><dd className="break-all">{approval.recipient}</dd></div><div><dt className="font-semibold">Approver</dt><dd>{approval.approved_by_user_id} · {new Date(approval.approved_at).toLocaleString()}</dd></div><div><dt className="font-semibold">Approval policy</dt><dd>{approval.policy_decision}</dd></div></>}
+              {execution && <><div><dt className="font-semibold">Execution policy</dt><dd>{execution.policy_decision}</dd></div><div><dt className="font-semibold">Email provider</dt><dd>{execution.provider}</dd></div><div><dt className="font-semibold">Provider message ID</dt><dd className="break-all">{execution.provider_message_id || "Unavailable"}</dd></div>{execution.failure_reason && <div className="sm:col-span-2"><dt className="font-semibold">Execution result</dt><dd>{execution.failure_code}: {execution.failure_reason}</dd></div>}</>}
             </dl>
-            <p className="mt-2 text-xs font-semibold text-amber-800">Draft only — no message has been sent.</p>
-          </article>)}
+            {item.channel !== "EMAIL" && <p className="mt-2 text-xs font-semibold text-amber-800">Draft only — Phase 10E does not execute this channel.</p>}
+            {item.channel === "EMAIL" && !execution && approval?.status === "APPROVED" && <p className="mt-2 text-xs font-semibold text-amber-800">Approved only — the email has not been sent.</p>}
+            {item.channel === "EMAIL" && execution?.status === "UNCERTAIN" && <p role="alert" className="mt-2 text-xs font-semibold text-amber-900">Provider outcome is uncertain. Automatic retry is disabled; reconcile with the provider before taking further action.</p>}
+            {item.channel === "EMAIL" && <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-200 pt-3">
+              {canApprove && <button onClick={() => void approveEmail(item)} disabled={Boolean(approving || sending)} className="rounded-lg border border-amber-500 px-3 py-2 text-sm font-semibold text-amber-900 disabled:opacity-50">{approving === item.id ? "Approving…" : "Approve Email"}</button>}
+              {canSend && <button onClick={() => void sendApprovedEmail(item, approval)} disabled={Boolean(approving || sending) || approval.status !== "APPROVED"} className="rounded-lg bg-ink px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{sending === item.id ? "Sending…" : "Send Email"}</button>}
+              {approval?.status === "STALE" && <span role="status" className="self-center text-sm font-semibold text-amber-900">Stale approval — prepare and review a new draft.</span>}
+              {execution?.status === "SENT" && <span className="self-center text-sm font-semibold text-emerald-800">Sent</span>}
+            </div>}
+          </article>})}
         </div>}
       </section>
     </main>

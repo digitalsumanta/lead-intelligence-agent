@@ -47,6 +47,11 @@ from app.schemas.autonomous_task_agent import (
     SupervisorTaskExecutionSummary, TaskExecutionHistory, TaskExecutionRequest, TaskExecutionResult,
 )
 from app.domain.ai_outreach_preparation import OutreachPreparationOut, OutreachPreparationRequest
+from app.schemas.ai_outreach_execution import (
+    EmptyActionRequest, OutreachApprovalOut,
+    OutreachExecutionHistory as AiOutreachExecutionHistory,
+    OutreachExecutionOut as AiOutreachExecutionOut,
+)
 from app.services.lead_intelligence_api import read_intelligence_summary, read_lead_intelligence
 from app.services.csv_import import import_csv
 from app.services.jobs import create_job, update_batch_status
@@ -97,6 +102,11 @@ from app.services.autonomous_task_agent import (
 from app.services.ai_outreach_preparation import (
     current_preparation, preparation_by_id, preparation_history, prepare_outreach,
 )
+from app.services.ai_outreach_execution import (
+    OutreachExecutionError, approval_by_preparation, approve_preparation,
+    execute_approved_email, execution_by_id, execution_history_for_lead,
+    execution_history_for_preparation,
+)
 
 configure_logging()
 
@@ -139,6 +149,7 @@ async def local_api_auth(request: Request, call_next):
         supplied = supplied[7:].strip() if supplied.lower().startswith("bearer ") else ""
         if not token or not supplied or not hmac.compare_digest(token, supplied):
             return JSONResponse(status_code=401, content={"success": False, "error": {"code": "UNAUTHORIZED", "message": "Valid API bearer token required", "details": {}}})
+        request.state.authenticated_user_id = settings.api_auth_user_id.strip() or None
     return await call_next(request)
 
 @app.exception_handler(Exception)
@@ -1331,6 +1342,67 @@ async def get_agent_outreach_preparation_detail(lead_id: uuid.UUID, preparation_
     if row is None:
         raise HTTPException(404, detail={"code": "OUTREACH_PREPARATION_NOT_FOUND", "message": "Outreach preparation not found"})
     return row
+
+
+def _raise_outreach_execution_error(error: OutreachExecutionError):
+    raise HTTPException(error.status_code, detail={"code": error.code, "message": str(error)}) from None
+
+
+@app.post("/api/agent/outreach/preparations/{preparation_id}/approve", response_model=OutreachApprovalOut)
+async def approve_agent_outreach_preparation(
+    preparation_id: uuid.UUID, body: EmptyActionRequest, request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await approve_preparation(
+            db, preparation_id, approved_by_user_id=request.state.authenticated_user_id,
+        )
+    except OutreachExecutionError as error:
+        _raise_outreach_execution_error(error)
+
+
+@app.get("/api/agent/outreach/preparations/{preparation_id}/approval", response_model=OutreachApprovalOut | None)
+async def get_agent_outreach_approval(preparation_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    try:
+        return await approval_by_preparation(db, preparation_id)
+    except OutreachExecutionError as error:
+        _raise_outreach_execution_error(error)
+
+
+@app.post("/api/agent/outreach/approvals/{approval_id}/execute", response_model=AiOutreachExecutionOut)
+async def execute_agent_outreach_approval(
+    approval_id: uuid.UUID, body: EmptyActionRequest, db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await execute_approved_email(db, approval_id)
+    except OutreachExecutionError as error:
+        _raise_outreach_execution_error(error)
+
+
+@app.get("/api/agent/outreach/executions/{execution_id}", response_model=AiOutreachExecutionOut)
+async def get_agent_outreach_execution(execution_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    row = await execution_by_id(db, execution_id)
+    if row is None:
+        raise HTTPException(404, detail={"code": "EXECUTION_NOT_FOUND", "message": "Outreach execution not found"})
+    return row
+
+
+@app.get("/api/agent/outreach/preparations/{preparation_id}/executions", response_model=AiOutreachExecutionHistory)
+async def get_agent_outreach_preparation_executions(preparation_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    try:
+        return {"items": await execution_history_for_preparation(db, preparation_id)}
+    except OutreachExecutionError as error:
+        _raise_outreach_execution_error(error)
+
+
+@app.get("/api/agent/outreach/{lead_id}/executions", response_model=AiOutreachExecutionHistory)
+async def get_agent_outreach_lead_executions(
+    lead_id: uuid.UUID, limit: int = Query(50, ge=1, le=100), db: AsyncSession = Depends(get_db),
+):
+    try:
+        return {"items": await execution_history_for_lead(db, lead_id, limit)}
+    except OutreachExecutionError as error:
+        _raise_outreach_execution_error(error)
 
 
 @app.get("/api/leads/{lead_id}/seo/opportunities", response_model=SeoSalesOpportunityList)

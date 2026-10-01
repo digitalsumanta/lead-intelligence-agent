@@ -336,13 +336,13 @@ async def test_authenticated_prepare_and_lead_scoped_endpoints(session_factory, 
         main_module.app.dependency_overrides.pop(get_db, None)
 
 
-def test_migration_0023_is_the_head_and_matches_registered_model():
+def test_migration_0023_remains_in_chain_and_matches_registered_model():
     from app.models import Base
     migration_path = Path(__file__).resolve().parents[1] / "migrations" / "versions" / "0023_ai_outreach_preparations.py"
     spec = importlib.util.spec_from_file_location("phase10d_migration", migration_path)
     migration = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(migration)
     assert (migration.revision, migration.down_revision) == ("0023_ai_outreach_preparations", "0022_autonomous_task_executions")
-    assert SCHEMA_REVISION == migration.revision
+    assert SCHEMA_REVISION == "0024_ai_outreach_executions"
     assert "ai_outreach_preparations" in Base.metadata.tables
     assert "SENT" not in str(Base.metadata.tables["ai_outreach_preparations"].constraints)

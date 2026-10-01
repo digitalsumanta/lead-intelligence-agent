@@ -202,7 +202,7 @@ async def test_database_schema_verification_requires_alembic_head(session_factor
     with pytest.raises(RuntimeError, match="not at the required revision"):
         await verify_database_schema()
     async with engine.begin() as connection:
-        await connection.execute(text("UPDATE alembic_version SET version_num='0023_ai_outreach_preparations'"))
+        await connection.execute(text("UPDATE alembic_version SET version_num='0024_ai_outreach_executions'"))
     await verify_database_schema()
 
 @pytest.mark.asyncio
