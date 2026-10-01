@@ -21,9 +21,9 @@ async def test_postgresql_schema_is_migrated_to_head():
     try:
         async with engine.connect() as connection:
             version = await connection.scalar(text("SELECT version_num FROM alembic_version"))
-            assert version == "0022_autonomous_task_executions"
+            assert version == "0023_ai_outreach_preparations"
             tables = set(await connection.run_sync(lambda conn: __import__("sqlalchemy").inspect(conn).get_table_names()))
-            assert {"leads", "lead_processing_jobs", "lead_batches", "lead_events", "enrichment_runs", "evidence", "provider_operation_state", "personalizations", "personalization_evidence_links", "sales_activities", "outreach_artifacts", "outreach_executions", "outreach_provider_events", "sales_tasks", "sales_collections", "revenue_targets", "seo_audit_runs", "seo_observations", "seo_findings", "ai_sales_intelligence", "ai_sales_copilot", "ai_sales_action_plans", "ai_proposal_intelligence", "agent_policy_evaluations", "ai_sales_supervisor_runs", "autonomous_task_executions"}.issubset(tables)
+            assert {"leads", "lead_processing_jobs", "lead_batches", "lead_events", "enrichment_runs", "evidence", "provider_operation_state", "personalizations", "personalization_evidence_links", "sales_activities", "outreach_artifacts", "outreach_executions", "outreach_provider_events", "sales_tasks", "sales_collections", "revenue_targets", "seo_audit_runs", "seo_observations", "seo_findings", "ai_sales_intelligence", "ai_sales_copilot", "ai_sales_action_plans", "ai_proposal_intelligence", "agent_policy_evaluations", "ai_sales_supervisor_runs", "autonomous_task_executions", "ai_outreach_preparations"}.issubset(tables)
             task_columns = await connection.run_sync(lambda conn: {item["name"] for item in __import__("sqlalchemy").inspect(conn).get_columns("sales_tasks")})
             assert {"created_by_agent", "agent_source_type", "agent_source_id", "agent_source_action_id", "agent_evidence_refs"}.issubset(task_columns)
             lead_columns = await connection.run_sync(lambda conn: {item["name"] for item in __import__("sqlalchemy").inspect(conn).get_columns("leads")})
@@ -91,6 +91,86 @@ async def test_postgresql_supervisor_run_persistence_and_history():
         if run_ids:
             async with factory() as session:
                 await session.execute(delete(AiSalesSupervisorRun).where(AiSalesSupervisorRun.id.in_(run_ids)))
+                await session.commit()
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_postgresql_outreach_preparation_persists_audit_and_returns_idempotently():
+    url = os.getenv("TEST_POSTGRES_URL")
+    if not url:
+        pytest.skip("Set TEST_POSTGRES_URL to an explicitly provisioned PostgreSQL database")
+    if not url.startswith("postgresql+asyncpg://"):
+        pytest.fail("TEST_POSTGRES_URL must use the asyncpg PostgreSQL dialect")
+    from types import SimpleNamespace
+    from app.domain.ai_outreach_preparation import OutreachPreparationRequest, PreparationChannel, PreparationSourceType
+    from app.domain.ai_sales_action_planner import ActionPlanOutput, RecommendedAction, ActionType
+    from app.models import AiOutreachPreparation, AiSalesActionPlan
+    from app.services.ai_outreach_preparation import prepare_outreach
+    from app.services.ai_sales_intelligence import AISalesContextBuilder
+    from app.services.autonomous_task_agent import _plan_action_id
+
+    class SelectionProvider:
+        name = "integration-test"
+        model = "no-network"
+        calls = 0
+        async def generate(self, _request):
+            self.calls += 1
+            return SimpleNamespace(parsed_json={
+                "selected_evidence_ids": [evidence_id], "selected_opportunity_ids": [], "selected_service_ids": [],
+                "approved_opening": "Hello,",
+                "approved_call_to_action": "Would you be open to a brief conversation?",
+                "discovery_questions": [],
+            })
+
+    engine = create_async_engine(url)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    lead_id = plan_id = None
+    try:
+        async with factory() as session:
+            lead = Lead(company_name="PostgreSQL Preparation integration", email="prospect@example.test")
+            session.add(lead)
+            await session.flush()
+            lead_id = lead.id
+            context, fingerprint, _ = await AISalesContextBuilder().build(session, lead.id)
+            evidence_id = next(item.id for item in context.commercial_data if item.source_type == "commercial_context")
+            action = RecommendedAction(
+                action_type=ActionType.REVIEW_COMMERCIAL_CONTEXT,
+                priority=next(item.data["priority"] for item in context.commercial_data if item.source_type == "commercial_context"),
+                title="Review commercial context", rationale="The cited records may warrant human review.",
+                evidence_ids=(evidence_id,), opportunity_ids=(), service_ids=(),
+                preparation_items=("Check the current sales and commercial context.",),
+            )
+            plan = AiSalesActionPlan(
+                lead_id=lead.id, contract_version="ai-sales-action-planner-v1",
+                prompt_version="ai-sales-action-planner-prompt-v1", context_version="ai-sales-context-v1",
+                provider="integration-test", model="no-network", status="validated", source_fingerprint=fingerprint,
+                action_plan=ActionPlanOutput(actions=(action,)).model_dump(mode="json"),
+                evidence_catalog=[], evidence_refs=[evidence_id], usage_metadata={},
+            )
+            session.add(plan)
+            await session.commit()
+            plan_id = plan.id
+        request = OutreachPreparationRequest(
+            lead_id=lead_id, source_type=PreparationSourceType.AI_SALES_ACTION_PLAN,
+            source_id=plan_id, source_action_id=_plan_action_id(action),
+            action_type=ActionType.REVIEW_COMMERCIAL_CONTEXT, channel=PreparationChannel.EMAIL,
+        )
+        provider = SelectionProvider()
+        async with factory() as session:
+            first = await prepare_outreach(session, request, provider=provider)
+            retry = await prepare_outreach(session, request, provider=provider)
+            rows = (await session.scalars(select(AiOutreachPreparation).where(AiOutreachPreparation.lead_id == lead_id))).all()
+            assert first.status == "READY_FOR_HUMAN_REVIEW" and first.body
+            assert retry.id == first.id and provider.calls == 1
+            assert len(rows) == 1 and rows[0].policy_evaluation_id is not None
+    finally:
+        if lead_id is not None:
+            async with factory() as session:
+                await session.execute(delete(AiOutreachPreparation).where(AiOutreachPreparation.lead_id == lead_id))
+                await session.execute(delete(AgentPolicyEvaluation).where(AgentPolicyEvaluation.lead_id == lead_id))
+                await session.execute(delete(AiSalesActionPlan).where(AiSalesActionPlan.lead_id == lead_id))
+                await session.execute(delete(Lead).where(Lead.id == lead_id))
                 await session.commit()
         await engine.dispose()
 

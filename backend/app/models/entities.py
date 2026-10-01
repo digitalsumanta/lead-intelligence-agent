@@ -899,6 +899,54 @@ class AutonomousTaskExecution(Base):
     executed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class AiOutreachPreparation(Base):
+    """Append-only, policy-gated outreach draft; this model has no send state."""
+
+    __tablename__ = "ai_outreach_preparations"
+    __table_args__ = (
+        CheckConstraint("source_type IN ('AI_SALES_ACTION_PLAN','AI_SALES_SUPERVISOR')", name="ck_ai_outreach_preparation_source"),
+        CheckConstraint("action_type IN ('FOLLOW_UP','CALL_PROSPECT','REVIEW_SEO_OPPORTUNITY','REVIEW_OUTREACH','PREPARE_PROPOSAL','INVESTIGATE_MISSING_INFORMATION','REVIEW_COMMERCIAL_CONTEXT')", name="ck_ai_outreach_preparation_action"),
+        CheckConstraint("channel IN ('EMAIL','WHATSAPP','CALL_SCRIPT')", name="ck_ai_outreach_preparation_channel"),
+        CheckConstraint("status IN ('READY_FOR_HUMAN_REVIEW','REQUIRES_HUMAN_APPROVAL','REJECTED','STALE_CONTEXT','INVALID_REQUEST','POLICY_DENIED')", name="ck_ai_outreach_preparation_status"),
+        CheckConstraint("policy_decision IS NULL OR policy_decision IN ('ALLOW','DENY','REQUIRE_HUMAN_APPROVAL')", name="ck_ai_outreach_preparation_policy"),
+        Index("ix_ai_outreach_preparations_lead_created", "lead_id", "created_at"),
+        Index("ix_ai_outreach_preparations_source", "source_type", "source_id"),
+        Index("uq_ai_outreach_preparations_id_lead", "id", "lead_id", unique=True),
+        Index("uq_ai_outreach_preparations_ready_key", "idempotency_key", unique=True, postgresql_where=text("status IN ('READY_FOR_HUMAN_REVIEW','REQUIRES_HUMAN_APPROVAL')"), sqlite_where=text("status IN ('READY_FOR_HUMAN_REVIEW','REQUIRES_HUMAN_APPROVAL')")),
+        ForeignKeyConstraint(["lead_id"], ["leads.id"], name="fk_ai_outreach_preparations_lead", ondelete="CASCADE"),
+        ForeignKeyConstraint(["policy_evaluation_id"], ["agent_policy_evaluations.id"], name="fk_ai_outreach_preparations_policy"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lead_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    source_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    source_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    source_action_id: Mapped[str] = mapped_column(String(180), nullable=False)
+    action_type: Mapped[str] = mapped_column(String(60), nullable=False)
+    channel: Mapped[str] = mapped_column(String(20), nullable=False)
+    purpose: Mapped[str] = mapped_column(String(80), nullable=False)
+    subject: Mapped[str | None] = mapped_column(String(200))
+    body: Mapped[str | None] = mapped_column(Text)
+    call_script: Mapped[dict | None] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(40), nullable=False)
+    review_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
+    policy_decision: Mapped[str | None] = mapped_column(String(30))
+    policy_evaluation_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
+    policy_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    context_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    context_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    preparation_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    provider: Mapped[str | None] = mapped_column(String(80))
+    model: Mapped[str | None] = mapped_column(String(200))
+    evidence_refs: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    opportunity_refs: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    service_refs: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    validation_result: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+
+
 class SeoAuditRun(Base):
     """Independently versioned, durable SEO audit for one lead website."""
 

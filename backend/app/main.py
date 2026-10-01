@@ -46,6 +46,7 @@ from app.schemas.ai_sales_supervisor import SupervisorRunHistory, SupervisorRunO
 from app.schemas.autonomous_task_agent import (
     SupervisorTaskExecutionSummary, TaskExecutionHistory, TaskExecutionRequest, TaskExecutionResult,
 )
+from app.domain.ai_outreach_preparation import OutreachPreparationOut, OutreachPreparationRequest
 from app.services.lead_intelligence_api import read_intelligence_summary, read_lead_intelligence
 from app.services.csv_import import import_csv
 from app.services.jobs import create_job, update_batch_status
@@ -92,6 +93,9 @@ from app.services.ai_sales_supervisor import (
 )
 from app.services.autonomous_task_agent import (
     execute_supervisor_run_tasks, execute_task_action, task_execution_by_id, task_execution_history,
+)
+from app.services.ai_outreach_preparation import (
+    current_preparation, preparation_by_id, preparation_history, prepare_outreach,
 )
 
 configure_logging()
@@ -1291,6 +1295,42 @@ async def execute_sales_supervisor_tasks(db: AsyncSession = Depends(get_db)):
         "stale_context": counts["STALE_CONTEXT"], "failed": counts["FAILED"],
         "execution_ids": tuple(result.execution_id for result in results),
     }
+
+
+@app.post("/api/agent/outreach/prepare", response_model=OutreachPreparationOut, status_code=201)
+async def prepare_agent_outreach(body: OutreachPreparationRequest, db: AsyncSession = Depends(get_db)):
+    try:
+        return await prepare_outreach(db, body)
+    except LookupError as error:
+        raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": str(error)}) from None
+
+
+@app.get("/api/agent/outreach/preparations/{lead_id}/current", response_model=OutreachPreparationOut | None)
+async def get_current_agent_outreach_preparation(lead_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    try:
+        return await current_preparation(db, lead_id)
+    except LookupError as error:
+        raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": str(error)}) from None
+
+
+@app.get("/api/agent/outreach/preparations/{lead_id}/history", response_model=list[OutreachPreparationOut])
+async def get_agent_outreach_preparation_history(
+    lead_id: uuid.UUID, limit: int = Query(50, ge=1, le=100), db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await preparation_history(db, lead_id, limit)
+    except LookupError as error:
+        raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": str(error)}) from None
+
+
+@app.get("/api/agent/outreach/preparations/{lead_id}/history/{preparation_id}", response_model=OutreachPreparationOut)
+async def get_agent_outreach_preparation_detail(lead_id: uuid.UUID, preparation_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    if await db.get(Lead, lead_id) is None:
+        raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": "Lead not found"})
+    row = await preparation_by_id(db, lead_id, preparation_id)
+    if row is None:
+        raise HTTPException(404, detail={"code": "OUTREACH_PREPARATION_NOT_FOUND", "message": "Outreach preparation not found"})
+    return row
 
 
 @app.get("/api/leads/{lead_id}/seo/opportunities", response_model=SeoSalesOpportunityList)

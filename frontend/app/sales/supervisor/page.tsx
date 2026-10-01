@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { api, ApiError, SalesSupervisorRun, SalesSupervisorHistory, SupervisorTaskExecutionSummary, TaskAgentExecution, TaskAgentExecutionHistory } from "@/lib/api";
+import { api, ApiError, SalesSupervisorRun, SalesSupervisorHistory, SupervisorTaskExecutionSummary, TaskAgentExecution, TaskAgentExecutionHistory, OutreachPreparation, OutreachPreparationChannel } from "@/lib/api";
 
 const card = "rounded-xl border border-slate-200 bg-white p-5 shadow-sm";
 const label = "text-sm text-slate-500";
@@ -16,6 +16,9 @@ export default function SalesSupervisorPage() {
   const [run, setRun] = useState<SalesSupervisorRun | null>(null);
   const [history, setHistory] = useState<SalesSupervisorRun[]>([]);
   const [executions, setExecutions] = useState<TaskAgentExecution[]>([]);
+  const [preparations, setPreparations] = useState<OutreachPreparation[]>([]);
+  const [preparing, setPreparing] = useState("");
+  const [preparationChannels, setPreparationChannels] = useState<Record<string, OutreachPreparationChannel>>({});
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
@@ -79,6 +82,29 @@ export default function SalesSupervisorPage() {
       setError(cause instanceof ApiError ? cause.message : "Internal task execution could not complete.");
     } finally {
       setRunning(false);
+    }
+  }
+
+  async function prepareOutreach(finding: NonNullable<SalesSupervisorRun["result"]>["findings"][number]) {
+    if (!run || !finding.action_type) return;
+    setPreparing(finding.finding_id);
+    setError("");
+    try {
+      const channel = preparationChannels[finding.finding_id]
+        || (finding.action_type === "CALL_PROSPECT" ? "CALL_SCRIPT" : "EMAIL");
+      const draft = await api<OutreachPreparation>("/api/agent/outreach/prepare", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          lead_id: finding.lead_id, source_type: "AI_SALES_SUPERVISOR",
+          source_id: run.id, source_action_id: finding.finding_id,
+          action_type: finding.action_type, channel,
+        }),
+      });
+      setPreparations((previous) => [draft, ...previous.filter((item) => item.id !== draft.id)]);
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.message : "Outreach preparation could not be completed.");
+    } finally {
+      setPreparing("");
     }
   }
 
@@ -159,6 +185,54 @@ export default function SalesSupervisorPage() {
         <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 id="task-agent-title" className="text-lg font-bold text-ink">Task Agent</h2><p className="mt-1 text-sm text-slate-600">This creates internal sales tasks only. It does not contact prospects.</p></div><button onClick={() => void executeTasks()} disabled={running || loading || !run?.result} className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{running ? "Processing…" : "Run approved internal tasks"}</button></div>
         <p className="mt-2 text-xs text-slate-500">Each source action is revalidated against current evidence and policy. Denied, stale, and human-approval-required actions do not create tasks.</p>
         {executions.length === 0 ? <p className="mt-4 text-sm text-slate-500">No Task Agent executions recorded.</p> : <ul className="mt-4 divide-y divide-slate-100">{executions.map((item) => <li key={item.execution_id} className="grid gap-1 py-3 text-sm sm:grid-cols-[1fr_auto]"><div><p className="font-semibold text-ink">{item.action_type.replaceAll("_", " ")} · {item.execution_status.replaceAll("_", " ")}</p><p className="text-xs text-slate-500">Policy: {item.policy_decision || "Not evaluated"} · Execution: {item.created ? "Internal task created" : "No task created"}</p>{item.task_id && <p className="font-mono text-xs text-slate-500">Task {item.task_id}</p>}{item.execution_status === "REQUIRES_HUMAN_APPROVAL" && <p className="text-xs text-amber-700">Human approval required — task not created.</p>}{item.execution_status === "DENIED" && <p className="text-xs text-rose-700">Policy denied — task not created.</p>}{item.execution_status === "STALE_CONTEXT" && <p className="text-xs text-amber-700">Context changed — refresh supervisor recommendation.</p>}<p className="text-xs text-slate-500">{item.reason}</p></div><Link href={`/leads/${encodeURIComponent(item.lead_id)}`} className="text-xs font-semibold text-teal underline">Open lead</Link></li>)}</ul>}
+      </section>
+
+      <section className={`${card} mt-6`} aria-labelledby="outreach-preparation-title">
+        <div>
+          <h2 id="outreach-preparation-title" className="text-lg font-bold text-ink">Outreach Preparation</h2>
+          <p className="mt-1 text-sm font-semibold text-amber-800">Draft only — no message has been sent. Every draft requires human review.</p>
+          <p className="mt-1 text-sm text-slate-600">The provider selects validated evidence and approved wording options. The server renders the draft and never sends or initiates contact.</p>
+        </div>
+        {!run?.result && <p className="mt-4 text-sm text-slate-500">Run a current Supervisor review to prepare outreach from a persisted recommendation.</p>}
+        {run?.result && !run.is_current && <p role="status" className="mt-4 text-sm text-amber-800">This Supervisor run is stale. Refresh it before preparing a draft.</p>}
+        {run?.result?.findings.filter((finding) => finding.action_type && finding.policy_decision !== "DENY").map((finding) => {
+          const channel = preparationChannels[finding.finding_id]
+            || (finding.action_type === "CALL_PROSPECT" ? "CALL_SCRIPT" : "EMAIL");
+          const channels: OutreachPreparationChannel[] = finding.action_type === "CALL_PROSPECT"
+            ? ["CALL_SCRIPT"]
+            : finding.action_type === "FOLLOW_UP"
+              ? ["EMAIL", "WHATSAPP", "CALL_SCRIPT"]
+              : ["EMAIL", "WHATSAPP"];
+          return <div key={finding.finding_id} className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+            <div><p className="font-semibold">{finding.action_type?.replaceAll("_", " ")}</p><p className="text-xs text-slate-500">Lead {finding.lead_id.slice(0, 8)} · Recommendation {finding.finding_id.slice(0, 12)}</p></div>
+            <div className="flex items-center gap-2">
+              <label className="sr-only" htmlFor={`prep-channel-${finding.finding_id}`}>Preparation channel</label>
+              <select id={`prep-channel-${finding.finding_id}`} value={channel} onChange={(event) => setPreparationChannels((previous) => ({ ...previous, [finding.finding_id]: event.target.value as OutreachPreparationChannel }))} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                {channels.map((value) => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}
+              </select>
+              <button onClick={() => void prepareOutreach(finding)} disabled={Boolean(preparing) || !run.is_current} className="rounded-lg bg-ink px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">
+                {preparing === finding.finding_id ? "Preparing…" : "Prepare draft"}
+              </button>
+            </div>
+          </div>;
+        })}
+        {preparations.length > 0 && <div className="mt-5 space-y-3" aria-label="Prepared outreach history">
+          {preparations.map((item) => <article key={item.id} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-wrap justify-between gap-2"><h3 className="font-semibold">{item.channel.replaceAll("_", " ")} · {item.purpose.replaceAll("_", " ")}</h3><span className="text-xs font-semibold">{item.status.replaceAll("_", " ")}</span></div>
+            {item.subject && <p className="mt-2 text-sm font-semibold">Subject: {item.subject}</p>}
+            {item.body && <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{item.body}</p>}
+            {item.call_script && <pre className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{JSON.stringify(item.call_script, null, 2)}</pre>}
+            <dl className="mt-3 grid gap-2 border-t border-slate-200 pt-3 text-xs text-slate-600 sm:grid-cols-2">
+              <div><dt className="font-semibold">Policy</dt><dd>{item.policy_decision || "Not evaluated"} · human review {item.review_required ? "required" : "not required"}</dd></div>
+              <div><dt className="font-semibold">Provider</dt><dd>{item.provider || "Unavailable"} / {item.model || "Unavailable"}</dd></div>
+              <div><dt className="font-semibold">Evidence</dt><dd className="break-all font-mono">{item.evidence_ids.join(" · ") || "None"}</dd></div>
+              <div><dt className="font-semibold">Source recommendation</dt><dd className="break-all font-mono">{item.source_type} · {item.source_action_id}</dd></div>
+              <div className="sm:col-span-2"><dt className="font-semibold">Context fingerprint</dt><dd className="break-all font-mono">{item.context_fingerprint}</dd></div>
+              <div><dt className="font-semibold">Created</dt><dd>{new Date(item.created_at).toLocaleString()}</dd></div>
+            </dl>
+            <p className="mt-2 text-xs font-semibold text-amber-800">Draft only — no message has been sent.</p>
+          </article>)}
+        </div>}
       </section>
     </main>
   );

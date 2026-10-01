@@ -303,6 +303,30 @@ export type SupervisorTaskExecutionSummary = {
   execution_ids: string[];
 };
 
+export type OutreachPreparationChannel = "EMAIL" | "WHATSAPP" | "CALL_SCRIPT";
+export type OutreachPreparationStatus =
+  | "READY_FOR_HUMAN_REVIEW" | "REQUIRES_HUMAN_APPROVAL" | "REJECTED"
+  | "STALE_CONTEXT" | "INVALID_REQUEST" | "POLICY_DENIED";
+export type OutreachPreparationRequest = {
+  lead_id: string;
+  source_type: "AI_SALES_ACTION_PLAN" | "AI_SALES_SUPERVISOR";
+  source_id: string;
+  source_action_id: string;
+  action_type: PlannerActionType;
+  channel: OutreachPreparationChannel;
+};
+export type OutreachPreparation = {
+  id: string; lead_id: string; source_type: "AI_SALES_ACTION_PLAN" | "AI_SALES_SUPERVISOR";
+  source_id: string; source_action_id: string; action_type: PlannerActionType;
+  channel: OutreachPreparationChannel; purpose: string; subject: string | null;
+  body: string | null; call_script: Record<string, unknown> | null;
+  evidence_ids: string[]; opportunity_ids: string[]; service_ids: string[];
+  context_fingerprint: string; context_version: string; preparation_version: string; prompt_version: string;
+  provider: string | null; model: string | null; status: OutreachPreparationStatus;
+  review_required: boolean; policy_decision: AgentPolicyDecision | null;
+  policy_evaluation_id: string | null; validation_result: Record<string, unknown>; created_at: string;
+};
+
 export type CommercialRecord = {
   lead_id: string; sales_status: SalesStatus; estimated_value: string | null;
   proposal_value: string | null; negotiation_value: string | null; won_value: string | null;
