@@ -17,7 +17,8 @@ from app.models import (
     AiOutreachPreparation, Lead, SalesActivity, SalesActivityType,
     SalesTask, SalesTaskStatus,
 )
-from app.providers.outreach import OutreachProviderFailure, OutreachSendResult
+from app.providers.outreach import OutreachProviderFailure
+from app.providers.email import EmailProviderResult
 from app.services.ai_outreach_execution import (
     OutreachExecutionError, approve_preparation, execute_approved_email,
 )
@@ -36,8 +37,11 @@ class FakeEmailProvider:
     async def send(self, message):
         self.calls.append(message)
         if self.error:
-            raise self.error
-        return OutreachSendResult(provider_message_id="mock-message-10e")
+            outcome = "UNCERTAIN" if self.error.code in {"PROVIDER_TIMEOUT", "PROVIDER_UNAVAILABLE"} else "FAILED"
+            return EmailProviderResult(outcome=outcome, provider=self.name,
+                                       error_code=self.error.code, error_message=str(self.error))
+        return EmailProviderResult(outcome="SENT", provider=self.name,
+                                   provider_status="accepted", provider_message_id="mock-message-10e")
 
 
 async def prepared_email(session_factory):
@@ -74,7 +78,7 @@ async def approve(session_factory, draft, user_id="sales_user_17"):
 async def test_approval_is_authenticated_bound_to_exact_draft_and_execution_is_idempotent(session_factory, monkeypatch):
     ids, draft = await prepared_email(session_factory)
     mailer = FakeEmailProvider()
-    monkeypatch.setattr("app.services.ai_outreach_execution.resolve_outreach_provider", lambda _channel: mailer)
+    monkeypatch.setattr("app.services.ai_outreach_execution.resolve_email_provider", lambda: mailer)
     monkeypatch.setattr(settings, "api_auth_token", "phase-10e-test-token")
     monkeypatch.setattr(settings, "api_auth_user_id", "sales_user_17")
 
@@ -106,6 +110,7 @@ async def test_approval_is_authenticated_bound_to_exact_draft_and_execution_is_i
             execution = sent.json()
             assert execution["status"] == "SENT"
             assert execution["provider_message_id"] == "mock-message-10e"
+            assert execution["provider_status"] == "accepted"
             assert execution["recipient"] == approval["recipient"]
             assert execution["subject"] == draft.subject
             assert execution["policy_decision"] == "REQUIRE_HUMAN_APPROVAL"
@@ -120,7 +125,7 @@ async def test_approval_is_authenticated_bound_to_exact_draft_and_execution_is_i
     assert len(mailer.calls) == 1
     assert mailer.calls[0].recipient == "prospect@example.test"
     assert mailer.calls[0].subject == draft.subject
-    assert mailer.calls[0].content == draft.body
+    assert mailer.calls[0].body == draft.body
     assert mailer.calls[0].idempotency_key == execution["idempotency_key"]
     async with session_factory() as session:
         activity = await session.scalar(select(SalesActivity).where(
@@ -209,6 +214,22 @@ async def test_provider_rejection_is_failed_and_never_automatically_retried(sess
 
 
 @pytest.mark.asyncio
+async def test_incomplete_provider_configuration_fails_closed(session_factory, monkeypatch):
+    _, draft = await prepared_email(session_factory)
+    approval = await approve(session_factory, draft)
+
+    def missing_provider():
+        raise ValueError("EMAIL_PROVIDER is required")
+
+    monkeypatch.setattr("app.services.ai_outreach_execution.resolve_email_provider", missing_provider)
+    async with session_factory() as session:
+        result = await execute_approved_email(session, approval.id)
+    assert result.status == "FAILED"
+    assert result.failure_code == "PROVIDER_NOT_CONFIGURED"
+    assert result.failure_reason == "EMAIL_PROVIDER is required"
+
+
+@pytest.mark.asyncio
 async def test_concurrent_execution_request_observes_reservation_without_sending_twice(session_factory):
     _, draft = await prepared_email(session_factory)
     approval = await approve(session_factory, draft)
@@ -223,7 +244,8 @@ async def test_concurrent_execution_request_observes_reservation_without_sending
             self.calls.append(message)
             self.started.set()
             await self.release.wait()
-            return OutreachSendResult(provider_message_id="concurrent-message")
+            return EmailProviderResult(outcome="SENT", provider=self.name,
+                                       provider_status="accepted", provider_message_id="concurrent-message")
 
     mailer = WaitingEmailProvider()
 
@@ -248,6 +270,6 @@ def test_phase_10e_migration_is_reversible_and_models_match():
     migration = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(migration)
     assert (migration.revision, migration.down_revision) == ("0024_ai_outreach_executions", "0023_ai_outreach_preparations")
-    assert SCHEMA_REVISION == migration.revision
+    assert SCHEMA_REVISION == "0025_email_provider_status"
     assert {"ai_outreach_approvals", "ai_outreach_executions"}.issubset(Base.metadata.tables)
     assert "UNIQUE" in str(Base.metadata.tables["ai_outreach_executions"].constraints).upper()

@@ -51,6 +51,7 @@ class OutreachExecutionOut(ExecutionContract):
     policy_decision: Literal["ALLOW", "DENY", "REQUIRE_HUMAN_APPROVAL"]
     provider: str
     provider_message_id: str | None
+    provider_status: str | None
     status: Literal["EXECUTING", "SENT", "FAILED", "UNCERTAIN", "STALE", "BLOCKED"]
     failure_code: str | None
     failure_reason: str | None

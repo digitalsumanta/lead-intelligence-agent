@@ -21,9 +21,11 @@ async def test_postgresql_schema_is_migrated_to_head():
     try:
         async with engine.connect() as connection:
             version = await connection.scalar(text("SELECT version_num FROM alembic_version"))
-            assert version == "0024_ai_outreach_executions"
+            assert version == "0025_email_provider_status"
             tables = set(await connection.run_sync(lambda conn: __import__("sqlalchemy").inspect(conn).get_table_names()))
             assert {"leads", "lead_processing_jobs", "lead_batches", "lead_events", "enrichment_runs", "evidence", "provider_operation_state", "personalizations", "personalization_evidence_links", "sales_activities", "outreach_artifacts", "outreach_executions", "outreach_provider_events", "sales_tasks", "sales_collections", "revenue_targets", "seo_audit_runs", "seo_observations", "seo_findings", "ai_sales_intelligence", "ai_sales_copilot", "ai_sales_action_plans", "ai_proposal_intelligence", "agent_policy_evaluations", "ai_sales_supervisor_runs", "autonomous_task_executions", "ai_outreach_preparations", "ai_outreach_approvals", "ai_outreach_executions"}.issubset(tables)
+            execution_columns = await connection.run_sync(lambda conn: {item["name"] for item in __import__("sqlalchemy").inspect(conn).get_columns("ai_outreach_executions")})
+            assert "provider_status" in execution_columns
             task_columns = await connection.run_sync(lambda conn: {item["name"] for item in __import__("sqlalchemy").inspect(conn).get_columns("sales_tasks")})
             assert {"created_by_agent", "agent_source_type", "agent_source_id", "agent_source_action_id", "agent_evidence_refs"}.issubset(task_columns)
             lead_columns = await connection.run_sync(lambda conn: {item["name"] for item in __import__("sqlalchemy").inspect(conn).get_columns("leads")})
@@ -186,7 +188,7 @@ async def test_postgresql_human_approved_email_execution_is_single_attempt():
     from app.domain.ai_outreach_preparation import OutreachPreparationRequest, PreparationChannel, PreparationSourceType
     from app.domain.ai_sales_action_planner import ActionPlanOutput, RecommendedAction, ActionType
     from app.models import AiOutreachApproval, AiOutreachExecution, AiOutreachPreparation
-    from app.providers.outreach import OutreachSendResult
+    from app.providers.email import EmailProviderResult
     from app.services.ai_outreach_execution import approve_preparation, execute_approved_email
     from app.services.ai_outreach_preparation import prepare_outreach
     from app.services.ai_sales_intelligence import AISalesContextBuilder
@@ -213,7 +215,8 @@ async def test_postgresql_human_approved_email_execution_is_single_attempt():
             self.calls += 1
             self.started.set()
             await self.release.wait()
-            return OutreachSendResult(provider_message_id="postgres-mock-message")
+            return EmailProviderResult(outcome="SENT", provider=self.name,
+                                       provider_status="accepted", provider_message_id="postgres-mock-message")
 
     engine = create_async_engine(url)
     factory = async_sessionmaker(engine, expire_on_commit=False)

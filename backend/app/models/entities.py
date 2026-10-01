@@ -1009,6 +1009,7 @@ class AiOutreachExecution(Base):
     policy_decision: Mapped[str] = mapped_column(String(30), nullable=False)
     provider: Mapped[str] = mapped_column(String(80), nullable=False)
     provider_message_id: Mapped[str | None] = mapped_column(String(512))
+    provider_status: Mapped[str | None] = mapped_column(String(80))
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     failure_code: Mapped[str | None] = mapped_column(String(80))
     failure_reason: Mapped[str | None] = mapped_column(String(500))

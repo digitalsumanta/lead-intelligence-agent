@@ -56,6 +56,15 @@ class Settings(BaseSettings):
     outreach_email_api_key: str = ""
     outreach_email_from: str = ""
     outreach_email_enabled: bool = False
+    email_provider: str = ""
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from_email: str = ""
+    smtp_use_tls: bool = True
+    smtp_use_ssl: bool = False
+    smtp_timeout_seconds: float = 20
     outreach_whatsapp_provider: str = ""
     outreach_whatsapp_api_url: str = ""
     outreach_whatsapp_api_key: str = ""

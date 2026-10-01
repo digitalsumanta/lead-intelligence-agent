@@ -7,7 +7,7 @@ from app.config import settings
 from app.models import WorkerHeartbeat
 from app.models.entities import now_utc
 
-SCHEMA_REVISION = "0024_ai_outreach_executions"
+SCHEMA_REVISION = "0025_email_provider_status"
 
 engine = create_async_engine(settings.database_url, pool_pre_ping=True)
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)

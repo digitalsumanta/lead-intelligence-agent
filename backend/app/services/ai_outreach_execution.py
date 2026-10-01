@@ -23,9 +23,8 @@ from app.models import (
     Lead, SalesActivity, SalesActivityType,
 )
 from app.models.entities import now_utc
-from app.providers.outreach import (
-    OutreachMessage, OutreachProviderFailure, resolve_outreach_provider,
-)
+from app.providers.outreach import OutreachProviderFailure
+from app.providers.email import EmailProviderResult, EmailSendRequest, resolve_email_provider
 from app.schemas.agent_policy import PolicyChannel, PolicyDecision, PolicyEvaluationRequest
 from app.schemas.ai_outreach_execution import (
     APPROVAL_VERSION, EXECUTION_VERSION, OutreachApprovalOut, OutreachExecutionOut,
@@ -106,6 +105,7 @@ def _execution_output(row: AiOutreachExecution) -> OutreachExecutionOut:
         execution_version=row.execution_version, policy_evaluation_id=row.policy_evaluation_id,
         policy_decision=row.policy_decision,
         provider=row.provider, provider_message_id=row.provider_message_id, status=row.status,
+        provider_status=row.provider_status,
         failure_code=row.failure_code, failure_reason=row.failure_reason,
         idempotency_key=row.idempotency_key, started_at=row.started_at,
         completed_at=row.completed_at, created_at=row.created_at,
@@ -370,12 +370,12 @@ async def execute_approved_email(session: AsyncSession, approval_id: UUID, *, pr
     if duplicate is not None:
         return _execution_output(duplicate)
     try:
-        adapter = provider or resolve_outreach_provider("EMAIL")
+        adapter = provider or resolve_email_provider()
         provider_name = str(getattr(adapter, "name", "unknown"))[:80]
-    except OutreachProviderFailure as error:
+    except (OutreachProviderFailure, ValueError) as error:
         return await _save_terminal_execution(
             session, approval=approval, preparation=preparation, policy_id=policy.evaluation_id,
-            status="FAILED", code=error.code, reason=str(error),
+            status="FAILED", code=getattr(error, "code", "PROVIDER_NOT_CONFIGURED"), reason=str(error),
         )
     now = now_utc()
     execution = AiOutreachExecution(
@@ -398,9 +398,10 @@ async def execute_approved_email(session: AsyncSession, approval_id: UUID, *, pr
         return _execution_output(existing)
     await session.refresh(execution)
 
-    message = OutreachMessage(
-        channel="EMAIL", recipient=approval.recipient, subject=preparation.subject,
-        content=preparation.body, provider=provider_name, idempotency_key=execution.idempotency_key,
+    message = EmailSendRequest(
+        recipient=approval.recipient, subject=preparation.subject or "",
+        body=preparation.body or "", idempotency_key=execution.idempotency_key,
+        metadata={"execution_id": str(execution.id), "approval_id": str(approval.id)},
     )
     try:
         result = await adapter.send(message)
@@ -413,10 +414,28 @@ async def execute_approved_email(session: AsyncSession, approval_id: UUID, *, pr
         execution.failure_code = "PROVIDER_OUTCOME_UNKNOWN"
         execution.failure_reason = "The provider outcome is unknown; automatic retry is disabled."
     else:
-        execution.status = "SENT"
-        execution.provider_message_id = result.provider_message_id if result else None
-        execution.failure_code = None
-        execution.failure_reason = None
+        outcome = result.outcome if isinstance(result, EmailProviderResult) else None
+        if outcome not in {"SENT", "FAILED", "UNCERTAIN"}:
+            result = EmailProviderResult(
+                outcome="UNCERTAIN", provider=provider_name,
+                error_code="PROVIDER_INVALID_RESULT",
+                error_message="The email provider returned an invalid result",
+            )
+        outcome = result.outcome
+        execution.status = outcome
+        execution.provider_message_id = str(result.provider_message_id)[:512] if result.provider_message_id else None
+        provider_status = getattr(result, "provider_status", None)
+        execution.provider_status = str(provider_status)[:80] if provider_status else None
+        error_code = getattr(result, "error_code", None)
+        execution.failure_code = str(error_code)[:80] if error_code else None
+        failure_reason = getattr(result, "error_message", None)
+        execution.failure_reason = str(failure_reason)[:500] if failure_reason else None
+        if outcome == "SENT":
+            execution.failure_code = None
+            execution.failure_reason = None
+        elif execution.failure_code is None:
+            execution.failure_code = "PROVIDER_OUTCOME_UNKNOWN" if outcome == "UNCERTAIN" else "PROVIDER_FAILURE"
+            execution.failure_reason = "The email provider did not return a safe error description."
     execution.completed_at = now_utc()
     if execution.status == "SENT":
         session.add(SalesActivity(
