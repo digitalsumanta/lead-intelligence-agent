@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
-import { api, ApiError, CommercialRecord, IntelligenceClaim, IntelligenceResponse, LeadIntelligenceProfileSchema, LeadDetail, OutreachArtifact, OutreachChannel, OutreachContent, OutreachExecution, OutreachReadResponse, SalesActivity, SalesActivityOutcome, SalesActivityType, SalesCollection, SalesPriority, SalesStatus, SalesTask, SalesTaskCreate, SalesTaskStatus, SalesTaskType, SalesWorkflow } from "@/lib/api";
+import { api, ApiError, CommercialRecord, IntelligenceClaim, IntelligenceResponse, LeadIntelligenceProfileSchema, CompanyEnrichmentProfileSchema, LeadDetail, OutreachArtifact, OutreachChannel, OutreachContent, OutreachExecution, OutreachReadResponse, SalesActivity, SalesActivityOutcome, SalesActivityType, SalesCollection, SalesPriority, SalesStatus, SalesTask, SalesTaskCreate, SalesTaskStatus, SalesTaskType, SalesWorkflow } from "@/lib/api";
 import SeoSection from "./seo-section";
 import AISalesIntelligence from "./ai-sales-intelligence";
 import AISalesCopilot from "./ai-sales-copilot";
@@ -489,7 +489,7 @@ function ClaimSection({ title, claims }: { title: string; claims: IntelligenceCl
 export default function LeadDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [lead, setLead] = useState<LeadDetail | null>(null);
-  const [intelligence, setIntelligence] = useState<IntelligenceResponse | null>(null); const [profile, setProfile] = useState<LeadIntelligenceProfileSchema | null>(null);
+  const [intelligence, setIntelligence] = useState<IntelligenceResponse | null>(null); const [profile, setProfile] = useState<LeadIntelligenceProfileSchema | null>(null); const [companyEnrichment, setCompanyEnrichment] = useState<CompanyEnrichmentProfileSchema | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState("");
@@ -507,7 +507,7 @@ export default function LeadDetailPage() {
         if (!current) return;
         setLead(business);
         try {
-          const detail = await api<IntelligenceResponse>(`/api/leads/${encodeURIComponent(id)}/enrichment`); try { const prof = await api<LeadIntelligenceProfileSchema>(`/api/leads/${encodeURIComponent(id)}/intelligence`); if (current) setProfile(prof); } catch(e) {}
+          const detail = await api<IntelligenceResponse>(`/api/leads/${encodeURIComponent(id)}/enrichment`); try { const prof = await api<LeadIntelligenceProfileSchema>(`/api/leads/${encodeURIComponent(id)}/intelligence`); const compEnr = await api<CompanyEnrichmentProfileSchema>(`/api/leads/${encodeURIComponent(id)}/company-enrichment`); if (current) { setProfile(prof); setCompanyEnrichment(compEnr); } } catch(e) {}
           if (current) {
             setIntelligence(detail);
             setIntelligenceState("available");
@@ -581,6 +581,30 @@ export default function LeadDetailPage() {
             <div><dt className="text-xs font-semibold uppercase text-slate-400">Phone</dt><dd className="mt-1">{lead.phone || "—"}</dd></div>
             <div className="sm:col-span-2"><dt className="text-xs font-semibold uppercase text-slate-400">Address</dt><dd className="mt-1">{[lead.address, lead.city, lead.state, lead.country].filter(Boolean).join(", ") || "—"}</dd></div>
           </dl>
+        </article>
+
+        <article id="company-enrichment" className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm mt-4">
+          <div className="flex items-center justify-between">
+            <h2 className="font-bold text-ink">Company Enrichment</h2>
+            <button
+              onClick={() => api<CompanyEnrichmentProfileSchema>(`/api/companies/${lead.id}/enrichment/refresh`, {method: "POST"}).then(p => setCompanyEnrichment(p))}
+              className="text-xs font-semibold text-teal underline"
+            >
+              Refresh
+            </button>
+          </div>
+          {companyEnrichment ? (
+            <div className="mt-4 grid gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
+              <div><dt className="text-xs font-semibold uppercase text-slate-400">Legal Name</dt><dd className="mt-1">{companyEnrichment.legal_name || "-"}</dd></div>
+              <div><dt className="text-xs font-semibold uppercase text-slate-400">Domain</dt><dd className="mt-1">{companyEnrichment.domain || "-"}</dd></div>
+              <div><dt className="text-xs font-semibold uppercase text-slate-400">Industry</dt><dd className="mt-1">{companyEnrichment.normalized_industry || "-"}</dd></div>
+              <div><dt className="text-xs font-semibold uppercase text-slate-400">Location</dt><dd className="mt-1">{companyEnrichment.location || "-"}</dd></div>
+              <div><dt className="text-xs font-semibold uppercase text-slate-400">Confidence</dt><dd className="mt-1">{companyEnrichment.confidence}</dd></div>
+              <div><dt className="text-xs font-semibold uppercase text-slate-400">Completeness</dt><dd className="mt-1">{companyEnrichment.completeness_percent.toFixed(0)}%</dd></div>
+            </div>
+          ) : (
+            <p className="mt-4 text-sm text-slate-500">No company enrichment profile available.</p>
+          )}
         </article>
 
         {intelligenceState !== "error" && <>

@@ -727,3 +727,29 @@ export type LeadIntelligenceProfileSchema = {
   digital_presence: IntelligenceDigitalPresence; business_context: IntelligenceBusinessContext;
   intelligence_quality: IntelligenceQuality;
 };
+
+export type CompanyEnrichmentProfileSchema = {
+  id: string;
+  lead_id: string;
+  legal_name: string | null;
+  display_name: string | null;
+  domain: string | null;
+  website: string | null;
+  email_domain: string | null;
+  linkedin_url: string | null;
+  phone: string | null;
+  location: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  description: string | null;
+  industry: string | null;
+  normalized_industry: string | null;
+  company_size: string | null;
+  normalized_company_size: string | null;
+  source: string;
+  confidence: string;
+  completeness_percent: number;
+  created_at: string;
+  updated_at: string;
+};

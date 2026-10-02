@@ -37,6 +37,8 @@ from app.schemas.outreach_analytics import OutreachAnalyticsChannel, OutreachAna
 from app.schemas.intelligence import IntelligenceResponse
 from app.schemas.lead_intelligence import LeadIntelligenceProfileSchema
 from app.services.lead_intelligence import get_lead_intelligence, refresh_lead_intelligence
+from app.schemas.company_enrichment import CompanyEnrichmentProfileSchema
+from app.services.company_enrichment import get_company_enrichment, refresh_company_enrichment
 from app.schemas.seo import LatestSeoOut, SeoRunCreatedOut, SeoRunDetailOut, SeoRunListOut, SeoRunOut
 from app.schemas.seo_opportunities import SeoSalesOpportunityList
 from app.schemas.ai_sales_intelligence import AISalesIntelligenceHistoryOut, AISalesIntelligenceOut
@@ -1672,6 +1674,36 @@ async def endpoint_refresh_lead_intelligence(
     db: AsyncSession = Depends(get_db)
 ):
     profile = await refresh_lead_intelligence(db, lead_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    return profile
+
+@app.get("/api/companies/{company_id}/enrichment", response_model=CompanyEnrichmentProfileSchema, tags=["Companies"])
+async def endpoint_get_company_enrichment(
+    company_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db)
+):
+    profile = await get_company_enrichment(db, company_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return profile
+
+@app.post("/api/companies/{company_id}/enrichment/refresh", response_model=CompanyEnrichmentProfileSchema, tags=["Companies"])
+async def endpoint_refresh_company_enrichment(
+    company_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db)
+):
+    profile = await refresh_company_enrichment(db, company_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return profile
+
+@app.get("/api/leads/{lead_id}/company-enrichment", response_model=CompanyEnrichmentProfileSchema, tags=["Leads"])
+async def endpoint_get_lead_company_enrichment(
+    lead_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db)
+):
+    profile = await get_company_enrichment(db, lead_id)
     if not profile:
         raise HTTPException(status_code=404, detail="Lead not found")
     return profile
