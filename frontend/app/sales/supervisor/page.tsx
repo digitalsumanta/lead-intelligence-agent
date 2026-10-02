@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { api, ApiError, SalesSupervisorRun, SalesSupervisorHistory, SupervisorTaskExecutionSummary, TaskAgentExecution, TaskAgentExecutionHistory, OutreachPreparation, OutreachPreparationChannel, OutreachApproval, AgentOutreachExecution, EmailDeliveryEvent, approveOutreachPreparation, executeApprovedOutreach, getOutreachApproval, getPreparationExecutions, getEmailDeliveryEvents } from "@/lib/api";
+import { api, ApiError, SalesSupervisorRun, SalesSupervisorHistory, SupervisorTaskExecutionSummary, TaskAgentExecution, TaskAgentExecutionHistory, OutreachPreparation, OutreachPreparationChannel, OutreachApproval, AgentOutreachExecution, EmailDeliveryEvent, DeliveryReconciliation, approveOutreachPreparation, executeApprovedOutreach, getOutreachApproval, getPreparationExecutions, getEmailDeliveryEvents, getDeliveryReconciliation } from "@/lib/api";
 
 const card = "rounded-xl border border-slate-200 bg-white p-5 shadow-sm";
 const label = "text-sm text-slate-500";
@@ -21,6 +21,8 @@ export default function SalesSupervisorPage() {
   const [outreachExecutions, setOutreachExecutions] = useState<Record<string, AgentOutreachExecution | null>>({});
   const [deliveryEvents, setDeliveryEvents] = useState<Record<string, EmailDeliveryEvent[]>>({});
   const [deliveryEventErrors, setDeliveryEventErrors] = useState<Record<string, string>>({});
+  const [deliveryStatuses, setDeliveryStatuses] = useState<Record<string, DeliveryReconciliation>>({});
+  const [deliveryStatusErrors, setDeliveryStatusErrors] = useState<Record<string, string>>({});
   const [preparing, setPreparing] = useState("");
   const [approving, setApproving] = useState("");
   const [sending, setSending] = useState("");
@@ -55,15 +57,22 @@ export default function SalesSupervisorPage() {
     setOutreachExecutions(Object.fromEntries(states.map(([id, , execution]) => [id, execution])));
     const timelines = await Promise.all(states.map(async ([, , execution]) => {
       if (!execution) return null;
-      try {
-        return [execution.id, (await getEmailDeliveryEvents(execution.id)).items, ""] as const;
-      } catch {
-        return [execution.id, [] as EmailDeliveryEvent[], "Delivery history could not be loaded."] as const;
-      }
+      const [history, status] = await Promise.allSettled([
+        getEmailDeliveryEvents(execution.id), getDeliveryReconciliation(execution.id),
+      ]);
+      return [
+        execution.id,
+        history.status === "fulfilled" ? history.value.items : [] as EmailDeliveryEvent[],
+        status.status === "fulfilled" ? status.value : null,
+        history.status === "fulfilled" ? "" : "Delivery history could not be loaded.",
+        status.status === "fulfilled" ? "" : "Delivery status could not be reconciled.",
+      ] as const;
     }));
     const availableTimelines = timelines.filter((item) => item !== null);
     setDeliveryEvents(Object.fromEntries(availableTimelines.map(([id, events]) => [id, events])) as Record<string, EmailDeliveryEvent[]>);
-    setDeliveryEventErrors(Object.fromEntries(availableTimelines.filter(([, , error]) => error).map(([id, , error]) => [id, error])));
+    setDeliveryEventErrors(Object.fromEntries(availableTimelines.filter(([, , , error]) => error).map(([id, , , error]) => [id, error])));
+    setDeliveryStatuses(Object.fromEntries(availableTimelines.filter(([, , status]) => status).map(([id, , status]) => [id, status])) as Record<string, DeliveryReconciliation>);
+    setDeliveryStatusErrors(Object.fromEntries(availableTimelines.filter(([, , , , error]) => error).map(([id, , , , error]) => [id, error])));
   }, []);
 
   const load = useCallback(async () => {
@@ -182,12 +191,20 @@ export default function SalesSupervisorPage() {
     try {
       const execution = await executeApprovedOutreach(approval.id);
       setOutreachExecutions((previous) => ({ ...previous, [preparation.id]: execution }));
-      try {
-        const history = await getEmailDeliveryEvents(execution.id);
-        setDeliveryEvents((previous) => ({ ...previous, [execution.id]: history.items }));
+      const [history, status] = await Promise.allSettled([
+        getEmailDeliveryEvents(execution.id), getDeliveryReconciliation(execution.id),
+      ]);
+      if (history.status === "fulfilled") {
+        setDeliveryEvents((previous) => ({ ...previous, [execution.id]: history.value.items }));
         setDeliveryEventErrors((previous) => { const next = { ...previous }; delete next[execution.id]; return next; });
-      } catch {
+      } else {
         setDeliveryEventErrors((previous) => ({ ...previous, [execution.id]: "Delivery history could not be loaded." }));
+      }
+      if (status.status === "fulfilled") {
+        setDeliveryStatuses((previous) => ({ ...previous, [execution.id]: status.value }));
+        setDeliveryStatusErrors((previous) => { const next = { ...previous }; delete next[execution.id]; return next; });
+      } else {
+        setDeliveryStatusErrors((previous) => ({ ...previous, [execution.id]: "Delivery status could not be reconciled." }));
       }
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : "The approved email execution could not be completed.");
@@ -336,6 +353,15 @@ export default function SalesSupervisorPage() {
             {item.channel === "EMAIL" && !execution && approval?.status === "APPROVED" && <p className="mt-2 text-xs font-semibold text-amber-800">Approved only — the email has not been sent.</p>}
             {item.channel === "EMAIL" && execution?.status === "UNCERTAIN" && <p role="alert" className="mt-2 text-xs font-semibold text-amber-900">Provider outcome is uncertain. Automatic retry is disabled; reconcile with the provider before taking further action.</p>}
             {execution && <section className="mt-3 rounded-lg border border-slate-200 bg-white p-3" aria-label="Email delivery event history">
+              <div className="mb-3 border-b border-slate-100 pb-3" aria-label="Reconciled delivery status">
+                <h4 className="text-xs font-semibold text-ink">Reconciled delivery status</h4>
+                {deliveryStatusErrors[execution.id] ? <p role="status" className="mt-1 text-xs text-amber-800">{deliveryStatusErrors[execution.id]}</p> : deliveryStatuses[execution.id] ? <>
+                  <p className="mt-1 text-xs text-slate-700">Current state: <strong>{deliveryStatuses[execution.id].current_state.replaceAll("_", " ")}</strong> · {deliveryStatuses[execution.id].event_count} events · terminal state: {deliveryStatuses[execution.id].terminal_state?.replaceAll("_", " ") || "none recorded"}</p>
+                  <p className="mt-1 text-xs text-slate-600">Events out of order: {deliveryStatuses[execution.id].has_out_of_order_events ? "Yes" : "No"}</p>
+                  {deliveryStatuses[execution.id].has_conflict && <p role="status" className="mt-1 text-xs text-amber-800">Conflicts: {deliveryStatuses[execution.id].conflict_types.map((conflict) => conflict.replaceAll("_", " ")).join(" · ")}</p>}
+                  <p className="mt-1 text-[11px] text-slate-500">Provider observations are reconciled deterministically. This status does not trigger retries or other actions.</p>
+                </> : <p className="mt-1 text-xs text-slate-500">No reconciliation data available.</p>}
+              </div>
               <h4 className="text-xs font-semibold text-ink">Delivery event history</h4>
               <p className="mt-1 text-[11px] text-slate-500">Append-only provider observations, separate from the current execution status.</p>
               {deliveryEventErrors[execution.id] ? <p role="status" className="mt-2 text-xs text-amber-800">{deliveryEventErrors[execution.id]}</p> : events.length === 0 ? <p className="mt-2 text-xs text-slate-500">No delivery events recorded.</p> : <ol className="mt-2 space-y-2">

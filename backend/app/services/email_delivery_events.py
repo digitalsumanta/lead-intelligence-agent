@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import AiOutreachExecution, EmailDeliveryEvent
 from app.models.entities import now_utc
+from app.domain.delivery_reconciliation import normalize_delivery_event_type, reconcile_delivery_events
 from app.schemas.email_delivery_event import (
     EmailDeliveryEventCreate, EmailDeliveryEventOut, NormalizedEmailDeliveryEvent,
 )
@@ -54,6 +55,10 @@ class EmailDeliveryEventService:
             provider_event_id=request.provider_event_id,
             provider_status=request.provider_status,
             occurred_at=occurred_at,
+            provider_occurred_at=(
+                _as_utc(request.occurred_at)
+                if request.source == "PROVIDER" and request.occurred_at else None
+            ),
             recorded_at=now,
             metadata_json=request.metadata,
             source=request.source,
@@ -87,6 +92,17 @@ class EmailDeliveryEventService:
         ).order_by(EmailDeliveryEvent.occurred_at, EmailDeliveryEvent.recorded_at, EmailDeliveryEvent.id))).all()
         return [_output(row) for row in rows]
 
+    async def delivery_status(self, session: AsyncSession, execution_id: UUID) -> dict:
+        execution = await session.get(AiOutreachExecution, execution_id)
+        if execution is None:
+            raise EmailDeliveryEventError("EXECUTION_NOT_FOUND", "Email execution not found", 404)
+        events = (await session.scalars(select(EmailDeliveryEvent).where(
+            EmailDeliveryEvent.execution_id == execution_id,
+        ))).all()
+        return reconcile_delivery_events(
+            execution.id, execution.provider, execution.provider_message_id, events,
+        )
+
 
 class EmailDeliveryEventIngestionService:
     """Resolve and persist normalized observations without downstream side effects."""
@@ -97,6 +113,14 @@ class EmailDeliveryEventIngestionService:
     async def ingest(
         self, session: AsyncSession, request: NormalizedEmailDeliveryEvent,
     ) -> tuple[EmailDeliveryEventOut, UUID, bool]:
+        normalized_type = normalize_delivery_event_type(request.event_type)
+        if normalized_type.event_type is None:
+            raise EmailDeliveryEventError(
+                "UNSUPPORTED_EVENT_TYPE",
+                f"Unsupported delivery event type: {normalized_type.normalized_value}",
+            )
+        if request.event_type != normalized_type.event_type:
+            request = request.model_copy(update={"event_type": normalized_type.event_type})
         provider = request.provider.strip().casefold() if request.provider else None
         if not provider:
             raise EmailDeliveryEventError("PROVIDER_REQUIRED", "A provider identifier is required")
@@ -199,6 +223,7 @@ def add_execution_delivery_event(
         provider_message_id=execution.provider_message_id,
         provider_status=execution.provider_status,
         occurred_at=_as_utc(execution.completed_at or now_utc()),
+        provider_occurred_at=None,
         recorded_at=now_utc(),
         source="PROVIDER",
     )

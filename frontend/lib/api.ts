@@ -354,6 +354,16 @@ export type EmailDeliveryEvent = {
   occurred_at: string; recorded_at: string; source: "PROVIDER" | "INTERNAL";
 };
 export type EmailDeliveryEventHistory = { items: EmailDeliveryEvent[] };
+export type DeliveryReconciliation = {
+  execution_id: string; provider: string; provider_message_id: string | null;
+  current_state: "UNSUBSCRIBED" | "COMPLAINED" | "BOUNCED" | "FAILED" | "DELIVERED" | "SENT" | "UNKNOWN";
+  terminal_state: "UNSUBSCRIBED" | "COMPLAINED" | "BOUNCED" | "FAILED" | null;
+  has_terminal_event: boolean; event_count: number; has_conflict: boolean;
+  first_event_at: string | null; last_event_at: string | null;
+  has_out_of_order_events: boolean;
+  conflict_types: ("MULTIPLE_TERMINAL_STATES" | "DELIVERED_AFTER_TERMINAL" | "SENT_AFTER_TERMINAL" | "EVENT_TIMESTAMP_OUT_OF_ORDER" | "UNSUPPORTED_EVENT_TYPE")[];
+  unsupported_event_count: number;
+};
 
 export function getOutreachApproval(preparationId: string): Promise<OutreachApproval | null> {
   return api<OutreachApproval | null>(`/api/agent/outreach/preparations/${encodeURIComponent(preparationId)}/approval`);
@@ -371,6 +381,10 @@ export function getPreparationExecutions(preparationId: string): Promise<AgentOu
 
 export function getEmailDeliveryEvents(executionId: string): Promise<EmailDeliveryEventHistory> {
   return api<EmailDeliveryEventHistory>(`/api/outreach-executions/${encodeURIComponent(executionId)}/delivery-events`);
+}
+
+export function getDeliveryReconciliation(executionId: string): Promise<DeliveryReconciliation> {
+  return api<DeliveryReconciliation>(`/api/outreach-executions/${encodeURIComponent(executionId)}/delivery-status`);
 }
 
 export function executeApprovedOutreach(approvalId: string): Promise<AgentOutreachExecution> {

@@ -208,14 +208,16 @@ def test_enrichment_migration_is_the_single_head_after_worker_heartbeat():
         ("0025_email_provider_status", "0024_ai_outreach_executions"),
         ("0026_email_delivery_events", "0025_email_provider_status"),
         ("0027_delivery_provider_identity", "0026_email_delivery_events"),
+        ("0028_delivery_reconcile", "0027_delivery_provider_identity"),
     ]
     actual = []
     for revision, _ in expected:
-        file = next(migrations.glob(f"{revision}*.py"))
+        filename_revision = "0027_delivery_event_provider_identity" if revision == "0027_delivery_provider_identity" else revision
+        file = next(migrations.glob(f"{filename_revision}*.py"))
         spec = importlib.util.spec_from_file_location(revision, file)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         actual.append((module.revision, module.down_revision))
 
     assert actual == expected
-    assert SCHEMA_REVISION == "0027_delivery_provider_identity"
+    assert SCHEMA_REVISION == "0028_delivery_reconcile"

@@ -97,7 +97,7 @@ class EmailDeliveryEventIngestRequest(EmailDeliveryEventContract):
     provider: str = Field(min_length=1, max_length=80, pattern=_IDENTIFIER_PATTERN)
     provider_event_id: str | None = Field(default=None, min_length=1, max_length=512)
     provider_message_id: str = Field(min_length=1, max_length=512)
-    event_type: DeliveryEventType
+    event_type: str = Field(min_length=1, max_length=80)
     recipient_email: str | None = Field(default=None, min_length=3, max_length=320)
     provider_status: str | None = Field(default=None, min_length=1, max_length=80)
     occurred_at: datetime | None = None
@@ -120,6 +120,25 @@ class EmailDeliveryEventIngestOut(EmailDeliveryEventContract):
     status: Literal["CREATED", "DUPLICATE"]
     event: EmailDeliveryEventOut
     execution_id: UUID
+
+
+class DeliveryReconciliationOut(EmailDeliveryEventContract):
+    execution_id: UUID
+    provider: str
+    provider_message_id: str | None
+    current_state: Literal["UNSUBSCRIBED", "COMPLAINED", "BOUNCED", "FAILED", "DELIVERED", "SENT", "UNKNOWN"]
+    terminal_state: Literal["UNSUBSCRIBED", "COMPLAINED", "BOUNCED", "FAILED"] | None
+    has_terminal_event: bool
+    event_count: int
+    has_conflict: bool
+    first_event_at: datetime | None
+    last_event_at: datetime | None
+    has_out_of_order_events: bool
+    conflict_types: tuple[Literal[
+        "MULTIPLE_TERMINAL_STATES", "DELIVERED_AFTER_TERMINAL", "SENT_AFTER_TERMINAL",
+        "EVENT_TIMESTAMP_OUT_OF_ORDER", "UNSUPPORTED_EVENT_TYPE",
+    ], ...]
+    unsupported_event_count: int
 
 
 def _metadata_depth(value: Any, depth: int = 1) -> int:

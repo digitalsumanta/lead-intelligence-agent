@@ -21,7 +21,7 @@ async def test_postgresql_schema_is_migrated_to_head():
     try:
         async with engine.connect() as connection:
             version = await connection.scalar(text("SELECT version_num FROM alembic_version"))
-            assert version == "0027_delivery_provider_identity"
+            assert version == "0028_delivery_reconcile"
             tables = set(await connection.run_sync(lambda conn: __import__("sqlalchemy").inspect(conn).get_table_names()))
             assert {"leads", "lead_processing_jobs", "lead_batches", "lead_events", "enrichment_runs", "evidence", "provider_operation_state", "personalizations", "personalization_evidence_links", "sales_activities", "outreach_artifacts", "outreach_executions", "outreach_provider_events", "sales_tasks", "sales_collections", "revenue_targets", "seo_audit_runs", "seo_observations", "seo_findings", "ai_sales_intelligence", "ai_sales_copilot", "ai_sales_action_plans", "ai_proposal_intelligence", "agent_policy_evaluations", "ai_sales_supervisor_runs", "autonomous_task_executions", "ai_outreach_preparations", "ai_outreach_approvals", "ai_outreach_executions", "email_delivery_events"}.issubset(tables)
             event_foreign_keys = await connection.run_sync(lambda conn: __import__("sqlalchemy").inspect(conn).get_foreign_keys("email_delivery_events"))

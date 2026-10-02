@@ -1055,6 +1055,7 @@ class EmailDeliveryEvent(Base):
     provider_event_id: Mapped[str | None] = mapped_column(String(512))
     provider_status: Mapped[str | None] = mapped_column(String(80))
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    provider_occurred_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
     metadata_json: Mapped[dict | None] = mapped_column("metadata", JSON)
     source: Mapped[str] = mapped_column(String(20), nullable=False)

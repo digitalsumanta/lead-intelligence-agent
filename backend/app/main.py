@@ -47,6 +47,7 @@ from app.schemas.autonomous_task_agent import (
     SupervisorTaskExecutionSummary, TaskExecutionHistory, TaskExecutionRequest, TaskExecutionResult,
 )
 from app.domain.ai_outreach_preparation import OutreachPreparationOut, OutreachPreparationRequest
+from app.domain.delivery_reconciliation import normalize_delivery_event_type
 from app.schemas.ai_outreach_execution import (
     EmptyActionRequest, OutreachApprovalOut,
     OutreachExecutionHistory as AiOutreachExecutionHistory,
@@ -55,7 +56,7 @@ from app.schemas.ai_outreach_execution import (
 from app.schemas.email_delivery_event import (
     EmailDeliveryEventCreate, EmailDeliveryEventHistory,
     EmailDeliveryEventIngestOut, EmailDeliveryEventIngestRequest, EmailDeliveryEventOut,
-    NormalizedEmailDeliveryEvent,
+    NormalizedEmailDeliveryEvent, DeliveryReconciliationOut,
 )
 from app.services.lead_intelligence_api import read_intelligence_summary, read_lead_intelligence
 from app.services.csv_import import import_csv
@@ -1411,13 +1412,19 @@ async def create_email_delivery_event(
 async def ingest_email_delivery_event(
     body: EmailDeliveryEventIngestRequest, response: Response, db: AsyncSession = Depends(get_db),
 ):
+    normalized_type = normalize_delivery_event_type(body.event_type)
+    if normalized_type.event_type is None:
+        raise HTTPException(422, detail={
+            "code": "UNSUPPORTED_EVENT_TYPE",
+            "message": f"Unsupported delivery event type: {normalized_type.normalized_value}",
+        })
     try:
         normalized = NormalizedEmailDeliveryEvent(
             source="PROVIDER",
             provider=body.provider,
             provider_event_id=body.provider_event_id,
             provider_message_id=body.provider_message_id,
-            event_type=body.event_type,
+            event_type=normalized_type.event_type,
             recipient_email=body.recipient_email,
             provider_status=body.provider_status,
             occurred_at=body.occurred_at,
@@ -1437,6 +1444,17 @@ async def ingest_email_delivery_event(
 async def list_email_delivery_events(execution_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     try:
         return {"items": await email_delivery_event_service.history(db, execution_id)}
+    except EmailDeliveryEventError as error:
+        raise HTTPException(error.status_code, detail={"code": error.code, "message": str(error)}) from None
+
+
+@app.get(
+    "/api/outreach-executions/{execution_id}/delivery-status",
+    response_model=DeliveryReconciliationOut,
+)
+async def get_email_delivery_status(execution_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    try:
+        return await email_delivery_event_service.delivery_status(db, execution_id)
     except EmailDeliveryEventError as error:
         raise HTTPException(error.status_code, detail={"code": error.code, "message": str(error)}) from None
 
