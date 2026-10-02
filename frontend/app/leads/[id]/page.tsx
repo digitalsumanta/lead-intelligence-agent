@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
-import { api, ApiError, CommercialRecord, IntelligenceClaim, IntelligenceResponse, LeadDetail, OutreachArtifact, OutreachChannel, OutreachContent, OutreachExecution, OutreachReadResponse, SalesActivity, SalesActivityOutcome, SalesActivityType, SalesCollection, SalesPriority, SalesStatus, SalesTask, SalesTaskCreate, SalesTaskStatus, SalesTaskType, SalesWorkflow } from "@/lib/api";
+import { api, ApiError, CommercialRecord, IntelligenceClaim, IntelligenceResponse, LeadIntelligenceProfileSchema, LeadDetail, OutreachArtifact, OutreachChannel, OutreachContent, OutreachExecution, OutreachReadResponse, SalesActivity, SalesActivityOutcome, SalesActivityType, SalesCollection, SalesPriority, SalesStatus, SalesTask, SalesTaskCreate, SalesTaskStatus, SalesTaskType, SalesWorkflow } from "@/lib/api";
 import SeoSection from "./seo-section";
 import AISalesIntelligence from "./ai-sales-intelligence";
 import AISalesCopilot from "./ai-sales-copilot";
@@ -489,7 +489,7 @@ function ClaimSection({ title, claims }: { title: string; claims: IntelligenceCl
 export default function LeadDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [lead, setLead] = useState<LeadDetail | null>(null);
-  const [intelligence, setIntelligence] = useState<IntelligenceResponse | null>(null);
+  const [intelligence, setIntelligence] = useState<IntelligenceResponse | null>(null); const [profile, setProfile] = useState<LeadIntelligenceProfileSchema | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState("");
@@ -507,7 +507,7 @@ export default function LeadDetailPage() {
         if (!current) return;
         setLead(business);
         try {
-          const detail = await api<IntelligenceResponse>(`/api/leads/${encodeURIComponent(id)}/intelligence`);
+          const detail = await api<IntelligenceResponse>(`/api/leads/${encodeURIComponent(id)}/enrichment`); try { const prof = await api<LeadIntelligenceProfileSchema>(`/api/leads/${encodeURIComponent(id)}/intelligence`); if (current) setProfile(prof); } catch(e) {}
           if (current) {
             setIntelligence(detail);
             setIntelligenceState("available");
@@ -568,6 +568,12 @@ export default function LeadDetailPage() {
       <section className="mt-7 grid gap-4 lg:grid-cols-[1.3fr_1fr]">
         <article id="business-summary" className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="font-bold text-ink">Business summary</h2>
+          {profile && (
+            <div className="mt-2 text-xs font-semibold text-teal">
+              Intelligence Completeness: {profile.intelligence_quality.completeness_score.toFixed(0)}%
+              <button onClick={() => api<LeadIntelligenceProfileSchema>(`/api/leads/${lead.id}/intelligence/refresh`, {method:"POST"}).then(p => setProfile(p))} className="ml-3 underline text-teal">Refresh</button>
+            </div>
+          )}
           <dl className="mt-4 grid gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
             <div><dt className="text-xs font-semibold uppercase text-slate-400">Website</dt><dd className="mt-1 break-all">{lead.website ? websiteUrl ? <a className="text-teal hover:underline" href={websiteUrl} target="_blank" rel="noreferrer">{lead.website}</a> : lead.website : "—"}</dd></div>
             <div><dt className="text-xs font-semibold uppercase text-slate-400">Business status</dt><dd className="mt-1">{lead.status}</dd></div>

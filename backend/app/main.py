@@ -35,6 +35,8 @@ from app.schemas.revenue import (
 )
 from app.schemas.outreach_analytics import OutreachAnalyticsChannel, OutreachAnalyticsResponse
 from app.schemas.intelligence import IntelligenceResponse
+from app.schemas.lead_intelligence import LeadIntelligenceProfileSchema
+from app.services.lead_intelligence import get_lead_intelligence, refresh_lead_intelligence
 from app.schemas.seo import LatestSeoOut, SeoRunCreatedOut, SeoRunDetailOut, SeoRunListOut, SeoRunOut
 from app.schemas.seo_opportunities import SeoSalesOpportunityList
 from app.schemas.ai_sales_intelligence import AISalesIntelligenceHistoryOut, AISalesIntelligenceOut
@@ -956,8 +958,8 @@ async def cancel_outreach_execution(execution_id: uuid.UUID, db: AsyncSession = 
     return _outreach_execution_payload(execution)
 
 
-@app.get("/api/leads/{lead_id}/intelligence", response_model=IntelligenceResponse)
-async def get_lead_intelligence(lead_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+@app.get("/api/leads/{lead_id}/enrichment", response_model=IntelligenceResponse, tags=["Leads"])
+async def get_lead_enrichment(lead_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     """Return persisted intelligence from one completed enrichment run; never invokes a provider."""
     if await db.get(Lead, lead_id) is None:
         raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": "Lead not found"})
@@ -968,6 +970,16 @@ async def get_lead_intelligence(lead_id: uuid.UUID, db: AsyncSession = Depends(g
             "message": "No completed enrichment run with valid persisted intelligence is available",
         })
     return response
+
+@app.get("/api/leads/{lead_id}/intelligence", response_model=LeadIntelligenceProfileSchema, tags=["Leads"])
+async def endpoint_get_lead_intelligence(
+    lead_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db)
+):
+    profile = await get_lead_intelligence(db, lead_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    return profile
 
 
 @app.post("/api/leads/{lead_id}/seo/runs", response_model=SeoRunCreatedOut, status_code=202)
@@ -1599,3 +1611,67 @@ def job_payload(job):
     """Serialize job fields safely."""
     safe_error = "Processing failed; details are available in server logs" if job.last_error else None
     return {"id": str(job.id), "lead_id": str(job.lead_id), "status": job.status.value, "attempt_count": job.attempt_count, "max_attempts": job.max_attempts, "last_error": safe_error, "started_at": job.started_at, "completed_at": job.completed_at, "next_retry_at": job.next_retry_at, "checkpoint": job.checkpoint, "provider": job.provider, "model": job.model, "created_at": job.created_at, "updated_at": job.updated_at}
+
+from app.schemas.email_delivery_event import (
+    DeliveryAnalyticsSummary,
+    DeliveryAnalyticsProviderSummary,
+    DeliveryAnalyticsTimeSeriesPoint,
+    ExecutionDeliveryAnalytics,
+)
+from app.services.email_delivery_analytics import (
+    get_analytics_summary,
+    get_provider_analytics,
+    get_timeseries_analytics,
+    get_execution_analytics,
+)
+
+@app.get("/api/email-delivery-analytics/summary", response_model=DeliveryAnalyticsSummary)
+async def endpoint_email_delivery_analytics_summary(
+    scope: Literal["global", "date_range", "provider", "execution"],
+    start: datetime | None = None,
+    end: datetime | None = None,
+    provider: str | None = None,
+    execution_id: uuid.UUID | None = None,
+    db: AsyncSession = Depends(get_db)
+):
+    return await get_analytics_summary(db, scope, start, end, provider, execution_id)
+
+@app.get("/api/email-delivery-analytics/providers", response_model=list[DeliveryAnalyticsProviderSummary])
+async def endpoint_email_delivery_analytics_providers(
+    db: AsyncSession = Depends(get_db)
+):
+    return await get_provider_analytics(db)
+
+@app.get("/api/email-delivery-analytics/timeseries", response_model=list[DeliveryAnalyticsTimeSeriesPoint])
+async def endpoint_email_delivery_analytics_timeseries(
+    granularity: Literal["day", "week"] = "day",
+    start: datetime | None = None,
+    end: datetime | None = None,
+    db: AsyncSession = Depends(get_db)
+):
+    return await get_timeseries_analytics(db, granularity, start, end)
+
+@app.get("/api/outreach-executions/{execution_id}/delivery-analytics", response_model=ExecutionDeliveryAnalytics)
+async def endpoint_outreach_execution_delivery_analytics(
+    execution_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db)
+):
+    result = await get_execution_analytics(db, execution_id)
+    if result is None:
+        raise HTTPException(404, detail={"code": "EXECUTION_NOT_FOUND", "message": "Execution not found"})
+    return result
+
+
+from app.services.lead_intelligence import get_lead_intelligence, refresh_lead_intelligence
+
+
+
+@app.post("/api/leads/{lead_id}/intelligence/refresh", response_model=LeadIntelligenceProfileSchema, tags=["Leads"])
+async def endpoint_refresh_lead_intelligence(
+    lead_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db)
+):
+    profile = await refresh_lead_intelligence(db, lead_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    return profile

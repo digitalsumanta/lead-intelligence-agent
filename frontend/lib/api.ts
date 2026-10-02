@@ -604,3 +604,126 @@ export type IntelligenceResponse = {
   };
   generated_at: string;
 };
+
+export type DeliveryAnalyticsSummary = {
+  scope: "global" | "date_range" | "provider" | "execution";
+  start: string | null;
+  end: string | null;
+  provider: string | null;
+  execution_id: string | null;
+  sent_count: number;
+  delivered_count: number;
+  bounced_count: number;
+  failed_count: number;
+  complained_count: number;
+  unsubscribed_count: number;
+  delivery_rate: number | null;
+  bounce_rate: number | null;
+  failure_rate: number | null;
+  complaint_rate: number | null;
+  unsubscribe_rate: number | null;
+  unknown_execution_count: number;
+  sent_execution_count: number;
+  delivered_execution_count: number;
+  bounced_execution_count: number;
+  failed_execution_count: number;
+  complained_execution_count: number;
+  unsubscribed_execution_count: number;
+  conflicted_execution_count: number;
+  out_of_order_execution_count: number;
+  unsupported_event_count: number;
+};
+
+export type DeliveryAnalyticsProviderSummary = {
+  provider: string;
+  sent_count: number;
+  delivered_count: number;
+  bounced_count: number;
+  failed_count: number;
+  complained_count: number;
+  unsubscribed_count: number;
+  delivery_rate: number | null;
+  bounce_rate: number | null;
+  failure_rate: number | null;
+  complaint_rate: number | null;
+  unsubscribe_rate: number | null;
+};
+
+export type DeliveryAnalyticsTimeSeriesPoint = {
+  period_start: string;
+  sent_count: number;
+  delivered_count: number;
+  bounced_count: number;
+  failed_count: number;
+  complained_count: number;
+  unsubscribed_count: number;
+};
+
+export type ExecutionDeliveryAnalytics = {
+  execution_id: string;
+  provider: string;
+  provider_message_id: string | null;
+  recipient: string | null;
+  current_reconciled_state: "UNSUBSCRIBED" | "COMPLAINED" | "BOUNCED" | "FAILED" | "DELIVERED" | "SENT" | "UNKNOWN";
+  event_count: number;
+  first_event_at: string | null;
+  last_event_at: string | null;
+  has_conflict: boolean;
+  conflict_types: string[];
+  has_out_of_order_events: boolean;
+  unsupported_event_count: number;
+};
+
+export function getDeliveryAnalyticsSummary(scope: string = "global", params?: Record<string, string>): Promise<DeliveryAnalyticsSummary> {
+  const query = new URLSearchParams({ scope, ...params });
+  return api<DeliveryAnalyticsSummary>(`/api/email-delivery-analytics/summary?${query.toString()}`);
+}
+
+export function getDeliveryAnalyticsProviders(): Promise<DeliveryAnalyticsProviderSummary[]> {
+  return api<DeliveryAnalyticsProviderSummary[]>(`/api/email-delivery-analytics/providers`);
+}
+
+export function getDeliveryAnalyticsTimeSeries(granularity: string = "day", params?: Record<string, string>): Promise<DeliveryAnalyticsTimeSeriesPoint[]> {
+  const query = new URLSearchParams({ granularity, ...params });
+  return api<DeliveryAnalyticsTimeSeriesPoint[]>(`/api/email-delivery-analytics/timeseries?${query.toString()}`);
+}
+
+export function getExecutionDeliveryAnalytics(executionId: string): Promise<ExecutionDeliveryAnalytics> {
+  return api<ExecutionDeliveryAnalytics>(`/api/outreach-executions/${encodeURIComponent(executionId)}/delivery-analytics`);
+}
+
+export type IntelligenceCompanyProfile = {
+  name: string | null; legal_name: string | null; website: string | null;
+  industry: string | null; industry_source: string | null;
+  company_size: string | null; company_size_source: string | null;
+  location: string | null; country: string | null; description: string | null;
+  products_services: string[];
+};
+export type IntelligenceContactProfile = {
+  name: string | null; job_title: string | null; email: string | null; phone: string | null; location: string | null;
+};
+export type IntelligenceDigitalPresence = {
+  website: string | null; linkedin_url: string | null; facebook_url: string | null;
+  instagram_url: string | null; youtube_url: string | null; other_urls: string[];
+};
+export type IntelligencePainPoint = {
+  id: string; title: string; description: string | null; source_type: string;
+  source_reference: string | null; confidence: string; created_at: string; updated_at: string;
+};
+export type IntelligenceOpportunity = {
+  id: string; title: string; description: string | null; source_type: string;
+  source_reference: string | null; confidence: string; created_at: string; updated_at: string;
+};
+export type IntelligenceBusinessContext = {
+  pain_points: IntelligencePainPoint[]; opportunities: IntelligenceOpportunity[];
+  known_services: string[]; known_products: string[];
+};
+export type IntelligenceQuality = {
+  completeness_score: number; last_researched_at: string | null;
+  field_count: number; populated_field_count: number;
+};
+export type LeadIntelligenceProfileSchema = {
+  lead_id: string; company: IntelligenceCompanyProfile; contact: IntelligenceContactProfile;
+  digital_presence: IntelligenceDigitalPresence; business_context: IntelligenceBusinessContext;
+  intelligence_quality: IntelligenceQuality;
+};

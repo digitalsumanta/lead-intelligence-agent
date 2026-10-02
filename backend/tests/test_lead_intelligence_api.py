@@ -118,7 +118,7 @@ async def test_intelligence_endpoint_projects_single_latest_valid_run_and_person
         ))
         await session.commit()
     async with api_client as client:
-        response = await client.get(f"/api/leads/{lead_id}/intelligence", headers={"Authorization": "Bearer api-test-token"})
+        response = await client.get(f"/api/leads/{lead_id}/enrichment", headers={"Authorization": "Bearer api-test-token"})
     assert response.status_code == 200
     body = response.json()
     assert body["api_version"] == "lead-intelligence-v1"
@@ -139,9 +139,9 @@ async def test_intelligence_not_available_and_lead_not_found_errors(api_client, 
         await session.commit()
         lead_id = lead.id
     async with api_client as client:
-        unavailable = await client.get(f"/api/leads/{lead_id}/intelligence", headers={"Authorization": "Bearer api-test-token"})
-        missing = await client.get(f"/api/leads/{uuid4()}/intelligence", headers={"Authorization": "Bearer api-test-token"})
-        invalid_id = await client.get("/api/leads/not-a-uuid/intelligence", headers={"Authorization": "Bearer api-test-token"})
+        unavailable = await client.get(f"/api/leads/{lead_id}/enrichment", headers={"Authorization": "Bearer api-test-token"})
+        missing = await client.get(f"/api/leads/{uuid4()}/enrichment", headers={"Authorization": "Bearer api-test-token"})
+        invalid_id = await client.get("/api/leads/not-a-uuid/enrichment", headers={"Authorization": "Bearer api-test-token"})
     assert unavailable.status_code == 409
     assert unavailable.json()["error"]["code"] == "INTELLIGENCE_NOT_AVAILABLE"
     assert missing.status_code == 404 and missing.json()["error"]["code"] == "LEAD_NOT_FOUND"
@@ -166,7 +166,7 @@ async def test_stale_personalization_is_not_projected_and_foreign_lead_evidence_
         ))
         await session.commit()
     async with api_client as client:
-        response = await client.get(f"/api/leads/{lead_id}/intelligence", headers={"Authorization": "Bearer api-test-token"})
+        response = await client.get(f"/api/leads/{lead_id}/enrichment", headers={"Authorization": "Bearer api-test-token"})
     body = response.json()
     assert response.status_code == 200
     assert body["personalization"] is None and body["personalization_available"] is False
@@ -202,7 +202,7 @@ async def test_cross_run_personalization_evidence_is_not_projected(api_client, s
         ))
         await session.commit()
     async with api_client as client:
-        response = await client.get(f"/api/leads/{lead_id}/intelligence", headers={"Authorization": "Bearer api-test-token"})
+        response = await client.get(f"/api/leads/{lead_id}/enrichment", headers={"Authorization": "Bearer api-test-token"})
     body = response.json()
     assert response.status_code == 200
     assert body["personalization"] is None

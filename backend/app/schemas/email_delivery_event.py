@@ -176,3 +176,71 @@ def _contains_secret_key(value: Any) -> bool:
     elif isinstance(value, list):
         return any(_contains_secret_key(child) for child in value)
     return False
+
+class DeliveryAnalyticsSummary(BaseModel):
+    scope: Literal["global", "date_range", "provider", "execution"]
+    start: datetime | None = None
+    end: datetime | None = None
+    provider: str | None = None
+    execution_id: UUID | None = None
+    sent_count: int
+    delivered_count: int
+    bounced_count: int
+    failed_count: int
+    complained_count: int
+    unsubscribed_count: int
+    delivery_rate: float | None
+    bounce_rate: float | None
+    failure_rate: float | None
+    complaint_rate: float | None
+    unsubscribe_rate: float | None
+    unknown_execution_count: int
+    sent_execution_count: int
+    delivered_execution_count: int
+    bounced_execution_count: int
+    failed_execution_count: int
+    complained_execution_count: int
+    unsubscribed_execution_count: int
+    conflicted_execution_count: int
+    out_of_order_execution_count: int
+    unsupported_event_count: int
+
+
+class DeliveryAnalyticsProviderSummary(BaseModel):
+    provider: str
+    sent_count: int
+    delivered_count: int
+    bounced_count: int
+    failed_count: int
+    complained_count: int
+    unsubscribed_count: int
+    delivery_rate: float | None
+    bounce_rate: float | None
+    failure_rate: float | None
+    complaint_rate: float | None
+    unsubscribe_rate: float | None
+
+
+class DeliveryAnalyticsTimeSeriesPoint(BaseModel):
+    period_start: datetime
+    sent_count: int
+    delivered_count: int
+    bounced_count: int
+    failed_count: int
+    complained_count: int
+    unsubscribed_count: int
+
+
+class ExecutionDeliveryAnalytics(BaseModel):
+    execution_id: UUID
+    provider: str
+    provider_message_id: str | None
+    recipient: str | None
+    current_reconciled_state: Literal["UNSUBSCRIBED", "COMPLAINED", "BOUNCED", "FAILED", "DELIVERED", "SENT", "UNKNOWN"]
+    event_count: int
+    first_event_at: datetime | None
+    last_event_at: datetime | None
+    has_conflict: bool
+    conflict_types: tuple[str, ...]
+    has_out_of_order_events: bool
+    unsupported_event_count: int

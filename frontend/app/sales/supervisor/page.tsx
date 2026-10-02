@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { api, ApiError, SalesSupervisorRun, SalesSupervisorHistory, SupervisorTaskExecutionSummary, TaskAgentExecution, TaskAgentExecutionHistory, OutreachPreparation, OutreachPreparationChannel, OutreachApproval, AgentOutreachExecution, EmailDeliveryEvent, DeliveryReconciliation, approveOutreachPreparation, executeApprovedOutreach, getOutreachApproval, getPreparationExecutions, getEmailDeliveryEvents, getDeliveryReconciliation } from "@/lib/api";
+import { api, ApiError, SalesSupervisorRun, SalesSupervisorHistory, SupervisorTaskExecutionSummary, TaskAgentExecution, TaskAgentExecutionHistory, OutreachPreparation, OutreachPreparationChannel, OutreachApproval, AgentOutreachExecution, EmailDeliveryEvent, DeliveryReconciliation, approveOutreachPreparation, executeApprovedOutreach, getOutreachApproval, getPreparationExecutions, getEmailDeliveryEvents, getDeliveryReconciliation, getDeliveryAnalyticsSummary, getDeliveryAnalyticsProviders, getDeliveryAnalyticsTimeSeries, DeliveryAnalyticsSummary, DeliveryAnalyticsProviderSummary, DeliveryAnalyticsTimeSeriesPoint } from "@/lib/api";
 
 const card = "rounded-xl border border-slate-200 bg-white p-5 shadow-sm";
 const label = "text-sm text-slate-500";
@@ -74,6 +74,27 @@ export default function SalesSupervisorPage() {
     setDeliveryStatuses(Object.fromEntries(availableTimelines.filter(([, , status]) => status).map(([id, , status]) => [id, status])) as Record<string, DeliveryReconciliation>);
     setDeliveryStatusErrors(Object.fromEntries(availableTimelines.filter(([, , , , error]) => error).map(([id, , , , error]) => [id, error])));
   }, []);
+
+  const [analyticsSummary, setAnalyticsSummary] = useState<DeliveryAnalyticsSummary | null>(null);
+  const [analyticsProviders, setAnalyticsProviders] = useState<DeliveryAnalyticsProviderSummary[]>([]);
+  const [analyticsTimeSeries, setAnalyticsTimeSeries] = useState<DeliveryAnalyticsTimeSeriesPoint[]>([]);
+
+  const loadAnalytics = useCallback(async () => {
+    try {
+      const [summary, providers, timeseries] = await Promise.all([
+        getDeliveryAnalyticsSummary("global"),
+        getDeliveryAnalyticsProviders(),
+        getDeliveryAnalyticsTimeSeries("day")
+      ]);
+      setAnalyticsSummary(summary);
+      setAnalyticsProviders(providers);
+      setAnalyticsTimeSeries(timeseries);
+    } catch (cause) {
+      console.error(cause);
+    }
+  }, []);
+
+  useEffect(() => { void loadAnalytics(); }, [loadAnalytics]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -381,6 +402,79 @@ export default function SalesSupervisorPage() {
           </article>})}
         </div>}
       </section>
+
+      {analyticsSummary && (
+        <section className={`${card} mt-8`} aria-labelledby="delivery-analytics-title">
+          <h2 id="delivery-analytics-title" className="text-lg font-bold text-ink">Delivery Analytics</h2>
+          <p className="mt-1 text-sm text-slate-600">Read-only factual delivery performance from Phase 11A-11D infrastructure.</p>
+
+          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+            <div><p className={label}>Sent</p><p className="text-xl font-bold">{analyticsSummary.sent_count}</p></div>
+            <div><p className={label}>Delivered</p><p className="text-xl font-bold">{analyticsSummary.delivered_count}</p></div>
+            <div><p className={label}>Bounced</p><p className="text-xl font-bold">{analyticsSummary.bounced_count}</p></div>
+            <div><p className={label}>Failed</p><p className="text-xl font-bold">{analyticsSummary.failed_count}</p></div>
+            <div><p className={label}>Complaints</p><p className="text-xl font-bold">{analyticsSummary.complained_count}</p></div>
+            <div><p className={label}>Unsubscribes</p><p className="text-xl font-bold">{analyticsSummary.unsubscribed_count}</p></div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-5 border-t border-slate-100 pt-4">
+            <div><p className={label}>Delivery rate</p><p className="font-semibold">{analyticsSummary.delivery_rate !== null ? (analyticsSummary.delivery_rate * 100).toFixed(1) + '%' : '-'}</p></div>
+            <div><p className={label}>Bounce rate</p><p className="font-semibold">{analyticsSummary.bounce_rate !== null ? (analyticsSummary.bounce_rate * 100).toFixed(1) + '%' : '-'}</p></div>
+            <div><p className={label}>Failure rate</p><p className="font-semibold">{analyticsSummary.failure_rate !== null ? (analyticsSummary.failure_rate * 100).toFixed(1) + '%' : '-'}</p></div>
+            <div><p className={label}>Complaint rate</p><p className="font-semibold">{analyticsSummary.complaint_rate !== null ? (analyticsSummary.complaint_rate * 100).toFixed(1) + '%' : '-'}</p></div>
+            <div><p className={label}>Unsubscribe rate</p><p className="font-semibold">{analyticsSummary.unsubscribe_rate !== null ? (analyticsSummary.unsubscribe_rate * 100).toFixed(1) + '%' : '-'}</p></div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-3 gap-4 border-t border-slate-100 pt-4">
+            <div><p className={label}>Conflicted executions</p><p className="font-semibold">{analyticsSummary.conflicted_execution_count}</p></div>
+            <div><p className={label}>Out-of-order executions</p><p className="font-semibold">{analyticsSummary.out_of_order_execution_count}</p></div>
+            <div><p className={label}>Unsupported events</p><p className="font-semibold">{analyticsSummary.unsupported_event_count}</p></div>
+          </div>
+
+          {analyticsProviders.length > 0 && (
+            <div className="mt-6 border-t border-slate-100 pt-4">
+              <h3 className="font-semibold text-ink">Provider breakdown</h3>
+              <table className="mt-2 w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200">
+                    <th className="pb-2 font-semibold">Provider</th>
+                    <th className="pb-2 font-semibold">Sent</th>
+                    <th className="pb-2 font-semibold">Delivered</th>
+                    <th className="pb-2 font-semibold">Bounced</th>
+                    <th className="pb-2 font-semibold">Failed</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {analyticsProviders.map(p => (
+                    <tr key={p.provider}>
+                      <td className="py-2">{p.provider}</td>
+                      <td className="py-2">{p.sent_count}</td>
+                      <td className="py-2">{p.delivered_count}</td>
+                      <td className="py-2">{p.bounced_count}</td>
+                      <td className="py-2">{p.failed_count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {analyticsTimeSeries.length > 0 && (
+            <div className="mt-6 border-t border-slate-100 pt-4">
+              <h3 className="font-semibold text-ink">Time-series delivery metrics</h3>
+              <div className="mt-2 flex gap-4 overflow-x-auto">
+                {analyticsTimeSeries.map(ts => (
+                  <div key={ts.period_start} className="min-w-[120px] rounded border border-slate-200 p-3">
+                    <p className="text-xs font-semibold text-slate-500">{new Date(ts.period_start).toLocaleDateString()}</p>
+                    <p className="mt-1 text-sm">Sent: {ts.sent_count}</p>
+                    <p className="text-sm">Delivered: {ts.delivered_count}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+      )}
     </main>
   );
 }

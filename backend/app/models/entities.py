@@ -1156,3 +1156,62 @@ class SeoFinding(Base):
 
     run: Mapped[SeoAuditRun] = relationship(back_populates="findings", foreign_keys=[seo_run_id], overlaps="observation,findings")
     observation: Mapped[SeoObservation | None] = relationship(back_populates="findings", overlaps="run,findings")
+
+
+class ConfidenceLevel(str, enum.Enum):
+    UNKNOWN = "UNKNOWN"
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+
+class SourceType(str, enum.Enum):
+    LEAD_RECORD = "LEAD_RECORD"
+    COMPANY_RECORD = "COMPANY_RECORD"
+    CONTACT_RECORD = "CONTACT_RECORD"
+    USER_PROVIDED = "USER_PROVIDED"
+    SYSTEM_DERIVED = "SYSTEM_DERIVED"
+
+class LeadIntelligenceProfile(Base):
+    __tablename__ = "lead_intelligence_profiles"
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lead_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("leads.id", ondelete="CASCADE"), unique=True, nullable=False)
+    industry: Mapped[str | None] = mapped_column(String(255))
+    industry_source: Mapped[SourceType | None] = mapped_column(Enum(SourceType, name="sourcetype"))
+    industry_confidence: Mapped[ConfidenceLevel | None] = mapped_column(Enum(ConfidenceLevel, name="confidencelevel"))
+    company_size: Mapped[str | None] = mapped_column(String(255))
+    company_size_source: Mapped[SourceType | None] = mapped_column(Enum(SourceType, name="sourcetype"))
+    company_size_confidence: Mapped[ConfidenceLevel | None] = mapped_column(Enum(ConfidenceLevel, name="confidencelevel"))
+    website: Mapped[str | None] = mapped_column(String(1000))
+    location: Mapped[str | None] = mapped_column(String(500))
+    country: Mapped[str | None] = mapped_column(String(120))
+    description: Mapped[str | None] = mapped_column(Text)
+    last_researched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completeness_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc)
+
+
+class LeadIntelligencePainPoint(Base):
+    __tablename__ = "lead_intelligence_pain_points"
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lead_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("leads.id", ondelete="CASCADE"), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    source_type: Mapped[SourceType] = mapped_column(Enum(SourceType, name="sourcetype"), nullable=False)
+    source_reference: Mapped[str | None] = mapped_column(String(255))
+    confidence: Mapped[ConfidenceLevel] = mapped_column(Enum(ConfidenceLevel, name="confidencelevel"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc)
+
+
+class LeadIntelligenceOpportunity(Base):
+    __tablename__ = "lead_intelligence_opportunities"
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lead_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("leads.id", ondelete="CASCADE"), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    source_type: Mapped[SourceType] = mapped_column(Enum(SourceType, name="sourcetype"), nullable=False)
+    source_reference: Mapped[str | None] = mapped_column(String(255))
+    confidence: Mapped[ConfidenceLevel] = mapped_column(Enum(ConfidenceLevel, name="confidencelevel"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc)
