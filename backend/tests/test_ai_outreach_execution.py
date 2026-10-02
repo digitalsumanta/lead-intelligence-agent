@@ -280,6 +280,6 @@ def test_phase_10e_migration_is_reversible_and_models_match():
     migration = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(migration)
     assert (migration.revision, migration.down_revision) == ("0024_ai_outreach_executions", "0023_ai_outreach_preparations")
-    assert SCHEMA_REVISION == "0026_email_delivery_events"
+    assert SCHEMA_REVISION == "0027_delivery_provider_identity"
     assert {"ai_outreach_approvals", "ai_outreach_executions"}.issubset(Base.metadata.tables)
     assert "UNIQUE" in str(Base.metadata.tables["ai_outreach_executions"].constraints).upper()

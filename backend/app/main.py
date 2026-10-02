@@ -52,7 +52,11 @@ from app.schemas.ai_outreach_execution import (
     OutreachExecutionHistory as AiOutreachExecutionHistory,
     OutreachExecutionOut as AiOutreachExecutionOut,
 )
-from app.schemas.email_delivery_event import EmailDeliveryEventCreate, EmailDeliveryEventHistory, EmailDeliveryEventOut
+from app.schemas.email_delivery_event import (
+    EmailDeliveryEventCreate, EmailDeliveryEventHistory,
+    EmailDeliveryEventIngestOut, EmailDeliveryEventIngestRequest, EmailDeliveryEventOut,
+    NormalizedEmailDeliveryEvent,
+)
 from app.services.lead_intelligence_api import read_intelligence_summary, read_lead_intelligence
 from app.services.csv_import import import_csv
 from app.services.jobs import create_job, update_batch_status
@@ -108,7 +112,9 @@ from app.services.ai_outreach_execution import (
     execute_approved_email, execution_by_id, execution_history_for_lead,
     execution_history_for_preparation,
 )
-from app.services.email_delivery_events import EmailDeliveryEventError, email_delivery_event_service
+from app.services.email_delivery_events import (
+    EmailDeliveryEventError, email_delivery_event_ingestion_service, email_delivery_event_service,
+)
 
 configure_logging()
 
@@ -1399,6 +1405,29 @@ async def create_email_delivery_event(
         raise HTTPException(error.status_code, detail={"code": error.code, "message": str(error)}) from None
     response.status_code = 201 if created else 200
     return event
+
+
+@app.post("/api/email-delivery-events/ingest", response_model=EmailDeliveryEventIngestOut)
+async def ingest_email_delivery_event(
+    body: EmailDeliveryEventIngestRequest, response: Response, db: AsyncSession = Depends(get_db),
+):
+    try:
+        normalized = NormalizedEmailDeliveryEvent(
+            source="PROVIDER",
+            provider=body.provider,
+            provider_event_id=body.provider_event_id,
+            provider_message_id=body.provider_message_id,
+            event_type=body.event_type,
+            recipient_email=body.recipient_email,
+            provider_status=body.provider_status,
+            occurred_at=body.occurred_at,
+            metadata=body.metadata,
+        )
+        event, execution_id, created = await email_delivery_event_ingestion_service.ingest(db, normalized)
+    except EmailDeliveryEventError as error:
+        raise HTTPException(error.status_code, detail={"code": error.code, "message": str(error)}) from None
+    response.status_code = 201 if created else 200
+    return {"status": "CREATED" if created else "DUPLICATE", "event": event, "execution_id": execution_id}
 
 
 @app.get(

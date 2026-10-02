@@ -1034,6 +1034,12 @@ class EmailDeliveryEvent(Base):
             postgresql_where=text("provider_event_id IS NOT NULL"),
             sqlite_where=text("provider_event_id IS NOT NULL"),
         ),
+        Index(
+            "uq_email_delivery_events_provider_event",
+            "provider", "provider_event_id", unique=True,
+            postgresql_where=text("provider IS NOT NULL AND provider_event_id IS NOT NULL"),
+            sqlite_where=text("provider IS NOT NULL AND provider_event_id IS NOT NULL"),
+        ),
         ForeignKeyConstraint(
             ["execution_id"], ["ai_outreach_executions.id"],
             name="fk_email_delivery_events_execution", ondelete="RESTRICT",
@@ -1044,6 +1050,7 @@ class EmailDeliveryEvent(Base):
     execution_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
     event_type: Mapped[str] = mapped_column(String(20), nullable=False)
     recipient_email: Mapped[str] = mapped_column(String(320), nullable=False)
+    provider: Mapped[str] = mapped_column(String(80), nullable=False)
     provider_message_id: Mapped[str | None] = mapped_column(String(512))
     provider_event_id: Mapped[str | None] = mapped_column(String(512))
     provider_status: Mapped[str | None] = mapped_column(String(80))

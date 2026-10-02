@@ -325,6 +325,6 @@ def test_task_agent_migration_head_and_database_registration():
     spec = importlib.util.spec_from_file_location("phase10c_migration", migration_path)
     migration = importlib.util.module_from_spec(spec); spec.loader.exec_module(migration)
     assert (migration.revision, migration.down_revision) == ("0022_autonomous_task_executions", "0021_ai_sales_supervisor")
-    assert SCHEMA_REVISION == "0026_email_delivery_events"
+    assert SCHEMA_REVISION == "0027_delivery_provider_identity"
     assert {"autonomous_task_executions", "sales_tasks", "ai_outreach_preparations"}.issubset(Base.metadata.tables)
     assert {"created_by_agent", "agent_source_id", "agent_source_action_id", "agent_evidence_refs"}.issubset(Base.metadata.tables["sales_tasks"].columns.keys())

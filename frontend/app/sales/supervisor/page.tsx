@@ -341,7 +341,7 @@ export default function SalesSupervisorPage() {
               {deliveryEventErrors[execution.id] ? <p role="status" className="mt-2 text-xs text-amber-800">{deliveryEventErrors[execution.id]}</p> : events.length === 0 ? <p className="mt-2 text-xs text-slate-500">No delivery events recorded.</p> : <ol className="mt-2 space-y-2">
                 {events.map((event) => <li key={event.id} className="border-l-2 border-teal/40 pl-3 text-xs text-slate-700">
                   <p className="font-semibold">{event.event_type.replaceAll("_", " ")} <span className="font-normal text-slate-500">· {new Date(event.occurred_at).toLocaleString()}</span></p>
-                  <p className="text-slate-500">Source: {event.source}{event.provider_status ? ` · Provider status: ${event.provider_status}` : ""}</p>
+                  <p className="text-slate-500">Source: {event.source}{event.provider ? ` · Provider: ${event.provider}` : ""}{event.provider_status ? ` · Provider status: ${event.provider_status}` : ""}</p>
                   {event.provider_message_id && <p className="break-all font-mono text-slate-500">Message ID: {event.provider_message_id}</p>}
                 </li>)}
               </ol>}

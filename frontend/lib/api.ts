@@ -349,6 +349,7 @@ export type AgentOutreachExecutionHistory = { items: AgentOutreachExecution[] };
 export type EmailDeliveryEventType = "SENT" | "DELIVERED" | "BOUNCED" | "FAILED" | "COMPLAINED" | "UNSUBSCRIBED";
 export type EmailDeliveryEvent = {
   id: string; execution_id: string; event_type: EmailDeliveryEventType; recipient_email: string;
+  provider: string | null;
   provider_message_id: string | null; provider_event_id: string | null; provider_status: string | null;
   occurred_at: string; recorded_at: string; source: "PROVIDER" | "INTERNAL";
 };

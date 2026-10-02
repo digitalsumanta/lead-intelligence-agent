@@ -7,7 +7,7 @@ from app.config import settings
 from app.models import WorkerHeartbeat
 from app.models.entities import now_utc
 
-SCHEMA_REVISION = "0026_email_delivery_events"
+SCHEMA_REVISION = "0027_delivery_provider_identity"
 
 engine = create_async_engine(settings.database_url, pool_pre_ping=True)
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)

@@ -14,9 +14,11 @@ from app.database import get_db
 from app.models import (
     AiOutreachExecution, EmailDeliveryEvent, Lead, SalesActivity, SalesTask,
 )
-from app.schemas.email_delivery_event import EmailDeliveryEventCreate
+from app.schemas.email_delivery_event import (
+    EmailDeliveryEventCreate, EmailDeliveryEventIngestRequest, NormalizedEmailDeliveryEvent,
+)
 from app.services.email_delivery_events import (
-    EmailDeliveryEventError, email_delivery_event_service,
+    EmailDeliveryEventError, email_delivery_event_ingestion_service, email_delivery_event_service,
 )
 from test_ai_outreach_execution import FakeEmailProvider, approve, prepared_email
 
@@ -27,16 +29,26 @@ def test_delivery_event_migration_and_model_are_current():
     from app.database import SCHEMA_REVISION
     from app.models import Base
 
-    path = Path(__file__).resolve().parents[1] / "migrations" / "versions" / "0026_email_delivery_events.py"
-    spec = importlib.util.spec_from_file_location("phase11b_migration", path)
-    migration = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(migration)
-    assert (migration.revision, migration.down_revision) == (
+    versions = Path(__file__).resolve().parents[1] / "migrations" / "versions"
+    migration_26_spec = importlib.util.spec_from_file_location(
+        "phase11b_migration", versions / "0026_email_delivery_events.py",
+    )
+    migration_26 = importlib.util.module_from_spec(migration_26_spec)
+    migration_26_spec.loader.exec_module(migration_26)
+    migration_27_spec = importlib.util.spec_from_file_location(
+        "phase11c_migration", versions / "0027_delivery_event_provider_identity.py",
+    )
+    migration_27 = importlib.util.module_from_spec(migration_27_spec)
+    migration_27_spec.loader.exec_module(migration_27)
+    assert (migration_26.revision, migration_26.down_revision) == (
         "0026_email_delivery_events", "0025_email_provider_status",
     )
-    assert SCHEMA_REVISION == migration.revision
+    assert (migration_27.revision, migration_27.down_revision) == (
+        "0027_delivery_provider_identity", "0026_email_delivery_events",
+    )
+    assert SCHEMA_REVISION == migration_27.revision
     table = Base.metadata.tables["email_delivery_events"]
-    assert {"execution_id", "recipient_email", "event_type", "occurred_at", "recorded_at"}.issubset(table.c.keys())
+    assert {"execution_id", "provider", "provider_event_id", "recipient_email", "event_type", "occurred_at", "recorded_at"}.issubset(table.c.keys())
 
 
 async def sent_execution(session_factory):
@@ -60,6 +72,39 @@ def event_request(execution_id, **overrides):
     }
     values.update(overrides)
     return EmailDeliveryEventCreate.model_validate(values)
+
+
+def normalized_request(execution, **overrides):
+    values = {
+        "source": "PROVIDER", "provider": execution.provider,
+        "provider_message_id": execution.provider_message_id,
+        "provider_event_id": "normalized-event-1", "event_type": "DELIVERED",
+        "recipient_email": execution.recipient, "provider_status": "delivered",
+        "metadata": {"region": "us-east"},
+    }
+    values.update(overrides)
+    return NormalizedEmailDeliveryEvent.model_validate(values)
+
+
+@pytest.mark.parametrize("event_type", ["SENT", "DELIVERED", "BOUNCED", "FAILED", "COMPLAINED", "UNSUBSCRIBED"])
+def test_normalized_contract_accepts_supported_event_types(event_type):
+    event = NormalizedEmailDeliveryEvent(
+        source="PROVIDER", provider="mock_email", provider_message_id="message-1", event_type=event_type,
+    )
+    assert event.event_type == event_type
+
+
+def test_ingest_api_contract_rejects_unknown_type_execution_id_and_unsafe_metadata():
+    values = {
+        "provider": "smtp", "provider_message_id": "message-1", "event_type": "DELIVERED",
+    }
+    with pytest.raises(ValidationError):
+        EmailDeliveryEventIngestRequest.model_validate({**values, "event_type": "OPENED"})
+    with pytest.raises(ValidationError):
+        EmailDeliveryEventIngestRequest.model_validate({**values, "execution_id": str(uuid4())})
+    for key in ("signature", "webhook_secret", "headers", "raw", "raw_payload", "payload"):
+        with pytest.raises(ValidationError):
+            EmailDeliveryEventIngestRequest.model_validate({**values, "metadata": {key: "must not persist"}})
 
 
 @pytest.mark.asyncio
@@ -108,6 +153,90 @@ async def test_delivery_event_duplicate_provider_id_returns_existing_event(sessi
     assert created is False
     assert replay.id == first.id
     assert replay.provider_status == first.provider_status
+
+
+@pytest.mark.asyncio
+async def test_ingestion_resolves_execution_and_is_idempotent_but_rejects_conflicts(session_factory):
+    execution = await sent_execution(session_factory)
+    request = normalized_request(execution)
+    async with session_factory() as session:
+        first, execution_id, created = await email_delivery_event_ingestion_service.ingest(session, request)
+    async with session_factory() as session:
+        duplicate, duplicate_execution_id, replay_created = await email_delivery_event_ingestion_service.ingest(session, request)
+    assert created and not replay_created
+    assert first.id == duplicate.id
+    assert execution_id == duplicate_execution_id == execution.id
+    assert first.provider == execution.provider
+    assert first.provider_event_id == request.provider_event_id
+    assert first.provider_status == request.provider_status
+
+    with pytest.raises(EmailDeliveryEventError) as conflict:
+        async with session_factory() as session:
+            await email_delivery_event_ingestion_service.ingest(
+                session, request.model_copy(update={"event_type": "BOUNCED"}),
+            )
+    assert conflict.value.code == "IDEMPOTENCY_CONFLICT"
+    assert conflict.value.status_code == 409
+
+    with pytest.raises(EmailDeliveryEventError) as wrong_recipient:
+        async with session_factory() as session:
+            await email_delivery_event_ingestion_service.ingest(
+                session, request.model_copy(update={"provider_event_id": "other-event", "recipient_email": "wrong@example.test"}),
+            )
+    assert wrong_recipient.value.code == "RECIPIENT_MISMATCH"
+
+    with pytest.raises(EmailDeliveryEventError) as wrong_provider:
+        async with session_factory() as session:
+            await email_delivery_event_ingestion_service.ingest(
+                session, request.model_copy(update={"provider_event_id": "provider-mismatch", "provider": "other-provider"}),
+            )
+    assert wrong_provider.value.code == "PROVIDER_MISMATCH"
+
+    with pytest.raises(EmailDeliveryEventError) as unknown:
+        async with session_factory() as session:
+            await email_delivery_event_ingestion_service.ingest(
+                session, request.model_copy(update={"provider_event_id": "unknown", "provider_message_id": "missing-message"}),
+            )
+    assert unknown.value.code == "EXECUTION_NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_ingestion_rejects_conflicting_reuse_of_provider_event_id(session_factory):
+    execution = await sent_execution(session_factory)
+    original = normalized_request(execution)
+    async with session_factory() as session:
+        first, _, _ = await email_delivery_event_ingestion_service.ingest(session, original)
+    conflicting = original.model_copy(update={"provider_message_id": "different-message"})
+    with pytest.raises(EmailDeliveryEventError) as conflict:
+        async with session_factory() as session:
+            await email_delivery_event_ingestion_service.ingest(session, conflicting)
+    assert conflict.value.code == "IDEMPOTENCY_CONFLICT"
+    async with session_factory() as session:
+        assert await session.scalar(select(func.count()).select_from(EmailDeliveryEvent).where(
+            EmailDeliveryEvent.provider == execution.provider,
+            EmailDeliveryEvent.provider_event_id == original.provider_event_id,
+        )) == 1
+    assert first.execution_id == execution.id
+
+
+@pytest.mark.asyncio
+async def test_ingestion_rejects_ambiguous_execution_resolution():
+    class AmbiguousRows:
+        def all(self):
+            return [object(), object()]
+
+    class AmbiguousSession:
+        async def scalars(self, _statement):
+            return AmbiguousRows()
+
+    request = NormalizedEmailDeliveryEvent(
+        source="PROVIDER", provider="mock_email", provider_message_id="ambiguous-message",
+        event_type="DELIVERED",
+    )
+    with pytest.raises(EmailDeliveryEventError) as ambiguous:
+        await email_delivery_event_ingestion_service.ingest(AmbiguousSession(), request)
+    assert ambiguous.value.code == "AMBIGUOUS_EXECUTION"
+    assert ambiguous.value.status_code == 409
 
 
 @pytest.mark.asyncio
@@ -189,10 +318,28 @@ async def test_delivery_event_api_requires_bearer_and_returns_idempotent_event(s
             }
             created = await client.post("/api/email-delivery-events", json=payload, headers=headers)
             replay = await client.post("/api/email-delivery-events", json=payload, headers=headers)
+            ingest_payload = {
+                "provider": execution.provider, "provider_message_id": execution.provider_message_id,
+                "provider_event_id": "normalized-api-event", "event_type": "DELIVERED",
+                "recipient_email": execution.recipient, "provider_status": "delivered",
+                "metadata": {"region": "us-east"},
+            }
+            unauth_ingest = await client.post("/api/email-delivery-events/ingest", json=ingest_payload)
+            ingested = await client.post("/api/email-delivery-events/ingest", json=ingest_payload, headers=headers)
+            ingest_replay = await client.post("/api/email-delivery-events/ingest", json=ingest_payload, headers=headers)
+            invalid_ingest = await client.post(
+                "/api/email-delivery-events/ingest",
+                json={**ingest_payload, "event_type": "OPENED"}, headers=headers,
+            )
             history = await client.get(path, headers=headers)
         assert created.status_code == 201
         assert replay.status_code == 200
         assert replay.json()["id"] == created.json()["id"]
+        assert unauth_ingest.status_code == 401
+        assert invalid_ingest.status_code == 422
+        assert ingested.status_code == 201 and ingested.json()["status"] == "CREATED"
+        assert ingest_replay.status_code == 200 and ingest_replay.json()["status"] == "DUPLICATE"
+        assert ingested.json()["event"]["provider"] == execution.provider
         assert created.json()["recipient_email"] == execution.recipient
         assert created.json()["provider_message_id"] == execution.provider_message_id
         assert "metadata" not in created.json()
