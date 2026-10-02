@@ -1242,3 +1242,22 @@ class CompanyEnrichmentProfile(Base):
     completeness_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc)
+
+
+class WebsiteIntelligenceProfile(Base):
+    __tablename__ = "website_intelligence_profiles"
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("leads.id", ondelete="CASCADE"), nullable=False, unique=True)
+    website: Mapped[str | None] = mapped_column(String(1000))
+    normalized_website: Mapped[str | None] = mapped_column(String(1000))
+    domain: Mapped[str | None] = mapped_column(String(255))
+    normalized_domain: Mapped[str | None] = mapped_column(String(255))
+    website_present: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    domain_present: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    technology_signals: Mapped[dict | None] = mapped_column(JSON)
+    content_signals: Mapped[dict | None] = mapped_column(JSON)
+    source_type: Mapped[SourceType] = mapped_column(Enum(SourceType, name="sourcetype", create_type=False), nullable=False)
+    confidence: Mapped[ConfidenceLevel] = mapped_column(Enum(ConfidenceLevel, name="confidencelevel", create_type=False), nullable=False)
+    completeness: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc)

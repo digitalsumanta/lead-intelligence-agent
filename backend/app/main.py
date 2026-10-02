@@ -39,6 +39,8 @@ from app.schemas.lead_intelligence import LeadIntelligenceProfileSchema
 from app.services.lead_intelligence import get_lead_intelligence, refresh_lead_intelligence
 from app.schemas.company_enrichment import CompanyEnrichmentProfileSchema
 from app.services.company_enrichment import get_company_enrichment, refresh_company_enrichment
+from app.schemas.website_intelligence import WebsiteIntelligenceProfileSchema
+from app.services.website_intelligence import get_website_intelligence, refresh_website_intelligence
 from app.schemas.seo import LatestSeoOut, SeoRunCreatedOut, SeoRunDetailOut, SeoRunListOut, SeoRunOut
 from app.schemas.seo_opportunities import SeoSalesOpportunityList
 from app.schemas.ai_sales_intelligence import AISalesIntelligenceHistoryOut, AISalesIntelligenceOut
@@ -1704,6 +1706,36 @@ async def endpoint_get_lead_company_enrichment(
     db: AsyncSession = Depends(get_db)
 ):
     profile = await get_company_enrichment(db, lead_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    return profile
+
+@app.get("/api/companies/{company_id}/website-intelligence", response_model=WebsiteIntelligenceProfileSchema, tags=["Companies"])
+async def endpoint_get_website_intelligence(
+    company_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db)
+):
+    profile = await get_website_intelligence(db, company_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return profile
+
+@app.post("/api/companies/{company_id}/website-intelligence/refresh", response_model=WebsiteIntelligenceProfileSchema, tags=["Companies"])
+async def endpoint_refresh_website_intelligence(
+    company_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db)
+):
+    profile = await refresh_website_intelligence(db, company_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return profile
+
+@app.get("/api/leads/{lead_id}/website-intelligence", response_model=WebsiteIntelligenceProfileSchema, tags=["Leads"])
+async def endpoint_get_lead_website_intelligence(
+    lead_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db)
+):
+    profile = await get_website_intelligence(db, lead_id)
     if not profile:
         raise HTTPException(status_code=404, detail="Lead not found")
     return profile

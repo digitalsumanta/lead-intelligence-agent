@@ -753,3 +753,21 @@ export type CompanyEnrichmentProfileSchema = {
   created_at: string;
   updated_at: string;
 };
+
+export type WebsiteIntelligenceProfileSchema = {
+  id: string;
+  company_id: string;
+  website: string | null;
+  normalized_website: string | null;
+  domain: string | null;
+  normalized_domain: string | null;
+  website_present: boolean;
+  domain_present: boolean;
+  technology_signals: Record<string, any> | null;
+  content_signals: Record<string, any> | null;
+  source_type: string;
+  confidence: string;
+  completeness: number;
+  created_at: string;
+  updated_at: string;
+};
