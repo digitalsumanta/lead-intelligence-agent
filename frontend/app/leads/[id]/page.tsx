@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
-import { api, ApiError, CommercialRecord, IntelligenceClaim, IntelligenceResponse, LeadIntelligenceProfileSchema, CompanyEnrichmentProfileSchema, WebsiteIntelligenceProfileSchema, DigitalMarketingIntelligenceProfileSchema, BuyingSignalSchema, BuyingSignalsResponse, LeadDetail, OutreachArtifact, OutreachChannel, OutreachContent, OutreachExecution, OutreachReadResponse, SalesActivity, SalesActivityOutcome, SalesActivityType, SalesCollection, SalesPriority, SalesStatus, SalesTask, SalesTaskCreate, SalesTaskStatus, SalesTaskType, SalesWorkflow } from "@/lib/api";
+import { api, ApiError, CommercialRecord, IntelligenceClaim, IntelligenceResponse, LeadIntelligenceProfileSchema, CompanyEnrichmentProfileSchema, WebsiteIntelligenceProfileSchema, DigitalMarketingIntelligenceProfileSchema, BuyingSignalSchema, BuyingSignalsResponse, IntelligenceOpportunity, SalesOpportunitiesResponse, LeadDetail, OutreachArtifact, OutreachChannel, OutreachContent, OutreachExecution, OutreachReadResponse, SalesActivity, SalesActivityOutcome, SalesActivityType, SalesCollection, SalesPriority, SalesStatus, SalesTask, SalesTaskCreate, SalesTaskStatus, SalesTaskType, SalesWorkflow } from "@/lib/api";
 import SeoSection from "./seo-section";
 import AISalesIntelligence from "./ai-sales-intelligence";
 import AISalesCopilot from "./ai-sales-copilot";
@@ -489,7 +489,7 @@ function ClaimSection({ title, claims }: { title: string; claims: IntelligenceCl
 export default function LeadDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [lead, setLead] = useState<LeadDetail | null>(null);
-  const [intelligence, setIntelligence] = useState<IntelligenceResponse | null>(null); const [profile, setProfile] = useState<LeadIntelligenceProfileSchema | null>(null); const [companyEnrichment, setCompanyEnrichment] = useState<CompanyEnrichmentProfileSchema | null>(null); const [websiteIntelligence, setWebsiteIntelligence] = useState<WebsiteIntelligenceProfileSchema | null>(null); const [digitalMarketingIntelligence, setDigitalMarketingIntelligence] = useState<DigitalMarketingIntelligenceProfileSchema | null>(null); const [buyingSignals, setBuyingSignals] = useState<BuyingSignalSchema[]>([]);
+  const [intelligence, setIntelligence] = useState<IntelligenceResponse | null>(null); const [profile, setProfile] = useState<LeadIntelligenceProfileSchema | null>(null); const [companyEnrichment, setCompanyEnrichment] = useState<CompanyEnrichmentProfileSchema | null>(null); const [websiteIntelligence, setWebsiteIntelligence] = useState<WebsiteIntelligenceProfileSchema | null>(null); const [digitalMarketingIntelligence, setDigitalMarketingIntelligence] = useState<DigitalMarketingIntelligenceProfileSchema | null>(null); const [buyingSignals, setBuyingSignals] = useState<BuyingSignalSchema[]>([]); const [salesOpportunities, setSalesOpportunities] = useState<IntelligenceOpportunity[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState("");
@@ -507,7 +507,7 @@ export default function LeadDetailPage() {
         if (!current) return;
         setLead(business);
         try {
-          const detail = await api<IntelligenceResponse>(`/api/leads/${encodeURIComponent(id)}/enrichment`); try { const prof = await api<LeadIntelligenceProfileSchema>(`/api/leads/${encodeURIComponent(id)}/intelligence`); const compEnr = await api<CompanyEnrichmentProfileSchema>(`/api/leads/${encodeURIComponent(id)}/company-enrichment`); const webIntel = await api<WebsiteIntelligenceProfileSchema>(`/api/leads/${encodeURIComponent(id)}/website-intelligence`); const dmIntel = await api<DigitalMarketingIntelligenceProfileSchema>(`/api/leads/${encodeURIComponent(id)}/digital-marketing-intelligence`); const bs = await api<BuyingSignalsResponse>(`/api/leads/${encodeURIComponent(id)}/buying-signals`); if (current) { setProfile(prof); setCompanyEnrichment(compEnr); setWebsiteIntelligence(webIntel); setDigitalMarketingIntelligence(dmIntel); setBuyingSignals(bs.signals); } } catch(e) {}
+          const detail = await api<IntelligenceResponse>(`/api/leads/${encodeURIComponent(id)}/enrichment`); try { const prof = await api<LeadIntelligenceProfileSchema>(`/api/leads/${encodeURIComponent(id)}/intelligence`); const compEnr = await api<CompanyEnrichmentProfileSchema>(`/api/leads/${encodeURIComponent(id)}/company-enrichment`); const webIntel = await api<WebsiteIntelligenceProfileSchema>(`/api/leads/${encodeURIComponent(id)}/website-intelligence`); const dmIntel = await api<DigitalMarketingIntelligenceProfileSchema>(`/api/leads/${encodeURIComponent(id)}/digital-marketing-intelligence`); const bs = await api<BuyingSignalsResponse>(`/api/leads/${encodeURIComponent(id)}/buying-signals`); if (current) { setProfile(prof); setCompanyEnrichment(compEnr); setWebsiteIntelligence(webIntel); setDigitalMarketingIntelligence(dmIntel); setBuyingSignals(bs.signals); } const opps = await api<SalesOpportunitiesResponse>(`/api/leads/${encodeURIComponent(id)}/sales-opportunities`); if (current) { setSalesOpportunities(opps.opportunities); } } catch(e) {}
           if (current) {
             setIntelligence(detail);
             setIntelligenceState("available");

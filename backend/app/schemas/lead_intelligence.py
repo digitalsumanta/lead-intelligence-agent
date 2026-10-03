@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 from pydantic import BaseModel, ConfigDict
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from app.models.entities import ConfidenceLevel, SourceType
 
 class IntelligenceCompanyProfile(BaseModel):
@@ -48,6 +48,11 @@ class IntelligenceOpportunity(BaseModel):
     id: UUID
     title: str
     description: Optional[str] = None
+    opportunity_type: Optional[str] = None
+    score: Optional[int] = None
+    priority: Optional[str] = None
+    recommended_action: Optional[str] = None
+    evidence: Optional[Dict[str, Any]] = None
     source_type: SourceType
     source_reference: Optional[str] = None
     confidence: ConfidenceLevel

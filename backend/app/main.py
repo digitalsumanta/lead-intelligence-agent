@@ -1823,3 +1823,32 @@ async def endpoint_refresh_buying_signals_lead(
         raise HTTPException(status_code=404, detail="Lead not found")
     signals = await refresh_buying_signals_for_lead(db, lead_id)
     return {"signals": signals}
+
+from app.schemas.lead_intelligence import IntelligenceOpportunity
+from app.services.sales_opportunities import get_sales_opportunities_for_lead, refresh_sales_opportunities_for_lead
+
+from pydantic import BaseModel
+class SalesOpportunitiesResponse(BaseModel):
+    opportunities: list[IntelligenceOpportunity]
+
+@app.get("/api/leads/{lead_id}/sales-opportunities", response_model=SalesOpportunitiesResponse, tags=["Leads"])
+async def endpoint_get_sales_opportunities(
+    lead_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db)
+):
+    lead = await db.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    opps = await get_sales_opportunities_for_lead(db, lead_id)
+    return {"opportunities": opps}
+
+@app.post("/api/leads/{lead_id}/sales-opportunities/refresh", response_model=SalesOpportunitiesResponse, tags=["Leads"])
+async def endpoint_refresh_sales_opportunities(
+    lead_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db)
+):
+    lead = await db.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    opps = await refresh_sales_opportunities_for_lead(db, lead_id)
+    return {"opportunities": opps}

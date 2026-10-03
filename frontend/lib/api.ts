@@ -711,9 +711,11 @@ export type IntelligencePainPoint = {
   source_reference: string | null; confidence: string; created_at: string; updated_at: string;
 };
 export type IntelligenceOpportunity = {
-  id: string; title: string; description: string | null; source_type: string;
-  source_reference: string | null; confidence: string; created_at: string; updated_at: string;
+  id: string; title: string; description: string | null; opportunity_type: string | null;
+  score: number | null; priority: string | null; recommended_action: string | null; evidence: any | null;
+  source_type: string; source_reference: string | null; confidence: string; created_at: string; updated_at: string;
 };
+export type SalesOpportunitiesResponse = { opportunities: IntelligenceOpportunity[] };
 export type IntelligenceBusinessContext = {
   pain_points: IntelligencePainPoint[]; opportunities: IntelligenceOpportunity[];
   known_services: string[]; known_products: string[];
