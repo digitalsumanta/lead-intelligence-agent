@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
-import { api, ApiError, CommercialRecord, IntelligenceClaim, IntelligenceResponse, LeadIntelligenceProfileSchema, CompanyEnrichmentProfileSchema, WebsiteIntelligenceProfileSchema, DigitalMarketingIntelligenceProfileSchema, LeadDetail, OutreachArtifact, OutreachChannel, OutreachContent, OutreachExecution, OutreachReadResponse, SalesActivity, SalesActivityOutcome, SalesActivityType, SalesCollection, SalesPriority, SalesStatus, SalesTask, SalesTaskCreate, SalesTaskStatus, SalesTaskType, SalesWorkflow } from "@/lib/api";
+import { api, ApiError, CommercialRecord, IntelligenceClaim, IntelligenceResponse, LeadIntelligenceProfileSchema, CompanyEnrichmentProfileSchema, WebsiteIntelligenceProfileSchema, DigitalMarketingIntelligenceProfileSchema, BuyingSignalSchema, BuyingSignalsResponse, LeadDetail, OutreachArtifact, OutreachChannel, OutreachContent, OutreachExecution, OutreachReadResponse, SalesActivity, SalesActivityOutcome, SalesActivityType, SalesCollection, SalesPriority, SalesStatus, SalesTask, SalesTaskCreate, SalesTaskStatus, SalesTaskType, SalesWorkflow } from "@/lib/api";
 import SeoSection from "./seo-section";
 import AISalesIntelligence from "./ai-sales-intelligence";
 import AISalesCopilot from "./ai-sales-copilot";
@@ -489,7 +489,7 @@ function ClaimSection({ title, claims }: { title: string; claims: IntelligenceCl
 export default function LeadDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [lead, setLead] = useState<LeadDetail | null>(null);
-  const [intelligence, setIntelligence] = useState<IntelligenceResponse | null>(null); const [profile, setProfile] = useState<LeadIntelligenceProfileSchema | null>(null); const [companyEnrichment, setCompanyEnrichment] = useState<CompanyEnrichmentProfileSchema | null>(null); const [websiteIntelligence, setWebsiteIntelligence] = useState<WebsiteIntelligenceProfileSchema | null>(null); const [digitalMarketingIntelligence, setDigitalMarketingIntelligence] = useState<DigitalMarketingIntelligenceProfileSchema | null>(null);
+  const [intelligence, setIntelligence] = useState<IntelligenceResponse | null>(null); const [profile, setProfile] = useState<LeadIntelligenceProfileSchema | null>(null); const [companyEnrichment, setCompanyEnrichment] = useState<CompanyEnrichmentProfileSchema | null>(null); const [websiteIntelligence, setWebsiteIntelligence] = useState<WebsiteIntelligenceProfileSchema | null>(null); const [digitalMarketingIntelligence, setDigitalMarketingIntelligence] = useState<DigitalMarketingIntelligenceProfileSchema | null>(null); const [buyingSignals, setBuyingSignals] = useState<BuyingSignalSchema[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState("");
@@ -507,7 +507,7 @@ export default function LeadDetailPage() {
         if (!current) return;
         setLead(business);
         try {
-          const detail = await api<IntelligenceResponse>(`/api/leads/${encodeURIComponent(id)}/enrichment`); try { const prof = await api<LeadIntelligenceProfileSchema>(`/api/leads/${encodeURIComponent(id)}/intelligence`); const compEnr = await api<CompanyEnrichmentProfileSchema>(`/api/leads/${encodeURIComponent(id)}/company-enrichment`); const webIntel = await api<WebsiteIntelligenceProfileSchema>(`/api/leads/${encodeURIComponent(id)}/website-intelligence`); const dmIntel = await api<DigitalMarketingIntelligenceProfileSchema>(`/api/leads/${encodeURIComponent(id)}/digital-marketing-intelligence`); if (current) { setProfile(prof); setCompanyEnrichment(compEnr); setWebsiteIntelligence(webIntel); setDigitalMarketingIntelligence(dmIntel); } } catch(e) {}
+          const detail = await api<IntelligenceResponse>(`/api/leads/${encodeURIComponent(id)}/enrichment`); try { const prof = await api<LeadIntelligenceProfileSchema>(`/api/leads/${encodeURIComponent(id)}/intelligence`); const compEnr = await api<CompanyEnrichmentProfileSchema>(`/api/leads/${encodeURIComponent(id)}/company-enrichment`); const webIntel = await api<WebsiteIntelligenceProfileSchema>(`/api/leads/${encodeURIComponent(id)}/website-intelligence`); const dmIntel = await api<DigitalMarketingIntelligenceProfileSchema>(`/api/leads/${encodeURIComponent(id)}/digital-marketing-intelligence`); const bs = await api<BuyingSignalsResponse>(`/api/leads/${encodeURIComponent(id)}/buying-signals`); if (current) { setProfile(prof); setCompanyEnrichment(compEnr); setWebsiteIntelligence(webIntel); setDigitalMarketingIntelligence(dmIntel); setBuyingSignals(bs.signals); } } catch(e) {}
           if (current) {
             setIntelligence(detail);
             setIntelligenceState("available");
@@ -684,6 +684,46 @@ export default function LeadDetailPage() {
             </div>
           ) : (
             <p className="mt-4 text-sm text-slate-500">No digital marketing intelligence profile available.</p>
+          )}
+        </article>
+
+        <article id="buying-signals" className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm mt-4">
+          <div className="flex items-center justify-between">
+            <h2 className="font-bold text-ink">Buying Signals</h2>
+            <button
+              onClick={() => api<BuyingSignalsResponse>(`/api/companies/${lead.id}/buying-signals/refresh`, {method: "POST"}).then(p => setBuyingSignals(p.signals))}
+              className="text-xs font-semibold text-teal underline"
+            >
+              Refresh
+            </button>
+          </div>
+          {buyingSignals && buyingSignals.length > 0 ? (
+            <div className="mt-4 space-y-4">
+              {buyingSignals.map(sig => (
+                <div key={sig.id} className="rounded border border-slate-100 bg-slate-50 p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="inline-flex rounded-full bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal">
+                        {sig.signal_category.replace("_", " ").toUpperCase()}
+                      </span>
+                      <span className="ml-2 text-sm font-bold text-ink">{sig.signal_type.replace(/_/g, " ")}</span>
+                    </div>
+                    <div className="text-xs text-slate-400">Detected: {new Date(sig.detected_at).toLocaleDateString()}</div>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
+                    <div><dt className="text-xs font-semibold uppercase text-slate-400">Confidence</dt><dd className="mt-1">{sig.confidence}</dd></div>
+                    {sig.strength && <div><dt className="text-xs font-semibold uppercase text-slate-400">Strength</dt><dd className="mt-1">{sig.strength}</dd></div>}
+                    <div><dt className="text-xs font-semibold uppercase text-slate-400">Source</dt><dd className="mt-1">{sig.source_type}</dd></div>
+                    <div className="sm:col-span-3">
+                      <dt className="text-xs font-semibold uppercase text-slate-400">Evidence</dt>
+                      <dd className="mt-1 text-slate-600 font-mono text-xs overflow-x-auto whitespace-pre-wrap">{JSON.stringify(sig.evidence, null, 2)}</dd>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-4 text-sm text-slate-500">No buying signals currently detected from available evidence.</p>
           )}
         </article>
 

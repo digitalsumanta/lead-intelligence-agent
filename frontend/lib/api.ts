@@ -788,3 +788,22 @@ export type DigitalMarketingIntelligenceProfileSchema = {
   created_at: string;
   updated_at: string;
 };
+
+export type BuyingSignalSchema = {
+  id: string;
+  company_id: string;
+  signal_type: string;
+  signal_category: string;
+  confidence: string;
+  strength: string | null;
+  source_type: string;
+  detected_at: string;
+  evidence: Record<string, any>;
+  status: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type BuyingSignalsResponse = {
+  signals: BuyingSignalSchema[];
+};

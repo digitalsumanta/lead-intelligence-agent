@@ -1171,6 +1171,11 @@ class SourceType(str, enum.Enum):
     USER_PROVIDED = "USER_PROVIDED"
     SYSTEM_DERIVED = "SYSTEM_DERIVED"
 
+class SignalStrength(str, enum.Enum):
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+
 class LeadIntelligenceProfile(Base):
     __tablename__ = "lead_intelligence_profiles"
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -1276,5 +1281,26 @@ class DigitalMarketingIntelligenceProfile(Base):
     source_type: Mapped[SourceType] = mapped_column(Enum(SourceType, name="sourcetype", create_type=False), nullable=False)
     confidence: Mapped[ConfidenceLevel] = mapped_column(Enum(ConfidenceLevel, name="confidencelevel", create_type=False), nullable=False)
     completeness: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc)
+
+class BuyingSignal(Base):
+    __tablename__ = "buying_signals"
+    __table_args__ = (
+        UniqueConstraint("company_id", "signal_type", "detected_at", name="uq_buying_signals_company_type_time"),
+        Index("ix_buying_signals_company_id", "company_id"),
+        Index("ix_buying_signals_category", "signal_category"),
+        Index("ix_buying_signals_detected_at", "detected_at"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("leads.id", ondelete="CASCADE"), nullable=False)
+    signal_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    signal_category: Mapped[str] = mapped_column(String(100), nullable=False)
+    confidence: Mapped[ConfidenceLevel] = mapped_column(Enum(ConfidenceLevel, name="confidencelevel", create_type=False), nullable=False)
+    strength: Mapped[SignalStrength | None] = mapped_column(Enum(SignalStrength, name="signalstrength", create_type=False))
+    source_type: Mapped[SourceType] = mapped_column(Enum(SourceType, name="sourcetype", create_type=False), nullable=False)
+    detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    evidence: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="ACTIVE")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc)

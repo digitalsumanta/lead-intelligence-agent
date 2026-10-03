@@ -1771,3 +1771,55 @@ async def endpoint_get_lead_digital_marketing_intelligence(
     if not profile:
         raise HTTPException(status_code=404, detail="Lead not found")
     return profile
+
+from app.schemas.buying_signals import BuyingSignalsResponse
+from app.services.buying_signals import (
+    get_buying_signals_for_company,
+    refresh_buying_signals_for_company,
+    get_buying_signals_for_lead,
+    refresh_buying_signals_for_lead
+)
+
+@app.get("/api/companies/{company_id}/buying-signals", response_model=BuyingSignalsResponse, tags=["Companies"])
+async def endpoint_get_buying_signals_company(
+    company_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db)
+):
+    lead = await db.get(Lead, company_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Company not found")
+    signals = await get_buying_signals_for_company(db, company_id)
+    return {"signals": signals}
+
+@app.post("/api/companies/{company_id}/buying-signals/refresh", response_model=BuyingSignalsResponse, tags=["Companies"])
+async def endpoint_refresh_buying_signals_company(
+    company_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db)
+):
+    lead = await db.get(Lead, company_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Company not found")
+    signals = await refresh_buying_signals_for_company(db, company_id)
+    return {"signals": signals}
+
+@app.get("/api/leads/{lead_id}/buying-signals", response_model=BuyingSignalsResponse, tags=["Leads"])
+async def endpoint_get_buying_signals_lead(
+    lead_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db)
+):
+    lead = await db.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    signals = await get_buying_signals_for_lead(db, lead_id)
+    return {"signals": signals}
+
+@app.post("/api/leads/{lead_id}/buying-signals/refresh", response_model=BuyingSignalsResponse, tags=["Leads"])
+async def endpoint_refresh_buying_signals_lead(
+    lead_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db)
+):
+    lead = await db.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    signals = await refresh_buying_signals_for_lead(db, lead_id)
+    return {"signals": signals}
