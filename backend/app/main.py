@@ -41,6 +41,8 @@ from app.schemas.company_enrichment import CompanyEnrichmentProfileSchema
 from app.services.company_enrichment import get_company_enrichment, refresh_company_enrichment
 from app.schemas.website_intelligence import WebsiteIntelligenceProfileSchema
 from app.services.website_intelligence import get_website_intelligence, refresh_website_intelligence
+from app.schemas.digital_marketing_intelligence import DigitalMarketingIntelligenceProfileSchema
+from app.services.digital_marketing_intelligence import get_digital_marketing_intelligence, refresh_digital_marketing_intelligence
 from app.schemas.seo import LatestSeoOut, SeoRunCreatedOut, SeoRunDetailOut, SeoRunListOut, SeoRunOut
 from app.schemas.seo_opportunities import SeoSalesOpportunityList
 from app.schemas.ai_sales_intelligence import AISalesIntelligenceHistoryOut, AISalesIntelligenceOut
@@ -1736,6 +1738,36 @@ async def endpoint_get_lead_website_intelligence(
     db: AsyncSession = Depends(get_db)
 ):
     profile = await get_website_intelligence(db, lead_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    return profile
+
+@app.get("/api/companies/{company_id}/digital-marketing-intelligence", response_model=DigitalMarketingIntelligenceProfileSchema, tags=["Companies"])
+async def endpoint_get_digital_marketing_intelligence(
+    company_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db)
+):
+    profile = await get_digital_marketing_intelligence(db, company_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return profile
+
+@app.post("/api/companies/{company_id}/digital-marketing-intelligence/refresh", response_model=DigitalMarketingIntelligenceProfileSchema, tags=["Companies"])
+async def endpoint_refresh_digital_marketing_intelligence(
+    company_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db)
+):
+    profile = await refresh_digital_marketing_intelligence(db, company_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return profile
+
+@app.get("/api/leads/{lead_id}/digital-marketing-intelligence", response_model=DigitalMarketingIntelligenceProfileSchema, tags=["Leads"])
+async def endpoint_get_lead_digital_marketing_intelligence(
+    lead_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db)
+):
+    profile = await get_digital_marketing_intelligence(db, lead_id)
     if not profile:
         raise HTTPException(status_code=404, detail="Lead not found")
     return profile

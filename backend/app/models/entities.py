@@ -1261,3 +1261,20 @@ class WebsiteIntelligenceProfile(Base):
     completeness: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc)
+
+class DigitalMarketingIntelligenceProfile(Base):
+    __tablename__ = "digital_marketing_intelligence_profiles"
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("leads.id", ondelete="CASCADE"), nullable=False, unique=True)
+    seo_signals: Mapped[dict | None] = mapped_column(JSON)
+    paid_advertising_signals: Mapped[dict | None] = mapped_column(JSON)
+    social_media_signals: Mapped[dict | None] = mapped_column(JSON)
+    content_marketing_signals: Mapped[dict | None] = mapped_column(JSON)
+    marketing_maturity: Mapped[str] = mapped_column(String(50), nullable=False, default="UNKNOWN")
+    marketing_gaps: Mapped[list | None] = mapped_column(JSON)
+    marketing_opportunities: Mapped[list | None] = mapped_column(JSON)
+    source_type: Mapped[SourceType] = mapped_column(Enum(SourceType, name="sourcetype", create_type=False), nullable=False)
+    confidence: Mapped[ConfidenceLevel] = mapped_column(Enum(ConfidenceLevel, name="confidencelevel", create_type=False), nullable=False)
+    completeness: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc)

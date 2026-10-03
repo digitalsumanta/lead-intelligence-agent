@@ -771,3 +771,20 @@ export type WebsiteIntelligenceProfileSchema = {
   created_at: string;
   updated_at: string;
 };
+
+export type DigitalMarketingIntelligenceProfileSchema = {
+  id: string;
+  company_id: string;
+  seo_signals: Record<string, any> | null;
+  paid_advertising_signals: Record<string, any> | null;
+  social_media_signals: Record<string, any> | null;
+  content_marketing_signals: Record<string, any> | null;
+  marketing_maturity: string;
+  marketing_gaps: string[] | null;
+  marketing_opportunities: string[] | null;
+  source_type: string;
+  confidence: string;
+  completeness: number;
+  created_at: string;
+  updated_at: string;
+};

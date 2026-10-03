@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
-import { api, ApiError, CommercialRecord, IntelligenceClaim, IntelligenceResponse, LeadIntelligenceProfileSchema, CompanyEnrichmentProfileSchema, WebsiteIntelligenceProfileSchema, LeadDetail, OutreachArtifact, OutreachChannel, OutreachContent, OutreachExecution, OutreachReadResponse, SalesActivity, SalesActivityOutcome, SalesActivityType, SalesCollection, SalesPriority, SalesStatus, SalesTask, SalesTaskCreate, SalesTaskStatus, SalesTaskType, SalesWorkflow } from "@/lib/api";
+import { api, ApiError, CommercialRecord, IntelligenceClaim, IntelligenceResponse, LeadIntelligenceProfileSchema, CompanyEnrichmentProfileSchema, WebsiteIntelligenceProfileSchema, DigitalMarketingIntelligenceProfileSchema, LeadDetail, OutreachArtifact, OutreachChannel, OutreachContent, OutreachExecution, OutreachReadResponse, SalesActivity, SalesActivityOutcome, SalesActivityType, SalesCollection, SalesPriority, SalesStatus, SalesTask, SalesTaskCreate, SalesTaskStatus, SalesTaskType, SalesWorkflow } from "@/lib/api";
 import SeoSection from "./seo-section";
 import AISalesIntelligence from "./ai-sales-intelligence";
 import AISalesCopilot from "./ai-sales-copilot";
@@ -489,7 +489,7 @@ function ClaimSection({ title, claims }: { title: string; claims: IntelligenceCl
 export default function LeadDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [lead, setLead] = useState<LeadDetail | null>(null);
-  const [intelligence, setIntelligence] = useState<IntelligenceResponse | null>(null); const [profile, setProfile] = useState<LeadIntelligenceProfileSchema | null>(null); const [companyEnrichment, setCompanyEnrichment] = useState<CompanyEnrichmentProfileSchema | null>(null); const [websiteIntelligence, setWebsiteIntelligence] = useState<WebsiteIntelligenceProfileSchema | null>(null);
+  const [intelligence, setIntelligence] = useState<IntelligenceResponse | null>(null); const [profile, setProfile] = useState<LeadIntelligenceProfileSchema | null>(null); const [companyEnrichment, setCompanyEnrichment] = useState<CompanyEnrichmentProfileSchema | null>(null); const [websiteIntelligence, setWebsiteIntelligence] = useState<WebsiteIntelligenceProfileSchema | null>(null); const [digitalMarketingIntelligence, setDigitalMarketingIntelligence] = useState<DigitalMarketingIntelligenceProfileSchema | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState("");
@@ -507,7 +507,7 @@ export default function LeadDetailPage() {
         if (!current) return;
         setLead(business);
         try {
-          const detail = await api<IntelligenceResponse>(`/api/leads/${encodeURIComponent(id)}/enrichment`); try { const prof = await api<LeadIntelligenceProfileSchema>(`/api/leads/${encodeURIComponent(id)}/intelligence`); const compEnr = await api<CompanyEnrichmentProfileSchema>(`/api/leads/${encodeURIComponent(id)}/company-enrichment`); const webIntel = await api<WebsiteIntelligenceProfileSchema>(`/api/leads/${encodeURIComponent(id)}/website-intelligence`); if (current) { setProfile(prof); setCompanyEnrichment(compEnr); setWebsiteIntelligence(webIntel); } } catch(e) {}
+          const detail = await api<IntelligenceResponse>(`/api/leads/${encodeURIComponent(id)}/enrichment`); try { const prof = await api<LeadIntelligenceProfileSchema>(`/api/leads/${encodeURIComponent(id)}/intelligence`); const compEnr = await api<CompanyEnrichmentProfileSchema>(`/api/leads/${encodeURIComponent(id)}/company-enrichment`); const webIntel = await api<WebsiteIntelligenceProfileSchema>(`/api/leads/${encodeURIComponent(id)}/website-intelligence`); const dmIntel = await api<DigitalMarketingIntelligenceProfileSchema>(`/api/leads/${encodeURIComponent(id)}/digital-marketing-intelligence`); if (current) { setProfile(prof); setCompanyEnrichment(compEnr); setWebsiteIntelligence(webIntel); setDigitalMarketingIntelligence(dmIntel); } } catch(e) {}
           if (current) {
             setIntelligence(detail);
             setIntelligenceState("available");
@@ -640,6 +640,50 @@ export default function LeadDetailPage() {
             </div>
           ) : (
             <p className="mt-4 text-sm text-slate-500">No website intelligence profile available.</p>
+          )}
+        </article>
+
+        <article id="digital-marketing-intelligence" className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm mt-4">
+          <div className="flex items-center justify-between">
+            <h2 className="font-bold text-ink">Digital Marketing Intelligence</h2>
+            <button
+              onClick={() => api<DigitalMarketingIntelligenceProfileSchema>(`/api/companies/${lead.id}/digital-marketing-intelligence/refresh`, {method: "POST"}).then(p => setDigitalMarketingIntelligence(p))}
+              className="text-xs font-semibold text-teal underline"
+            >
+              Refresh
+            </button>
+          </div>
+          {digitalMarketingIntelligence ? (
+            <div className="mt-4 grid gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
+              <div><dt className="text-xs font-semibold uppercase text-slate-400">Marketing Maturity</dt><dd className="mt-1 font-semibold">{digitalMarketingIntelligence.marketing_maturity}</dd></div>
+              <div><dt className="text-xs font-semibold uppercase text-slate-400">Completeness</dt><dd className="mt-1">{digitalMarketingIntelligence.completeness.toFixed(0)}%</dd></div>
+              <div className="sm:col-span-2"><dt className="text-xs font-semibold uppercase text-slate-400">SEO Signals</dt><dd className="mt-1">{digitalMarketingIntelligence.seo_signals ? JSON.stringify(digitalMarketingIntelligence.seo_signals) : "None"}</dd></div>
+              <div className="sm:col-span-2"><dt className="text-xs font-semibold uppercase text-slate-400">Paid Advertising Signals</dt><dd className="mt-1">{digitalMarketingIntelligence.paid_advertising_signals ? JSON.stringify(digitalMarketingIntelligence.paid_advertising_signals) : "None"}</dd></div>
+              <div className="sm:col-span-2"><dt className="text-xs font-semibold uppercase text-slate-400">Social Media Signals</dt><dd className="mt-1">{digitalMarketingIntelligence.social_media_signals ? JSON.stringify(digitalMarketingIntelligence.social_media_signals) : "None"}</dd></div>
+              <div className="sm:col-span-2"><dt className="text-xs font-semibold uppercase text-slate-400">Content Marketing Signals</dt><dd className="mt-1">{digitalMarketingIntelligence.content_marketing_signals ? JSON.stringify(digitalMarketingIntelligence.content_marketing_signals) : "None"}</dd></div>
+              {digitalMarketingIntelligence.marketing_gaps && digitalMarketingIntelligence.marketing_gaps.length > 0 && (
+                <div className="sm:col-span-2">
+                  <dt className="text-xs font-semibold uppercase text-slate-400">Marketing Gaps</dt>
+                  <dd className="mt-1">
+                    <ul className="list-disc pl-4 text-slate-600">
+                      {digitalMarketingIntelligence.marketing_gaps.map((gap, i) => <li key={i}>{gap}</li>)}
+                    </ul>
+                  </dd>
+                </div>
+              )}
+              {digitalMarketingIntelligence.marketing_opportunities && digitalMarketingIntelligence.marketing_opportunities.length > 0 && (
+                <div className="sm:col-span-2">
+                  <dt className="text-xs font-semibold uppercase text-slate-400">Marketing Opportunities</dt>
+                  <dd className="mt-1">
+                    <ul className="list-disc pl-4 text-teal">
+                      {digitalMarketingIntelligence.marketing_opportunities.map((opp, i) => <li key={i}>{opp}</li>)}
+                    </ul>
+                  </dd>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="mt-4 text-sm text-slate-500">No digital marketing intelligence profile available.</p>
           )}
         </article>
 
