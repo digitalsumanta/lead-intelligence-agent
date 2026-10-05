@@ -810,3 +810,25 @@ export type BuyingSignalSchema = {
 export type BuyingSignalsResponse = {
   signals: BuyingSignalSchema[];
 };
+
+export type SeniorityLevel = "UNKNOWN" | "INDIVIDUAL_CONTRIBUTOR" | "MANAGER" | "LEADERSHIP" | "EXECUTIVE";
+export type FunctionalArea = "UNKNOWN" | "EXECUTIVE" | "MARKETING" | "DIGITAL_MARKETING" | "SEO" | "SALES" | "IT" | "TECHNOLOGY" | "FINANCE" | "HR" | "OPERATIONS" | "PROCUREMENT";
+export type BuyingInfluenceLevel = "UNKNOWN" | "LOW" | "MEDIUM" | "HIGH" | "DECISION_MAKER";
+export type SourceType = "LEAD_RECORD" | "COMPANY_RECORD" | "CONTACT_RECORD" | "USER_PROVIDED" | "SYSTEM_DERIVED";
+export type ConfidenceLevel = "UNKNOWN" | "LOW" | "MEDIUM" | "HIGH";
+
+export type ContactIntelligenceProfile = {
+  id: string;
+  contact_id: string;
+  department: string | null;
+  functional_area: FunctionalArea;
+  seniority_level: SeniorityLevel;
+  decision_maker_score: number;
+  buying_influence: BuyingInfluenceLevel;
+  confidence: ConfidenceLevel;
+  source_type: SourceType;
+  evidence: Record<string, any> | null;
+  evaluated_at: string;
+  created_at: string;
+  updated_at: string;
+};

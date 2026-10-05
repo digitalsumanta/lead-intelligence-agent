@@ -1176,6 +1176,34 @@ class SignalStrength(str, enum.Enum):
     MEDIUM = "MEDIUM"
     HIGH = "HIGH"
 
+class SeniorityLevel(str, enum.Enum):
+    UNKNOWN = "UNKNOWN"
+    INDIVIDUAL_CONTRIBUTOR = "INDIVIDUAL_CONTRIBUTOR"
+    MANAGER = "MANAGER"
+    LEADERSHIP = "LEADERSHIP"
+    EXECUTIVE = "EXECUTIVE"
+
+class FunctionalArea(str, enum.Enum):
+    UNKNOWN = "UNKNOWN"
+    EXECUTIVE = "EXECUTIVE"
+    MARKETING = "MARKETING"
+    DIGITAL_MARKETING = "DIGITAL_MARKETING"
+    SEO = "SEO"
+    SALES = "SALES"
+    IT = "IT"
+    TECHNOLOGY = "TECHNOLOGY"
+    FINANCE = "FINANCE"
+    HR = "HR"
+    OPERATIONS = "OPERATIONS"
+    PROCUREMENT = "PROCUREMENT"
+
+class BuyingInfluenceLevel(str, enum.Enum):
+    UNKNOWN = "UNKNOWN"
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+    DECISION_MAKER = "DECISION_MAKER"
+
 class LeadIntelligenceProfile(Base):
     __tablename__ = "lead_intelligence_profiles"
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -1307,5 +1335,21 @@ class BuyingSignal(Base):
     detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     evidence: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="ACTIVE")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc)
+
+class ContactIntelligenceProfile(Base):
+    __tablename__ = "contact_intelligence_profiles"
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    contact_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("leads.id", ondelete="CASCADE"), nullable=False, unique=True)
+    department: Mapped[str | None] = mapped_column(String(255))
+    functional_area: Mapped[FunctionalArea] = mapped_column(Enum(FunctionalArea, name="functionalarea", create_type=False), nullable=False)
+    seniority_level: Mapped[SeniorityLevel] = mapped_column(Enum(SeniorityLevel, name="senioritylevel", create_type=False), nullable=False)
+    decision_maker_score: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    buying_influence: Mapped[BuyingInfluenceLevel] = mapped_column(Enum(BuyingInfluenceLevel, name="buyinginfluencelevel", create_type=False), nullable=False)
+    confidence: Mapped[ConfidenceLevel] = mapped_column(Enum(ConfidenceLevel, name="confidencelevel", create_type=False), nullable=False)
+    source_type: Mapped[SourceType] = mapped_column(Enum(SourceType, name="sourcetype", create_type=False), nullable=False)
+    evidence: Mapped[dict | None] = mapped_column(JSON)
+    evaluated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc)

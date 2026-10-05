@@ -1852,3 +1852,7 @@ async def endpoint_refresh_sales_opportunities(
         raise HTTPException(status_code=404, detail="Lead not found")
     opps = await refresh_sales_opportunities_for_lead(db, lead_id)
     return {"opportunities": opps}
+
+from app.api.routes import contact_intelligence
+
+app.include_router(contact_intelligence.router)
