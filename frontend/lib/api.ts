@@ -714,6 +714,7 @@ export type IntelligenceOpportunity = {
   id: string; title: string; description: string | null; opportunity_type: string | null;
   score: number | null; priority: string | null; recommended_action: string | null; evidence: any | null;
   source_type: string; source_reference: string | null; confidence: string; created_at: string; updated_at: string;
+  related_task_id?: string | null; related_task_status?: string | null;
 };
 export type SalesOpportunitiesResponse = { opportunities: IntelligenceOpportunity[] };
 export type IntelligenceBusinessContext = {

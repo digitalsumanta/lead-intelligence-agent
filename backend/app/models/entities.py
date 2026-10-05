@@ -274,7 +274,7 @@ class SalesTask(Base):
         Index("uq_sales_tasks_id_lead", "id", "lead_id", unique=True),
         ForeignKeyConstraint(["related_activity_id", "lead_id"], ["sales_activities.id", "sales_activities.lead_id"], name="fk_sales_tasks_activity_lead"),
         ForeignKeyConstraint(["related_outreach_artifact_id", "lead_id"], ["outreach_artifacts.id", "outreach_artifacts.lead_id"], name="fk_sales_tasks_outreach_lead"),
-        CheckConstraint("agent_source_type IS NULL OR agent_source_type IN ('AI_SALES_ACTION_PLAN','AI_SALES_SUPERVISOR')", name="ck_sales_tasks_agent_source_type"),
+        CheckConstraint("agent_source_type IS NULL OR agent_source_type IN ('AI_SALES_ACTION_PLAN','AI_SALES_SUPERVISOR', 'SALES_OPPORTUNITY')", name="ck_sales_tasks_agent_source_type"),
         Index("uq_sales_tasks_agent_source_action", "lead_id", "agent_source_type", "agent_source_id", "agent_source_action_id", unique=True, postgresql_where=text("agent_source_id IS NOT NULL"), sqlite_where=text("agent_source_id IS NOT NULL")),
     )
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)

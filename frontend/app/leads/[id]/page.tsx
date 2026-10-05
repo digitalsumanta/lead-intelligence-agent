@@ -727,6 +727,58 @@ export default function LeadDetailPage() {
           )}
         </article>
 
+        <article id="sales-opportunities" className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm mt-4">
+          <div className="flex items-center justify-between">
+            <h2 className="font-bold text-ink">Sales Opportunities & Action Plan</h2>
+            <button
+              onClick={() => api<SalesOpportunitiesResponse>(`/api/leads/${lead.id}/sales-opportunities/refresh`, {method: "POST"}).then(p => { setSalesOpportunities(p.opportunities); setTaskRefreshKey(k => k + 1); })}
+              className="text-xs font-semibold text-teal underline"
+            >
+              Refresh
+            </button>
+          </div>
+          <p className="mt-1 text-sm text-slate-500">Deterministically prioritized opportunities based on buying signals.</p>
+          {salesOpportunities && salesOpportunities.length > 0 ? (
+            <div className="mt-4 space-y-4">
+              {salesOpportunities.map(opp => (
+                <div key={opp.id} className="rounded border border-slate-100 bg-slate-50 p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
+                        opp.priority === 'HIGH' || opp.priority === 'URGENT' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700'
+                      }`}>
+                        {opp.priority}
+                      </span>
+                      <span className="text-sm font-bold text-ink">{opp.title}</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <span className="text-xs font-semibold bg-white border border-slate-200 px-2 py-1 rounded">Score: {opp.score}</span>
+                    </div>
+                  </div>
+                  <p className="mt-3 text-sm text-slate-600">{opp.description}</p>
+                  <div className="mt-4 flex flex-wrap gap-4 items-center bg-white p-3 rounded-lg border border-slate-100">
+                    <div className="flex-1">
+                      <div className="text-xs font-semibold uppercase text-slate-400">Recommended Action</div>
+                      <div className="mt-1 font-medium text-teal-700">{opp.recommended_action?.replace(/_/g, ' ')}</div>
+                    </div>
+                    {opp.related_task_id && (
+                      <div className="flex-1 border-l border-slate-100 pl-4">
+                        <div className="text-xs font-semibold uppercase text-slate-400">Associated Task</div>
+                        <div className="mt-1 flex items-center gap-2">
+                          <span className={`inline-block w-2 h-2 rounded-full ${opp.related_task_status === 'COMPLETED' ? 'bg-emerald-400' : 'bg-amber-400'}`}></span>
+                          <span className="text-sm font-mono text-slate-600">{opp.related_task_status}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-4 text-sm text-slate-500">No active sales opportunities.</p>
+          )}
+        </article>
+
         {intelligenceState !== "error" && <>
         <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="font-bold text-ink">Intelligence summary</h2>

@@ -56,6 +56,8 @@ class IntelligenceOpportunity(BaseModel):
     source_type: SourceType
     source_reference: Optional[str] = None
     confidence: ConfidenceLevel
+    related_task_id: Optional[UUID] = None
+    related_task_status: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

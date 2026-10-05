@@ -18,6 +18,7 @@ class TaskAgentContract(BaseModel):
 class TaskAgentSourceType(StrEnum):
     AI_SALES_ACTION_PLAN = "AI_SALES_ACTION_PLAN"
     AI_SALES_SUPERVISOR = "AI_SALES_SUPERVISOR"
+    SALES_OPPORTUNITY = "SALES_OPPORTUNITY"
 
 
 class TaskExecutionStatus(StrEnum):
