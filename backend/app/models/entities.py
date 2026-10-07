@@ -120,6 +120,8 @@ class Lead(Base):
     competitors: Mapped[list | None] = mapped_column(JSON)
     recommended_services: Mapped[list | None] = mapped_column(JSON)
     decision_maker: Mapped[str | None] = mapped_column(String(250))
+    job_title: Mapped[str | None] = mapped_column(String(250))
+    department: Mapped[str | None] = mapped_column(String(250))
     linkedin_url: Mapped[str | None] = mapped_column(String(1000))
     website_analysis: Mapped[dict | None] = mapped_column(JSON)
     ai_analysis: Mapped[dict | None] = mapped_column(JSON)

@@ -29,6 +29,8 @@ class LeadOut(BaseModel):
     competitors: list[str] | None = None
     recommended_services: list[str] | None = None
     decision_maker: str | None = None
+    job_title: str | None = None
+    department: str | None = None
     linkedin_url: str | None = None
     website_analysis: dict[str, Any] | None = None
     ai_analysis: dict[str, Any] | None = None

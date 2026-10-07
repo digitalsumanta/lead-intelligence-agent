@@ -30,7 +30,7 @@ async def refresh_contact_intelligence(session: AsyncSession, contact_id: uuid.U
         profile.buying_influence = intel_data["buying_influence"]
         profile.evidence = intel_data["evidence"]
         profile.evaluated_at = now
-        profile.confidence = ConfidenceLevel.HIGH # Deterministic rule based
+        profile.confidence = intel_data["confidence"]
         profile.source_type = SourceType.SYSTEM_DERIVED
     else:
         profile = ContactIntelligenceProfile(
@@ -41,7 +41,7 @@ async def refresh_contact_intelligence(session: AsyncSession, contact_id: uuid.U
             decision_maker_score=intel_data["decision_maker_score"],
             buying_influence=intel_data["buying_influence"],
             evidence=intel_data["evidence"],
-            confidence=ConfidenceLevel.HIGH,
+            confidence=intel_data["confidence"],
             source_type=SourceType.SYSTEM_DERIVED,
             evaluated_at=now
         )
