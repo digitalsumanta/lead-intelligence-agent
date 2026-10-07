@@ -62,61 +62,169 @@ def classify_functional_area(title: Optional[str]) -> Tuple[FunctionalArea, Opti
 
     return FunctionalArea.UNKNOWN, None
 
+# Scoring Component Maps & Functions
+
+SENIORITY_SCORE_MAP: Dict[SeniorityLevel, Tuple[int, str]] = {
+    SeniorityLevel.EXECUTIVE: (40, "Executive-level role"),
+    SeniorityLevel.LEADERSHIP: (30, "Leadership-level role"),
+    SeniorityLevel.MANAGER: (20, "Manager-level role"),
+    SeniorityLevel.INDIVIDUAL_CONTRIBUTOR: (8, "Individual contributor role"),
+    SeniorityLevel.UNKNOWN: (0, "Unknown seniority level"),
+}
+
+def score_seniority(seniority: SeniorityLevel) -> Tuple[int, str]:
+    return SENIORITY_SCORE_MAP.get(seniority, (0, "Unknown seniority level"))
+
+FUNCTIONAL_AREA_SCORE_MAP: Dict[FunctionalArea, Tuple[int, str]] = {
+    FunctionalArea.MARKETING: (25, "Highly relevant functional area"),
+    FunctionalArea.DIGITAL_MARKETING: (25, "Highly relevant functional area"),
+    FunctionalArea.SEO: (25, "Highly relevant functional area"),
+    FunctionalArea.SALES: (25, "Highly relevant functional area"),
+    FunctionalArea.EXECUTIVE: (20, "Executive functional area with broad organizational relevance"),
+    FunctionalArea.TECHNOLOGY: (12, "Technical/engineering functional area"),
+    FunctionalArea.IT: (12, "Information technology functional area"),
+    FunctionalArea.FINANCE: (12, "Finance and accounting functional area"),
+    FunctionalArea.HR: (12, "Human resources functional area"),
+    FunctionalArea.OPERATIONS: (12, "Operations functional area"),
+    FunctionalArea.PROCUREMENT: (12, "Procurement/purchasing functional area"),
+    FunctionalArea.UNKNOWN: (0, "Unknown functional area"),
+}
+
+def score_functional_area(func_area: FunctionalArea) -> Tuple[int, str]:
+    return FUNCTIONAL_AREA_SCORE_MAP.get(func_area, (0, "Unknown functional area"))
+
+def score_contact_completeness(has_email: bool, has_phone: bool, has_linkedin: bool) -> Tuple[int, Dict[str, int], str]:
+    email_pts = 5 if has_email else 0
+    phone_pts = 5 if has_phone else 0
+    linkedin_pts = 5 if has_linkedin else 0
+    total = email_pts + phone_pts + linkedin_pts
+
+    parts = []
+    if has_email:
+        parts.append("email")
+    if has_phone:
+        parts.append("phone")
+    if has_linkedin:
+        parts.append("LinkedIn")
+
+    if parts:
+        reason = f"Persisted contact coordinates present: {', '.join(parts)}"
+    else:
+        reason = "No contact coordinates present"
+
+    details = {
+        "email": email_pts,
+        "phone": phone_pts,
+        "linkedin": linkedin_pts,
+        "points": total
+    }
+    return total, details, reason
+
+def score_role_strength(title: Optional[str]) -> Tuple[int, str]:
+    norm = normalize_title(title)
+    if not norm:
+        return 0, "No role title available"
+
+    high_impact_pattern = r'\b(ceo|chief executive officer|cfo|chief financial officer|coo|chief operating officer|cto|chief technology officer|cmo|chief marketing officer|cio|chief information officer|chro|chief human resources officer|founder|co founder|co-founder|president|owner|managing director|vp|vice president|head of|head|director|partner|principal|general manager)\b'
+    if re.search(high_impact_pattern, norm):
+        return 10, "Strong buying-influence title signal"
+
+    managerial_pattern = r'\b(senior manager|manager|team lead|lead|supervisor)\b'
+    if re.search(managerial_pattern, norm):
+        return 6, "Moderate buying-influence title signal"
+
+    standard_pattern = r'\b(executive|specialist|analyst|coordinator|associate|officer|engineer|developer|consultant|representative)\b'
+    if re.search(standard_pattern, norm):
+        return 2, "Standard role title signal"
+
+    return 0, "No recognized role strength keywords"
+
+def score_department_relevance(department: Optional[str]) -> Tuple[int, str]:
+    if not department:
+        return 0, "No department available"
+
+    dept_norm = department.strip().lower()
+
+    if dept_norm in ["marketing", "digital marketing", "digital_marketing", "seo", "sales"]:
+        return 10, "Highly relevant department"
+
+    if dept_norm in ["executive", "technology", "it", "finance", "hr", "operations", "procurement"]:
+        return 5, "Supporting operational department"
+
+    return 3, "General/other department"
+
 def calculate_decision_maker_score(
     seniority: SeniorityLevel,
     func_area: FunctionalArea,
     has_email: bool,
     has_phone: bool,
-    has_linkedin: bool
-) -> Tuple[int, List[str]]:
+    has_linkedin: bool,
+    title: Optional[str] = None,
+    department: Optional[str] = None
+) -> Tuple[int, Dict[str, Any], List[str]]:
     """
     Deterministically score a contact's decision making power based on persisted data.
     """
-    score = 0
-    evidence = []
+    seniority_pts, seniority_reason = score_seniority(seniority)
+    func_pts, func_reason = score_functional_area(func_area)
+    completeness_pts, completeness_details, completeness_reason = score_contact_completeness(has_email, has_phone, has_linkedin)
+    role_pts, role_reason = score_role_strength(title)
+    dept_pts, dept_reason = score_department_relevance(department)
 
-    seniority_scores = {
-        SeniorityLevel.EXECUTIVE: 50,
-        SeniorityLevel.LEADERSHIP: 35,
-        SeniorityLevel.MANAGER: 20,
-        SeniorityLevel.INDIVIDUAL_CONTRIBUTOR: 5,
-        SeniorityLevel.UNKNOWN: 0
+    raw_total = seniority_pts + func_pts + completeness_pts + role_pts + dept_pts
+    final_score = min(100, max(0, raw_total))
+    capped = raw_total > 100
+
+    scoring_details: Dict[str, Any] = {
+        "seniority": {
+            "value": seniority.value,
+            "points": seniority_pts,
+            "reason": seniority_reason
+        },
+        "functional_area": {
+            "value": func_area.value,
+            "points": func_pts,
+            "reason": func_reason
+        },
+        "contact_completeness": completeness_details,
+        "role_strength": {
+            "points": role_pts,
+            "reason": role_reason
+        },
+        "department_relevance": {
+            "value": department,
+            "points": dept_pts,
+            "reason": dept_reason
+        },
+        "total": final_score,
+        "capped": capped
     }
-    s_score = seniority_scores.get(seniority, 0)
-    score += s_score
-    evidence.append(f"Seniority {seniority.value} adds {s_score} points.")
 
-    if func_area in [FunctionalArea.EXECUTIVE, FunctionalArea.MARKETING, FunctionalArea.DIGITAL_MARKETING, FunctionalArea.SALES]:
-        score += 20
-        evidence.append(f"Functional Area {func_area.value} adds 20 points.")
-    elif func_area != FunctionalArea.UNKNOWN:
-        score += 10
-        evidence.append(f"Functional Area {func_area.value} adds 10 points.")
+    summary_components = [
+        f"Seniority {seniority.value}: {seniority_pts} pts ({seniority_reason})",
+        f"Functional Area {func_area.value}: {func_pts} pts ({func_reason})",
+        f"Contact Completeness: {completeness_pts} pts ({completeness_reason})",
+        f"Role Strength: {role_pts} pts ({role_reason})",
+        f"Department Relevance ({department}): {dept_pts} pts ({dept_reason})"
+    ]
+    if capped:
+        summary_components.append("Total score capped at 100.")
 
-    if has_email:
-        score += 10
-        evidence.append("Persisted email presence adds 10 points.")
-    if has_phone:
-        score += 10
-        evidence.append("Persisted phone presence adds 10 points.")
-    if has_linkedin:
-        score += 10
-        evidence.append("Persisted LinkedIn presence adds 10 points.")
-
-    if score > 100:
-        score = 100
-        evidence.append("Score capped at 100.")
-
-    return score, evidence
+    return final_score, scoring_details, summary_components
 
 def determine_buying_influence(seniority: SeniorityLevel, score: int) -> BuyingInfluenceLevel:
-    if seniority == SeniorityLevel.EXECUTIVE or score >= 80:
+    if seniority == SeniorityLevel.UNKNOWN and score < 30:
+        return BuyingInfluenceLevel.UNKNOWN
+
+    if seniority == SeniorityLevel.EXECUTIVE and score >= 70:
         return BuyingInfluenceLevel.DECISION_MAKER
-    elif seniority == SeniorityLevel.LEADERSHIP or score >= 60:
+    elif score >= 85 and seniority in (SeniorityLevel.EXECUTIVE, SeniorityLevel.LEADERSHIP):
+        return BuyingInfluenceLevel.DECISION_MAKER
+    elif score >= 65 or (seniority in (SeniorityLevel.EXECUTIVE, SeniorityLevel.LEADERSHIP) and score >= 50):
         return BuyingInfluenceLevel.HIGH
-    elif seniority == SeniorityLevel.MANAGER or score >= 40:
+    elif score >= 40 or seniority == SeniorityLevel.MANAGER:
         return BuyingInfluenceLevel.MEDIUM
-    elif seniority == SeniorityLevel.INDIVIDUAL_CONTRIBUTOR or score >= 20:
+    elif score >= 15 or seniority == SeniorityLevel.INDIVIDUAL_CONTRIBUTOR:
         return BuyingInfluenceLevel.LOW
 
     return BuyingInfluenceLevel.UNKNOWN
@@ -126,8 +234,8 @@ def build_contact_intelligence(lead: Any) -> Dict[str, Any]:
     Orchestrate the deterministic evaluation for a contact (lead).
     `lead` is the Lead model instance which acts as the contact entity.
     """
-    title = lead.job_title
-    department_from_lead = lead.department
+    title = getattr(lead, "job_title", None)
+    department_from_lead = getattr(lead, "department", None)
 
     seniority, sen_match = classify_seniority(title)
     func_area, func_match = classify_functional_area(title)
@@ -151,20 +259,27 @@ def build_contact_intelligence(lead: Any) -> Dict[str, Any]:
         }
         department = department_map.get(func_area, None)
 
-    has_email = bool(lead.email)
-    has_phone = bool(lead.phone)
-    has_linkedin = bool(lead.linkedin_url)
+    has_email = bool(getattr(lead, "email", None))
+    has_phone = bool(getattr(lead, "phone", None))
+    has_linkedin = bool(getattr(lead, "linkedin_url", None))
 
-    score, evidence = calculate_decision_maker_score(seniority, func_area, has_email, has_phone, has_linkedin)
+    score, scoring_details, score_components = calculate_decision_maker_score(
+        seniority=seniority,
+        func_area=func_area,
+        has_email=has_email,
+        has_phone=has_phone,
+        has_linkedin=has_linkedin,
+        title=title,
+        department=department
+    )
     influence = determine_buying_influence(seniority, score)
-
-    score_components = evidence
 
     # Confidence Level
     from app.models.entities import ConfidenceLevel
     confidence = ConfidenceLevel.UNKNOWN
-    if title:
-        if seniority != SeniorityLevel.UNKNOWN and func_area != FunctionalArea.UNKNOWN:
+    if title and title.strip():
+        role_pts, _ = score_role_strength(title)
+        if seniority != SeniorityLevel.UNKNOWN and func_area != FunctionalArea.UNKNOWN and role_pts > 0:
             confidence = ConfidenceLevel.HIGH
         elif seniority != SeniorityLevel.UNKNOWN or func_area != FunctionalArea.UNKNOWN:
             confidence = ConfidenceLevel.MEDIUM
@@ -172,7 +287,7 @@ def build_contact_intelligence(lead: Any) -> Dict[str, Any]:
             confidence = ConfidenceLevel.LOW
 
     classification_evidence = []
-    if not title:
+    if not title or not title.strip():
         classification_evidence.append("Insufficient persisted data available (missing job_title).")
     else:
         if sen_match:
@@ -189,6 +304,7 @@ def build_contact_intelligence(lead: Any) -> Dict[str, Any]:
         "confidence": confidence,
         "evidence": {
             "score_components": score_components,
+            "decision_maker_scoring": scoring_details,
             "classification_evidence": classification_evidence,
             "has_email": has_email,
             "has_phone": has_phone,

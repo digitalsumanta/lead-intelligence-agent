@@ -28,7 +28,7 @@ async def test_refresh_contact_intelligence_idempotent(session_factory):
         assert profile1 is not None
         assert profile1.contact_id == lead_id
         # No job_title stored in DB so it should evaluate to UNKNOWN but get email/phone score
-        assert profile1.decision_maker_score == 20
+        assert profile1.decision_maker_score == 10
         assert profile1.seniority_level.value == "UNKNOWN"
 
         # Refresh again
