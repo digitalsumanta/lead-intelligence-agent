@@ -1853,6 +1853,7 @@ async def endpoint_refresh_sales_opportunities(
     opps = await refresh_sales_opportunities_for_lead(db, lead_id)
     return {"opportunities": opps}
 
-from app.api.routes import contact_intelligence
+from app.api.routes import contact_intelligence, opportunity_contact_matching
 
 app.include_router(contact_intelligence.router)
+app.include_router(opportunity_contact_matching.router)

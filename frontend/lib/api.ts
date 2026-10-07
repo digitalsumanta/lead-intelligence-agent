@@ -832,3 +832,24 @@ export type ContactIntelligenceProfile = {
   created_at: string;
   updated_at: string;
 };
+
+export type MatchLevel = "POOR" | "WEAK" | "MODERATE" | "GOOD" | "STRONG" | "EXCELLENT";
+
+export type OpportunityContactMatch = {
+  contact_id: string;
+  match_score: number;
+  match_level: MatchLevel;
+  decision_maker_score: number;
+  functional_relevance_score: number;
+  role_relevance_score: number;
+  seniority_relevance_score: number;
+  department_relevance_score: number;
+  completeness_score: number;
+  match_reasons: string[];
+  evidence: Record<string, any>;
+};
+
+export type OpportunityContactsResponse = {
+  opportunity_id: string;
+  contacts: OpportunityContactMatch[];
+};
