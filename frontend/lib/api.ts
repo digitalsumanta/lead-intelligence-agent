@@ -925,3 +925,69 @@ export async function recordSalesTaskExecution(
     body: JSON.stringify(request),
   });
 }
+
+export type FeedbackSentiment = "POSITIVE" | "NEGATIVE" | "NEUTRAL" | "UNKNOWN";
+export type AttributionLevel = "FULL" | "PARTIAL" | "UNATTRIBUTED";
+
+export type SalesFeedbackItem = {
+  task_id: string;
+  activity_id: string | null;
+  opportunity_id: string | null;
+  contact_id: string | null;
+  recommended_action: string | null;
+  task_type: string | null;
+  outcome: string | null;
+  sentiment: FeedbackSentiment;
+  attribution_level: AttributionLevel;
+  occurred_at: string | null;
+  notes: string | null;
+  evidence: Record<string, any> | null;
+};
+
+export type ActionPerformanceSummary = {
+  action: string;
+  total_executions: number;
+  positive_count: number;
+  negative_count: number;
+  neutral_count: number;
+  unknown_count: number;
+  positive_rate: number;
+  negative_rate: number;
+  neutral_rate: number;
+};
+
+export type SalesFeedbackSummaryResponse = {
+  scope: string;
+  scope_id: string | null;
+  total_executions: number;
+  positive_count: number;
+  negative_count: number;
+  neutral_count: number;
+  unknown_count: number;
+  positive_rate: number;
+  negative_rate: number;
+  neutral_rate: number;
+  outcome_distribution: Record<string, number>;
+  action_performance: Record<string, ActionPerformanceSummary>;
+  attribution_summary: Record<string, number>;
+  items: SalesFeedbackItem[];
+};
+
+export async function getOpportunitySalesFeedback(opportunityId: string): Promise<SalesFeedbackSummaryResponse> {
+  return api<SalesFeedbackSummaryResponse>(`/api/sales-feedback/opportunities/${encodeURIComponent(opportunityId)}`);
+}
+
+export async function getContactSalesFeedback(contactId: string): Promise<SalesFeedbackSummaryResponse> {
+  return api<SalesFeedbackSummaryResponse>(`/api/sales-feedback/contacts/${encodeURIComponent(contactId)}`);
+}
+
+export async function getRecommendationsSalesFeedback(params?: {
+  action?: string;
+  sentiment?: string;
+}): Promise<SalesFeedbackSummaryResponse> {
+  const query = new URLSearchParams();
+  if (params?.action) query.set("action", params.action);
+  if (params?.sentiment) query.set("sentiment", params.sentiment);
+  const qs = query.toString();
+  return api<SalesFeedbackSummaryResponse>(`/api/sales-feedback/recommendations${qs ? `?${qs}` : ""}`);
+}
