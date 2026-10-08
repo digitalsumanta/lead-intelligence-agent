@@ -892,3 +892,36 @@ export async function createOrReuseContactRecommendationTask(opportunityId: stri
     method: "POST",
   });
 }
+
+export type SalesTaskExecutionRequest = {
+  outcome: SalesActivityOutcome;
+  notes?: string | null;
+  activity_id?: string | null;
+  opportunity_stage?: string | null;
+  new_sales_status?: string | null;
+};
+
+
+export type SalesTaskExecutionResponse = {
+  task_id: string;
+  activity_id: string;
+  outcome: string;
+  task_status: string;
+  created: boolean;
+  reused: boolean;
+  lead_id: string;
+  opportunity_id: string | null;
+  occurred_at: string;
+  evidence: Record<string, any> | null;
+};
+
+export async function recordSalesTaskExecution(
+  taskId: string,
+  request: SalesTaskExecutionRequest
+): Promise<SalesTaskExecutionResponse> {
+  return api<SalesTaskExecutionResponse>(`/api/sales-tasks/${encodeURIComponent(taskId)}/execution`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+}
