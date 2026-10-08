@@ -873,3 +873,22 @@ export type ContactRecommendationResponse = {
 export async function getContactRecommendationForOpportunity(opportunityId: string): Promise<ContactRecommendationResponse> {
   return api<ContactRecommendationResponse>(`/api/sales-opportunities/${opportunityId}/contact-recommendation`);
 }
+
+export type ContactRecommendationTaskResponse = {
+  opportunity_id: string;
+  contact_id: string | null;
+  task_id: string | null;
+  created: boolean;
+  reused: boolean;
+  recommendation_score: number;
+  priority: string | null;
+  recommended_action: string;
+  task_type: string | null;
+  evidence: Record<string, any> | null;
+};
+
+export async function createOrReuseContactRecommendationTask(opportunityId: string): Promise<ContactRecommendationTaskResponse> {
+  return api<ContactRecommendationTaskResponse>(`/api/sales-opportunities/${opportunityId}/contact-recommendation/task`, {
+    method: "POST",
+  });
+}
