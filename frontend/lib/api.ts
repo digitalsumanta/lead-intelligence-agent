@@ -853,3 +853,23 @@ export type OpportunityContactsResponse = {
   opportunity_id: string;
   contacts: OpportunityContactMatch[];
 };
+
+export type RecommendationPriority = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "VERY_LOW";
+export type RecommendedSalesAction = "PERSONALIZED_EMAIL" | "DISCOVERY_CALL" | "DIRECT_OUTREACH" | "FOLLOW_UP" | "RESEARCH_CONTACT" | "NO_ACTION";
+
+export type ContactRecommendationResponse = {
+  opportunity_id: string;
+  recommended_contact: OpportunityContactMatch | null;
+  recommendation_score: number;
+  match_score: number;
+  decision_maker_score: number;
+  buying_influence: BuyingInfluenceLevel;
+  priority: RecommendationPriority;
+  recommended_action: RecommendedSalesAction;
+  reasons: string[];
+  evidence: Record<string, any>;
+};
+
+export async function getContactRecommendationForOpportunity(opportunityId: string): Promise<ContactRecommendationResponse> {
+  return api<ContactRecommendationResponse>(`/api/sales-opportunities/${opportunityId}/contact-recommendation`);
+}
