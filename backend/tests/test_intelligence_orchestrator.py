@@ -20,6 +20,7 @@ from app.models.entities import (
     SalesActivity,
     SalesActivityType,
     SalesActivityOutcome,
+    SalesStatus,
 )
 import app.services.intelligence_orchestrator as orchestrator_module
 from app.services.intelligence_orchestrator import run_lead_intelligence_orchestration
@@ -1079,5 +1080,141 @@ async def test_api_orchestrate_lead_not_found(session_factory, monkeypatch):
             assert resp.status_code == 404
             data = resp.json()
             assert data["error"]["message"] == "Lead not found"
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
+@pytest.mark.asyncio
+async def test_orchestrate_opportunity_with_zero_score(session_factory):
+    """
+    TASK 2: Verifies that an opportunity with score 0.0 is orchestrated deterministically
+    without crashing or altering scoring rules.
+    """
+    async with session_factory() as session:
+        lead = Lead(
+            company_name="Zero Score Co",
+            currency="USD",
+            decision_maker="Jane Doe",
+            job_title="Head of Digital",
+            department="Marketing",
+            email="jane@zeroscore.com",
+            phone="1112223333",
+        )
+        session.add(lead)
+        await session.flush()
+
+        profile = ContactIntelligenceProfile(
+            contact_id=lead.id,
+            decision_maker_score=80,
+            functional_area=FunctionalArea.DIGITAL_MARKETING,
+            seniority_level=SeniorityLevel.LEADERSHIP,
+            buying_influence=BuyingInfluenceLevel.DECISION_MAKER,
+            confidence=ConfidenceLevel.HIGH,
+            source_type=SourceType.LEAD_RECORD,
+        )
+        opp = LeadIntelligenceOpportunity(
+            lead_id=lead.id,
+            title="Zero Score SEO Audit",
+            opportunity_type="SEO",
+            score=0,
+            priority="LOW",
+            recommended_action="DISCOVERY_CALL",
+            source_type=SourceType.SYSTEM_DERIVED,
+            confidence=ConfidenceLevel.LOW,
+        )
+        session.add_all([profile, opp])
+        await session.commit()
+
+        res = await run_lead_intelligence_orchestration(session, lead.id)
+        assert res is not None
+        assert res.status == "TASK_CREATED"
+        assert res.summary.total_opportunities == 1
+        assert res.summary.tasks_created == 1
+        assert len(res.opportunities) == 1
+
+        opp_res = res.opportunities[0]
+        assert opp_res.opportunity_id == opp.id
+        assert opp_res.score == 0
+        assert opp_res.status == "TASK_CREATED"
+        assert f"score:0" in opp_res.decision_trace
+        assert opp_res.sales_task is not None
+        assert opp_res.sales_task["created"] is True
+
+
+@pytest.mark.asyncio
+async def test_orchestrate_inactive_contact_no_feedback(session_factory):
+    """
+    TASK 3: Verifies that an inactive contact with no contact coordinates and no feedback history
+    yields NO_RECOMMENDATION and 0 feedback executions without crashing.
+    """
+    async with session_factory() as session:
+        lead = Lead(
+            company_name="Inactive Contact Co",
+            currency="USD",
+            decision_maker="Inactive Person",
+            job_title=None,
+            department=None,
+            email=None,
+            phone=None,
+            linkedin_url=None,
+            sales_status=SalesStatus.LOST,
+        )
+        session.add(lead)
+        await session.flush()
+
+        profile = ContactIntelligenceProfile(
+            contact_id=lead.id,
+            decision_maker_score=10,
+            functional_area=FunctionalArea.UNKNOWN,
+            seniority_level=SeniorityLevel.INDIVIDUAL_CONTRIBUTOR,
+            buying_influence=BuyingInfluenceLevel.LOW,
+            confidence=ConfidenceLevel.LOW,
+            source_type=SourceType.LEAD_RECORD,
+        )
+        opp = LeadIntelligenceOpportunity(
+            lead_id=lead.id,
+            title="General Advisory",
+            opportunity_type="GENERAL",
+            score=25,
+            priority="LOW",
+            recommended_action="NO_ACTION",
+            source_type=SourceType.SYSTEM_DERIVED,
+            confidence=ConfidenceLevel.LOW,
+        )
+        session.add_all([profile, opp])
+        await session.commit()
+
+        res = await run_lead_intelligence_orchestration(session, lead.id)
+        assert res is not None
+        assert res.status == "NO_RECOMMENDATION"
+        assert res.summary.total_opportunities == 1
+        assert res.summary.no_recommendation_count == 1
+        assert res.summary.tasks_created == 0
+        assert len(res.opportunities) == 1
+
+        opp_res = res.opportunities[0]
+        assert opp_res.status == "NO_RECOMMENDATION"
+        assert opp_res.feedback is not None
+        assert opp_res.feedback["total_executions"] == 0
+        assert opp_res.sales_task is None
+
+
+@pytest.mark.asyncio
+async def test_api_orchestrate_lead_malformed_uuid(session_factory, monkeypatch):
+    """
+    TASK 1: Verifies that a malformed lead_id path parameter returns HTTP 422 with VALIDATION_ERROR.
+    """
+    monkeypatch.setattr(settings, "api_auth_token", "api-test-token")
+    app.dependency_overrides[get_db] = lambda: session_factory()
+
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            resp = await ac.post("/api/leads/not-a-valid-uuid-12345/intelligence/orchestrate", headers=AUTH_HEADERS)
+            assert resp.status_code == 422
+            data = resp.json()
+            assert data["success"] is False
+            assert data["error"]["code"] == "VALIDATION_ERROR"
+            assert "lead_id" in str(data["error"]["details"])
     finally:
         app.dependency_overrides.pop(get_db, None)
