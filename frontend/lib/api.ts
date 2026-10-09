@@ -991,3 +991,44 @@ export async function getRecommendationsSalesFeedback(params?: {
   const qs = query.toString();
   return api<SalesFeedbackSummaryResponse>(`/api/sales-feedback/recommendations${qs ? `?${qs}` : ""}`);
 }
+
+export type OrchestrationOpportunityResult = {
+  opportunity_id: string;
+  opportunity_title: string;
+  opportunity_type: string;
+  score: number;
+  priority: string;
+  status: string;
+  matched_contacts_count: number;
+  recommended_contact?: Record<string, any> | null;
+  recommendation?: Record<string, any> | null;
+  sales_task?: Record<string, any> | null;
+  feedback?: Record<string, any> | null;
+  decision_trace: string[];
+  error?: string | null;
+};
+
+export type OrchestrationSummary = {
+  total_opportunities: number;
+  tasks_created: number;
+  tasks_reused: number;
+  no_contact_count: number;
+  no_recommendation_count: number;
+  failed_count: number;
+};
+
+export type LeadIntelligenceOrchestrationResponse = {
+  lead_id: string;
+  company_name: string;
+  status: string;
+  opportunities: OrchestrationOpportunityResult[];
+  summary: OrchestrationSummary;
+  decision_trace: string[];
+  evidence: Record<string, any>[];
+};
+
+export async function orchestrateLeadIntelligence(leadId: string): Promise<LeadIntelligenceOrchestrationResponse> {
+  return api<LeadIntelligenceOrchestrationResponse>(`/api/leads/${encodeURIComponent(leadId)}/intelligence/orchestrate`, {
+    method: "POST",
+  });
+}

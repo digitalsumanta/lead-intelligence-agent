@@ -1860,6 +1860,7 @@ from app.api.routes import (
     contact_recommendation_execution,
     sales_execution,
     sales_feedback,
+    intelligence_orchestrator,
 )
 
 app.include_router(contact_intelligence.router)
@@ -1868,3 +1869,4 @@ app.include_router(contact_recommendation.router)
 app.include_router(contact_recommendation_execution.router)
 app.include_router(sales_execution.router)
 app.include_router(sales_feedback.router)
+app.include_router(intelligence_orchestrator.router)
