@@ -10,6 +10,7 @@ import AISalesCopilot from "./ai-sales-copilot";
 import AISalesActionPlanner from "./ai-sales-action-planner";
 import AIProposalIntelligence from "./ai-proposal-intelligence";
 import AgentPolicy from "./agent-policy";
+import LeadIntelligenceOrchestrator from "./lead-intelligence-orchestrator";
 
 const NEXT_SALES_STATUS: Record<SalesStatus, SalesStatus[]> = {
   NEW: ["QUALIFIED", "CONTACTED", "LOST"], QUALIFIED: ["CONTACTED", "LOST"],
@@ -796,6 +797,7 @@ export default function LeadDetailPage() {
         </>}
       </section>
 
+      <LeadIntelligenceOrchestrator leadId={id} onTasksChanged={() => setTaskRefreshKey((key) => key + 1)} />
       <SalesWorkflowPanel leadId={id} intelligence={intel} refreshKey={taskRefreshKey} newOutcomeActivity={newOutcomeActivity} onTasksChanged={() => setTaskRefreshKey((key) => key + 1)} />
       <CommercialPanel leadId={id} refreshKey={taskRefreshKey} />
       <SalesTasksPanel leadId={id} leadAssignedTo={lead.assigned_to} leadPriority={lead.priority} refreshKey={taskRefreshKey} />
