@@ -1,5 +1,6 @@
 """FastAPI application and REST endpoints."""
 import logging, uuid, hmac
+from typing import Literal
 from datetime import date, datetime, timezone
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, UploadFile, File, HTTPException, Query, Request, Response

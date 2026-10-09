@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime, timezone
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.models.entities import (
     Lead,
@@ -551,3 +552,153 @@ async def test_contact_recommendation_task_api_endpoint(session_factory, monkeyp
             headers=headers
         )
         assert res_bad.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_synchronize_task_commit_integrity_error_recovers_existing_task(session_factory, monkeypatch):
+    """
+    Test A: When session.commit() raises an IntegrityError (e.g. from a concurrent task insertion),
+    the transaction is rolled back, the competing task is re-queried and reused cleanly,
+    and the session remains usable.
+    """
+    async with session_factory() as session:
+        lead_id = uuid.uuid4()
+        lead = Lead(
+            id=lead_id,
+            company_name="Concurrency Corp",
+            currency="USD",
+            decision_maker="Eve Concurrency",
+            job_title="VP Engineering",
+            email="eve@concurrency.com",
+            phone="5554321"
+        )
+        session.add(lead)
+
+        profile = ContactIntelligenceProfile(
+            contact_id=lead_id,
+            decision_maker_score=90,
+            functional_area=FunctionalArea.TECHNOLOGY,
+            seniority_level=SeniorityLevel.EXECUTIVE,
+            buying_influence=BuyingInfluenceLevel.DECISION_MAKER,
+            confidence=ConfidenceLevel.HIGH,
+            source_type=SourceType.SYSTEM_DERIVED
+        )
+        session.add(profile)
+
+        opp_id = uuid.uuid4()
+        opp = LeadIntelligenceOpportunity(
+            id=opp_id,
+            lead_id=lead_id,
+            title="Cloud Migration Opp",
+            opportunity_type="TECHNOLOGY",
+            score=90,
+            priority="HIGH",
+            source_type=SourceType.SYSTEM_DERIVED,
+            confidence=ConfidenceLevel.HIGH
+        )
+        session.add(opp)
+        await session.commit()
+
+        competing_task_id = None
+        original_commit = session.commit
+        commit_called = False
+
+        async def mock_commit_with_conflict():
+            nonlocal commit_called, competing_task_id
+            if not commit_called:
+                commit_called = True
+                # Simulate competing transaction committing just before our commit
+                async with session_factory() as competing_session:
+                    action_identity = f"contact_recommendation:{lead_id}:DISCOVERY_CALL"
+                    competing_task = SalesTask(
+                        lead_id=lead_id,
+                        task_type=SalesTaskType.CALL,
+                        title="Discovery Call: Eve Concurrency — Cloud Migration Opp",
+                        description="Concurrently committed task",
+                        status=SalesTaskStatus.OPEN,
+                        priority=SalesPriority.HIGH,
+                        due_at=datetime.now(timezone.utc),
+                        created_by_agent=True,
+                        agent_source_type="SALES_OPPORTUNITY",
+                        agent_source_id=opp_id,
+                        agent_source_action_id=action_identity,
+                        agent_evidence_refs=[f"contact:{lead_id}", f"opportunity:{opp_id}"]
+                    )
+                    competing_session.add(competing_task)
+                    await competing_session.commit()
+                    competing_task_id = competing_task.id
+                raise IntegrityError("duplicate key", params=None, orig=Exception("uq_sales_tasks_agent_source_action"))
+            return await original_commit()
+
+        monkeypatch.setattr(session, "commit", mock_commit_with_conflict)
+
+        res = await synchronize_recommended_contact_task(session, opp_id)
+        assert res is not None
+        assert res["created"] is False
+        assert res["reused"] is True
+        assert res["task_id"] == competing_task_id
+
+        # Verify the session is still functional after the rollback
+        lead_check = (await session.execute(select(Lead).where(Lead.id == lead_id))).scalar_one_or_none()
+        assert lead_check is not None
+        assert lead_check.company_name == "Concurrency Corp"
+
+
+@pytest.mark.asyncio
+async def test_synchronize_task_commit_integrity_error_without_reusable_task_raises(session_factory, monkeypatch):
+    """
+    Test B: When session.commit() raises an IntegrityError and no matching reusable task exists,
+    the transaction is rolled back, the error is re-raised (not misreported as success/reuse),
+    and the session remains usable.
+    """
+    async with session_factory() as session:
+        lead_id = uuid.uuid4()
+        lead = Lead(
+            id=lead_id,
+            company_name="Conflict Corp",
+            currency="USD",
+            decision_maker="Dan Conflict",
+            job_title="CTO",
+            email="dan@conflict.com",
+            phone="5559876"
+        )
+        session.add(lead)
+
+        profile = ContactIntelligenceProfile(
+            contact_id=lead_id,
+            decision_maker_score=85,
+            functional_area=FunctionalArea.TECHNOLOGY,
+            seniority_level=SeniorityLevel.EXECUTIVE,
+            buying_influence=BuyingInfluenceLevel.DECISION_MAKER,
+            confidence=ConfidenceLevel.HIGH,
+            source_type=SourceType.SYSTEM_DERIVED
+        )
+        session.add(profile)
+
+        opp_id = uuid.uuid4()
+        opp = LeadIntelligenceOpportunity(
+            id=opp_id,
+            lead_id=lead_id,
+            title="Tech Modernization",
+            opportunity_type="TECHNOLOGY",
+            score=85,
+            priority="HIGH",
+            source_type=SourceType.SYSTEM_DERIVED,
+            confidence=ConfidenceLevel.HIGH
+        )
+        session.add(opp)
+        await session.commit()
+
+        # Simulate an unexpected IntegrityError (e.g. non-deduplicable DB constraint failure)
+        async def mock_commit_failure():
+            raise IntegrityError("unrecoverable constraint violation", params=None, orig=Exception("foreign key or check constraint"))
+
+        monkeypatch.setattr(session, "commit", mock_commit_failure)
+
+        with pytest.raises(IntegrityError):
+            await synchronize_recommended_contact_task(session, opp_id)
+
+        # Verify session state was rolled back and is usable
+        check = (await session.execute(select(Lead).where(Lead.id == lead_id))).scalar_one_or_none()
+        assert check is not None
+        assert check.company_name == "Conflict Corp"

@@ -3,6 +3,7 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy.exc import IntegrityError
 
 from app.models.entities import (
     Lead,
@@ -255,9 +256,12 @@ async def synchronize_recommended_contact_task(
             "evidence": rec.get("evidence")
         }
 
+    opp_lead_id = opportunity.lead_id
+    opp_id = opportunity.id
+
     # 5. Create new SalesTask in OPEN status
     new_task = SalesTask(
-        lead_id=opportunity.lead_id,
+        lead_id=opp_lead_id,
         task_type=mapped_task_type,
         title=title,
         description=description,
@@ -266,13 +270,59 @@ async def synchronize_recommended_contact_task(
         due_at=datetime.now(timezone.utc),
         created_by_agent=True,
         agent_source_type='SALES_OPPORTUNITY',
-        agent_source_id=opportunity.id,
+        agent_source_id=opp_id,
         agent_source_action_id=action_identity,
         agent_evidence_refs=evidence_refs
     )
     session.add(new_task)
-    await session.commit()
-    await session.refresh(new_task)
+    try:
+        await session.commit()
+        await session.refresh(new_task)
+    except IntegrityError:
+        await session.rollback()
+        # Concurrency recovery: check if a competing transaction committed a reusable task
+        recovery_stmt = select(SalesTask).where(
+            SalesTask.lead_id == opp_lead_id,
+            SalesTask.agent_source_type == 'SALES_OPPORTUNITY'
+        )
+        recovery_res = await session.execute(recovery_stmt)
+        recovery_tasks = list(recovery_res.scalars().all())
+
+        # Check for active task
+        for t in recovery_tasks:
+            if t.status in (SalesTaskStatus.OPEN, SalesTaskStatus.IN_PROGRESS):
+                if t.agent_source_id == opp_id or t.agent_source_action_id == action_identity:
+                    return {
+                        "opportunity_id": opp_id,
+                        "contact_id": contact_id,
+                        "task_id": t.id,
+                        "created": False,
+                        "reused": True,
+                        "recommendation_score": recommendation_score,
+                        "priority": mapped_priority.value,
+                        "recommended_action": recommended_action.value,
+                        "task_type": mapped_task_type.value,
+                        "evidence": rec.get("evidence")
+                    }
+
+        # Check for exact historical task
+        for t in recovery_tasks:
+            if t.agent_source_id == opp_id and t.agent_source_action_id == action_identity:
+                return {
+                    "opportunity_id": opp_id,
+                    "contact_id": contact_id,
+                    "task_id": t.id,
+                    "created": False,
+                    "reused": True,
+                    "recommendation_score": recommendation_score,
+                    "priority": mapped_priority.value,
+                    "recommended_action": recommended_action.value,
+                    "task_type": mapped_task_type.value,
+                    "evidence": rec.get("evidence")
+                }
+
+        # If no reusable task exists after rollback, re-raise the IntegrityError
+        raise
 
     return {
         "opportunity_id": opportunity_id,

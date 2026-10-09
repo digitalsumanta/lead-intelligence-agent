@@ -1006,6 +1006,11 @@ export type OrchestrationOpportunityResult = {
   feedback?: Record<string, any> | null;
   decision_trace: string[];
   error?: string | null;
+  failed_phase?: string | null;
+  error_code?: string | null;
+  retryable?: boolean | null;
+  duration_ms?: number | null;
+  stage_durations_ms?: Record<string, number> | null;
 };
 
 export type OrchestrationSummary = {
@@ -1025,6 +1030,7 @@ export type LeadIntelligenceOrchestrationResponse = {
   summary: OrchestrationSummary;
   decision_trace: string[];
   evidence: Record<string, any>[];
+  duration_ms?: number | null;
 };
 
 export async function orchestrateLeadIntelligence(leadId: string): Promise<LeadIntelligenceOrchestrationResponse> {

@@ -17,6 +17,11 @@ class OrchestrationOpportunityResult(BaseModel):
     feedback: Optional[Dict[str, Any]] = None
     decision_trace: List[str] = []
     error: Optional[str] = None
+    failed_phase: Optional[str] = None
+    error_code: Optional[str] = None
+    retryable: Optional[bool] = None
+    duration_ms: Optional[float] = None
+    stage_durations_ms: Optional[Dict[str, float]] = None
 
 
 class OrchestrationSummary(BaseModel):
@@ -36,3 +41,4 @@ class LeadIntelligenceOrchestrationResponse(BaseModel):
     summary: OrchestrationSummary
     decision_trace: List[str]
     evidence: List[Dict[str, Any]]
+    duration_ms: Optional[float] = None
