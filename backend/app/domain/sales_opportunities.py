@@ -1,7 +1,7 @@
 import uuid
 from typing import List, Dict, Any, Tuple
 from datetime import datetime
-from app.models.entities import BuyingSignal, LeadIntelligenceOpportunity, SourceType, ConfidenceLevel
+from app.models.entities import BuyingSignal, LeadIntelligenceOpportunity, SourceType, ConfidenceLevel, now_utc
 
 def derive_opportunity_from_signals(
     lead_id: uuid.UUID, 
@@ -15,7 +15,7 @@ def derive_opportunity_from_signals(
     if not signals:
         return opportunities
 
-    now = datetime.utcnow()
+    now = now_utc()
 
     marketing_signals = [s for s in signals if s.signal_category in ["marketing_activity", "seo_activity"]]
     website_signals = [s for s in signals if s.signal_category == "website_activity"]
