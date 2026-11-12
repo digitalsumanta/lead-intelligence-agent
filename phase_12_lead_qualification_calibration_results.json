@@ -1,0 +1,3905 @@
+{
+  "calibration_metadata": {
+    "project": "Lead Intelligence Agent",
+    "phase": "Phase 12 \u2014 Lead Qualification Calibration",
+    "scoring_version": "lead_qualification_v1.0",
+    "timestamp": "2026-11-04T10:47:08.141781+00:00",
+    "total_businesses": 20,
+    "industry": "Interior Design",
+    "location": "Kolkata, West Bengal, India"
+  },
+  "score_metrics": {
+    "average_score": 42.3,
+    "median_score": 51.0,
+    "standard_deviation": 15.83,
+    "min_score": 15,
+    "max_score": 57,
+    "average_scoring_coverage": 65.75,
+    "median_scoring_coverage": 75.0,
+    "low_coverage_count": 4,
+    "high_score_low_coverage_count": 0
+  },
+  "tier_distribution": {
+    "counts": {
+      "HOT": 0,
+      "WARM": 0,
+      "NURTURE": 12,
+      "LOW_PRIORITY": 8
+    },
+    "percentages": {
+      "HOT": 0.0,
+      "WARM": 0.0,
+      "NURTURE": 60.0,
+      "LOW_PRIORITY": 40.0
+    }
+  },
+  "tier_coverage_distribution": {
+    "HOT": {
+      "count": 0,
+      "avg_coverage": 0.0,
+      "min_coverage": 0.0,
+      "max_coverage": 0.0,
+      "low_coverage_count": 0
+    },
+    "WARM": {
+      "count": 0,
+      "avg_coverage": 0.0,
+      "min_coverage": 0.0,
+      "max_coverage": 0.0,
+      "low_coverage_count": 0
+    },
+    "NURTURE": {
+      "count": 12,
+      "avg_coverage": 81.25,
+      "min_coverage": 75.0,
+      "max_coverage": 90.0,
+      "low_coverage_count": 0
+    },
+    "LOW_PRIORITY": {
+      "count": 8,
+      "avg_coverage": 42.5,
+      "min_coverage": 15.0,
+      "max_coverage": 70.0,
+      "low_coverage_count": 4
+    }
+  },
+  "dimension_analysis": {
+    "problem_severity": {
+      "maximum_points": 25.0,
+      "average_points": 6.0,
+      "median_points": 10.0,
+      "percentage_of_max": 24.0,
+      "zero_score_count": 8,
+      "full_score_count": 0,
+      "partial_score_count": 12
+    },
+    "commercial_opportunity_value": {
+      "maximum_points": 20.0,
+      "average_points": 6.6,
+      "median_points": 8.0,
+      "percentage_of_max": 33.0,
+      "zero_score_count": 8,
+      "full_score_count": 0,
+      "partial_score_count": 12
+    },
+    "buying_intent": {
+      "maximum_points": 15.0,
+      "average_points": 6.2,
+      "median_points": 7.0,
+      "percentage_of_max": 41.33,
+      "zero_score_count": 0,
+      "full_score_count": 0,
+      "partial_score_count": 20
+    },
+    "evidence_confidence": {
+      "maximum_points": 15.0,
+      "average_points": 13.0,
+      "median_points": 15.0,
+      "percentage_of_max": 86.67,
+      "zero_score_count": 0,
+      "full_score_count": 16,
+      "partial_score_count": 4
+    },
+    "decision_maker_availability": {
+      "maximum_points": 10.0,
+      "average_points": 0.0,
+      "median_points": 0.0,
+      "percentage_of_max": 0.0,
+      "zero_score_count": 20,
+      "full_score_count": 0,
+      "partial_score_count": 0
+    },
+    "contact_readiness": {
+      "maximum_points": 10.0,
+      "average_points": 5.6,
+      "median_points": 6.0,
+      "percentage_of_max": 56.0,
+      "zero_score_count": 0,
+      "full_score_count": 0,
+      "partial_score_count": 20
+    },
+    "mindartdigital_business_fit": {
+      "maximum_points": 5.0,
+      "average_points": 4.9,
+      "median_points": 5.0,
+      "percentage_of_max": 98.0,
+      "zero_score_count": 0,
+      "full_score_count": 19,
+      "partial_score_count": 1
+    }
+  },
+  "determinism_verification": {
+    "all_businesses_100pct_deterministic": true,
+    "boundary_tests": {
+      "score_39": {
+        "score": 39,
+        "expected_tier": "LOW_PRIORITY",
+        "actual_tier": "LOW_PRIORITY",
+        "action": "DEPRIORITIZE",
+        "priority": "LOW",
+        "passed": true
+      },
+      "score_40": {
+        "score": 40,
+        "expected_tier": "NURTURE",
+        "actual_tier": "NURTURE",
+        "action": "CONTINUE_RESEARCH",
+        "priority": "LOW",
+        "passed": true
+      },
+      "score_59": {
+        "score": 59,
+        "expected_tier": "NURTURE",
+        "actual_tier": "NURTURE",
+        "action": "CONTINUE_RESEARCH",
+        "priority": "LOW",
+        "passed": true
+      },
+      "score_60": {
+        "score": 60,
+        "expected_tier": "WARM",
+        "actual_tier": "WARM",
+        "action": "PREPARE_PERSONALIZED_AUDIT",
+        "priority": "MEDIUM",
+        "passed": true
+      },
+      "score_79": {
+        "score": 79,
+        "expected_tier": "WARM",
+        "actual_tier": "WARM",
+        "action": "PREPARE_PERSONALIZED_AUDIT",
+        "priority": "MEDIUM",
+        "passed": true
+      },
+      "score_80": {
+        "score": 80,
+        "expected_tier": "HOT",
+        "actual_tier": "HOT",
+        "action": "REVIEW_LEAD",
+        "priority": "HIGH",
+        "passed": true
+      }
+    }
+  },
+  "top_5_commercial_prospects": [
+    {
+      "index": 2,
+      "company_name": "INAAYA INTERIOR |Home Interior Designer Kolkata",
+      "website": "http://www.inaayainterior.com/",
+      "qualification_score": 57,
+      "scoring_coverage": 90.0,
+      "tier": "NURTURE",
+      "recommended_action": "CONTINUE_RESEARCH",
+      "recommended_priority": "LOW",
+      "google_reviews": 231,
+      "google_rating": 4.8,
+      "opportunities_count": 2,
+      "opportunities": [
+        "SEO: Missing primary H1 heading tag",
+        "Content Marketing: Missing educational blog or content marketing hub"
+      ]
+    },
+    {
+      "index": 17,
+      "company_name": "Noor Interior Kolkata",
+      "website": "https://noorinteriorkolkata.in/",
+      "qualification_score": 57,
+      "scoring_coverage": 90.0,
+      "tier": "NURTURE",
+      "recommended_action": "CONTINUE_RESEARCH",
+      "recommended_priority": "LOW",
+      "google_reviews": 167,
+      "google_rating": 4.8,
+      "opportunities_count": 2,
+      "opportunities": [
+        "SEO: Missing HTML meta description tag",
+        "Content Marketing: Missing educational blog or content marketing hub"
+      ]
+    },
+    {
+      "index": 9,
+      "company_name": "DREAM VISION IDEA",
+      "website": "https://www.dreamvisionidea.com/",
+      "qualification_score": 57,
+      "scoring_coverage": 75.0,
+      "tier": "NURTURE",
+      "recommended_action": "CONTINUE_RESEARCH",
+      "recommended_priority": "LOW",
+      "google_reviews": 430,
+      "google_rating": 5,
+      "opportunities_count": 1,
+      "opportunities": [
+        "Content Marketing: Missing educational blog or content marketing hub"
+      ]
+    },
+    {
+      "index": 18,
+      "company_name": "Ravi Pugaliya and Associates",
+      "website": "https://www.ravipugaliya.com/",
+      "qualification_score": 57,
+      "scoring_coverage": 75.0,
+      "tier": "NURTURE",
+      "recommended_action": "CONTINUE_RESEARCH",
+      "recommended_priority": "LOW",
+      "google_reviews": 411,
+      "google_rating": 4.6,
+      "opportunities_count": 2,
+      "opportunities": [
+        "SEO: Missing HTML meta description tag",
+        "Content Marketing: Missing educational blog or content marketing hub"
+      ]
+    },
+    {
+      "index": 10,
+      "company_name": "NANDINI INTERIOR",
+      "website": "http://www.nandiniinterior.in/",
+      "qualification_score": 57,
+      "scoring_coverage": 75.0,
+      "tier": "NURTURE",
+      "recommended_action": "CONTINUE_RESEARCH",
+      "recommended_priority": "LOW",
+      "google_reviews": 336,
+      "google_rating": 4.9,
+      "opportunities_count": 2,
+      "opportunities": [
+        "SEO: Missing HTML meta description tag",
+        "Website Performance: High server response latency (6424ms)"
+      ]
+    }
+  ],
+  "businesses": [
+    {
+      "index": 1,
+      "company_name": "Hometech",
+      "website": "http://www.hometechinteriors.in/",
+      "website_available": true,
+      "phone": "070035 78914",
+      "google_places_reviews": 680,
+      "google_places_rating": 4.9,
+      "is_duplicate": false,
+      "duplicate_reason": null,
+      "qualification_score": 33,
+      "scoring_coverage": 70.0,
+      "classification": "LOW_PRIORITY",
+      "recommended_sales_action": "DEPRIORITIZE",
+      "recommended_priority": "LOW",
+      "is_deterministic": true,
+      "dimension_scores": {
+        "problem_severity": 0.0,
+        "commercial_opportunity_value": 0.0,
+        "buying_intent": 7.0,
+        "evidence_confidence": 15.0,
+        "decision_maker_availability": 0.0,
+        "contact_readiness": 6.0,
+        "mindartdigital_business_fit": 5.0
+      },
+      "dimension_breakdown": {
+        "problem_severity": {
+          "dimension_name": "Problem Severity",
+          "maximum_points": 25.0,
+          "awarded_points": 0.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [],
+          "criteria_met": [],
+          "criteria_not_met": [
+            "No verified digital marketing issues observed"
+          ],
+          "missing_information": [],
+          "explanation": "Evaluated across all observable digital marketing channels; no verified problems were identified."
+        },
+        "commercial_opportunity_value": {
+          "dimension_name": "Commercial Opportunity Value",
+          "maximum_points": 20.0,
+          "awarded_points": 0.0,
+          "dimension_status": "PARTIALLY_EVALUATED",
+          "evidence_references": [],
+          "criteria_met": [],
+          "criteria_not_met": [
+            "Zero verified commercial opportunities identified"
+          ],
+          "missing_information": [],
+          "explanation": "No grounded sales opportunities mapped to MindArtDigital services; awarded 0.0 pts without budget speculation."
+        },
+        "buying_intent": {
+          "dimension_name": "Buying Intent Indicators",
+          "maximum_points": 15.0,
+          "awarded_points": 7.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "website_analysis:tracking_tags",
+            "evidence:637d0551-7b7a-43ec-bb16-12b4400b0e15"
+          ],
+          "criteria_met": [
+            "Verified marketing infrastructure: 1 tracking tags, 1 social profiles (+4.0 pts)",
+            "Verified commercial scale: high consumer engagement (>= 50 Google reviews) (+3.0 pts)"
+          ],
+          "criteria_not_met": [
+            "No active advertising campaigns verified via ad library"
+          ],
+          "missing_information": [
+            "External ad library credentials unconfigured for off-site ad inspection"
+          ],
+          "explanation": "Awarded 7.0/15.0 pts based on verified marketing activity (2 criteria met)."
+        },
+        "evidence_confidence": {
+          "dimension_name": "Evidence Confidence",
+          "maximum_points": 15.0,
+          "awarded_points": 15.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "website_analysis:https",
+            "evidence:637d0551-7b7a-43ec-bb16-12b4400b0e15",
+            "evidence:e10c9a54-ef98-4bc0-91c9-a2c5b29ca07b"
+          ],
+          "criteria_met": [
+            "Website verified accessible with valid HTTPS security (+6.0 pts)",
+            "Authorized provider verification: Google Places listing verified (+5.0 pts)",
+            "High verified evidence depth: >= 3 discrete verifiable facts (+4.0 pts)"
+          ],
+          "criteria_not_met": [],
+          "missing_information": [],
+          "explanation": "Awarded 15.0/15.0 pts based on multi-source verified evidence."
+        },
+        "decision_maker_availability": {
+          "dimension_name": "Decision-Maker Availability",
+          "maximum_points": 10.0,
+          "awarded_points": 0.0,
+          "dimension_status": "UNAVAILABLE",
+          "evidence_references": [],
+          "criteria_met": [],
+          "criteria_not_met": [
+            "Decision-maker identity unobserved",
+            "Decision-maker role unobserved"
+          ],
+          "missing_information": [
+            "Decision-maker name (B2B credentials unconfigured)",
+            "Decision-maker role/title"
+          ],
+          "explanation": "Decision-maker details unobserved; unconfigured B2B provider data is not treated as a negative signal."
+        },
+        "contact_readiness": {
+          "dimension_name": "Contact Readiness",
+          "maximum_points": 10.0,
+          "awarded_points": 6.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:phone",
+            "lead:website"
+          ],
+          "criteria_met": [
+            "Verified business phone number available: 070035 78914 (+4.0 pts)",
+            "Accessible website domain (+2.0 pts)"
+          ],
+          "criteria_not_met": [
+            "Business email address unobserved"
+          ],
+          "missing_information": [
+            "Business email address"
+          ],
+          "explanation": "Awarded 6.0/10.0 pts for direct business communication channels."
+        },
+        "mindartdigital_business_fit": {
+          "dimension_name": "MindArtDigital Business Fit",
+          "maximum_points": 5.0,
+          "awarded_points": 5.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:industry"
+          ],
+          "criteria_met": [
+            "Industry aligns with target verticals: INTERIOR_DESIGN (+3.0 pts)",
+            "Grounded alignment with MindArtDigital service portfolio (+2.0 pts)"
+          ],
+          "criteria_not_met": [],
+          "missing_information": [],
+          "explanation": "Awarded 5.0/5.0 pts for agency strategic fit."
+        }
+      },
+      "qualification_reasoning": "Limited observable commercial problems or unverified presence. Deprioritize pending fresh evidence.",
+      "supporting_evidence": [
+        "Marketing infrastructure detected: Google Analytics / GTM",
+        "Established local market presence verified with >= 50 customer reviews",
+        "Direct phone contact available: 070035 78914",
+        "Core vertical fit: INTERIOR_DESIGN"
+      ],
+      "missing_information": [
+        "External ad library credentials unconfigured for off-site ad inspection",
+        "Decision-maker name (B2B credentials unconfigured)",
+        "Decision-maker role/title",
+        "Business email address"
+      ],
+      "score_limitations": [
+        "External ad library credentials not configured; off-site paid campaigns were unobserved.",
+        "B2B individual enrichment credentials unconfigured; decision-maker identity remains unobserved."
+      ],
+      "raw_opportunities": []
+    },
+    {
+      "index": 2,
+      "company_name": "INAAYA INTERIOR |Home Interior Designer Kolkata",
+      "website": "http://www.inaayainterior.com/",
+      "website_available": true,
+      "phone": "098361 30712",
+      "google_places_reviews": 231,
+      "google_places_rating": 4.8,
+      "is_duplicate": false,
+      "duplicate_reason": null,
+      "qualification_score": 57,
+      "scoring_coverage": 90.0,
+      "classification": "NURTURE",
+      "recommended_sales_action": "CONTINUE_RESEARCH",
+      "recommended_priority": "LOW",
+      "is_deterministic": true,
+      "dimension_scores": {
+        "problem_severity": 10.0,
+        "commercial_opportunity_value": 14.0,
+        "buying_intent": 7.0,
+        "evidence_confidence": 15.0,
+        "decision_maker_availability": 0.0,
+        "contact_readiness": 6.0,
+        "mindartdigital_business_fit": 5.0
+      },
+      "dimension_breakdown": {
+        "problem_severity": {
+          "dimension_name": "Problem Severity",
+          "maximum_points": 25.0,
+          "awarded_points": 10.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "seven_category:seo",
+            "seven_category:content_marketing"
+          ],
+          "criteria_met": [
+            "Medium-severity verified issue: Missing primary H1 heading tag"
+          ],
+          "criteria_not_met": [
+            "No high or critical severity issues detected"
+          ],
+          "missing_information": [],
+          "explanation": "Awarded 10.0/25.0 pts based on verified medium-severity issue: Missing primary H1 heading tag."
+        },
+        "commercial_opportunity_value": {
+          "dimension_name": "Commercial Opportunity Value",
+          "maximum_points": 20.0,
+          "awarded_points": 14.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "opportunity:c9838dde-fac7-4ba7-9a67-c7d27b65aa65",
+            "opportunity:693cc6ab-6b8c-4726-8229-60575f28cbb5"
+          ],
+          "criteria_met": [
+            "2 distinct service opportunities: Content Marketing, Technical SEO"
+          ],
+          "criteria_not_met": [
+            "Fewer than 3 distinct service offerings identified"
+          ],
+          "missing_information": [],
+          "explanation": "Awarded 14.0/20.0 pts based on 2 verified service opportunities (Content Marketing, Technical SEO)."
+        },
+        "buying_intent": {
+          "dimension_name": "Buying Intent Indicators",
+          "maximum_points": 15.0,
+          "awarded_points": 7.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "website_analysis:tracking_tags",
+            "evidence:0ab95681-3996-41be-a1bc-9e5a48293bc1"
+          ],
+          "criteria_met": [
+            "Verified marketing infrastructure: 1 tracking tags, 1 social profiles (+4.0 pts)",
+            "Verified commercial scale: high consumer engagement (>= 50 Google reviews) (+3.0 pts)"
+          ],
+          "criteria_not_met": [
+            "No active advertising campaigns verified via ad library"
+          ],
+          "missing_information": [
+            "External ad library credentials unconfigured for off-site ad inspection"
+          ],
+          "explanation": "Awarded 7.0/15.0 pts based on verified marketing activity (2 criteria met)."
+        },
+        "evidence_confidence": {
+          "dimension_name": "Evidence Confidence",
+          "maximum_points": 15.0,
+          "awarded_points": 15.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "website_analysis:https",
+            "evidence:0ab95681-3996-41be-a1bc-9e5a48293bc1",
+            "evidence:f2e6c282-118d-4993-8866-f610a8b1e44a"
+          ],
+          "criteria_met": [
+            "Website verified accessible with valid HTTPS security (+6.0 pts)",
+            "Authorized provider verification: Google Places listing verified (+5.0 pts)",
+            "High verified evidence depth: >= 3 discrete verifiable facts (+4.0 pts)"
+          ],
+          "criteria_not_met": [],
+          "missing_information": [],
+          "explanation": "Awarded 15.0/15.0 pts based on multi-source verified evidence."
+        },
+        "decision_maker_availability": {
+          "dimension_name": "Decision-Maker Availability",
+          "maximum_points": 10.0,
+          "awarded_points": 0.0,
+          "dimension_status": "UNAVAILABLE",
+          "evidence_references": [],
+          "criteria_met": [],
+          "criteria_not_met": [
+            "Decision-maker identity unobserved",
+            "Decision-maker role unobserved"
+          ],
+          "missing_information": [
+            "Decision-maker name (B2B credentials unconfigured)",
+            "Decision-maker role/title"
+          ],
+          "explanation": "Decision-maker details unobserved; unconfigured B2B provider data is not treated as a negative signal."
+        },
+        "contact_readiness": {
+          "dimension_name": "Contact Readiness",
+          "maximum_points": 10.0,
+          "awarded_points": 6.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:phone",
+            "lead:website"
+          ],
+          "criteria_met": [
+            "Verified business phone number available: 098361 30712 (+4.0 pts)",
+            "Accessible website domain (+2.0 pts)"
+          ],
+          "criteria_not_met": [
+            "Business email address unobserved"
+          ],
+          "missing_information": [
+            "Business email address"
+          ],
+          "explanation": "Awarded 6.0/10.0 pts for direct business communication channels."
+        },
+        "mindartdigital_business_fit": {
+          "dimension_name": "MindArtDigital Business Fit",
+          "maximum_points": 5.0,
+          "awarded_points": 5.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:industry"
+          ],
+          "criteria_met": [
+            "Industry aligns with target verticals: INTERIOR_DESIGN (+3.0 pts)",
+            "Grounded alignment with MindArtDigital service portfolio (+2.0 pts)"
+          ],
+          "criteria_not_met": [],
+          "missing_information": [],
+          "explanation": "Awarded 5.0/5.0 pts for agency strategic fit."
+        }
+      },
+      "qualification_reasoning": "Moderate potential or partial evidence. Continue research and monitor for additional buying signals.",
+      "supporting_evidence": [
+        "Medium-severity gap in seo: Missing primary H1 heading tag",
+        "Commercial service opportunities: Content Marketing, Technical SEO",
+        "Marketing infrastructure detected: Google Analytics / GTM",
+        "Established local market presence verified with >= 50 customer reviews",
+        "Direct phone contact available: 098361 30712",
+        "Core vertical fit: INTERIOR_DESIGN"
+      ],
+      "missing_information": [
+        "External ad library credentials unconfigured for off-site ad inspection",
+        "Decision-maker name (B2B credentials unconfigured)",
+        "Decision-maker role/title",
+        "Business email address"
+      ],
+      "score_limitations": [
+        "External ad library credentials not configured; off-site paid campaigns were unobserved.",
+        "B2B individual enrichment credentials unconfigured; decision-maker identity remains unobserved."
+      ],
+      "raw_opportunities": [
+        {
+          "title": "SEO: Missing primary H1 heading tag",
+          "description": "Page lacks a designated H1 heading tag, impacting semantic content hierarchy.",
+          "category": "SEO",
+          "priority": "MEDIUM",
+          "score": 65,
+          "confidence": "HIGH",
+          "recommended_action": "Deliver service: Technical SEO"
+        },
+        {
+          "title": "Content Marketing: Missing educational blog or content marketing hub",
+          "description": "Content marketing evaluation conducted; no active blog/content hub found.",
+          "category": "CONTENT_MARKETING",
+          "priority": "MEDIUM",
+          "score": 65,
+          "confidence": "HIGH",
+          "recommended_action": "Deliver service: Content Marketing"
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "company_name": "Spectrum Interiors",
+      "website": "https://www.spectruminteriors.co.in/",
+      "website_available": true,
+      "phone": "082408 73232",
+      "google_places_reviews": 633,
+      "google_places_rating": 4.6,
+      "is_duplicate": false,
+      "duplicate_reason": null,
+      "qualification_score": 33,
+      "scoring_coverage": 70.0,
+      "classification": "LOW_PRIORITY",
+      "recommended_sales_action": "DEPRIORITIZE",
+      "recommended_priority": "LOW",
+      "is_deterministic": true,
+      "dimension_scores": {
+        "problem_severity": 0.0,
+        "commercial_opportunity_value": 0.0,
+        "buying_intent": 7.0,
+        "evidence_confidence": 15.0,
+        "decision_maker_availability": 0.0,
+        "contact_readiness": 6.0,
+        "mindartdigital_business_fit": 5.0
+      },
+      "dimension_breakdown": {
+        "problem_severity": {
+          "dimension_name": "Problem Severity",
+          "maximum_points": 25.0,
+          "awarded_points": 0.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [],
+          "criteria_met": [],
+          "criteria_not_met": [
+            "No verified digital marketing issues observed"
+          ],
+          "missing_information": [],
+          "explanation": "Evaluated across all observable digital marketing channels; no verified problems were identified."
+        },
+        "commercial_opportunity_value": {
+          "dimension_name": "Commercial Opportunity Value",
+          "maximum_points": 20.0,
+          "awarded_points": 0.0,
+          "dimension_status": "PARTIALLY_EVALUATED",
+          "evidence_references": [],
+          "criteria_met": [],
+          "criteria_not_met": [
+            "Zero verified commercial opportunities identified"
+          ],
+          "missing_information": [],
+          "explanation": "No grounded sales opportunities mapped to MindArtDigital services; awarded 0.0 pts without budget speculation."
+        },
+        "buying_intent": {
+          "dimension_name": "Buying Intent Indicators",
+          "maximum_points": 15.0,
+          "awarded_points": 7.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "website_analysis:tracking_tags",
+            "evidence:563acf77-8e68-4ee5-9e52-520ec845ea1c"
+          ],
+          "criteria_met": [
+            "Verified marketing infrastructure: 1 tracking tags, 1 social profiles (+4.0 pts)",
+            "Verified commercial scale: high consumer engagement (>= 50 Google reviews) (+3.0 pts)"
+          ],
+          "criteria_not_met": [
+            "No active advertising campaigns verified via ad library"
+          ],
+          "missing_information": [
+            "External ad library credentials unconfigured for off-site ad inspection"
+          ],
+          "explanation": "Awarded 7.0/15.0 pts based on verified marketing activity (2 criteria met)."
+        },
+        "evidence_confidence": {
+          "dimension_name": "Evidence Confidence",
+          "maximum_points": 15.0,
+          "awarded_points": 15.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "website_analysis:https",
+            "evidence:563acf77-8e68-4ee5-9e52-520ec845ea1c",
+            "evidence:a7bda22b-7d86-4ded-84bd-8ed5a79c20ea"
+          ],
+          "criteria_met": [
+            "Website verified accessible with valid HTTPS security (+6.0 pts)",
+            "Authorized provider verification: Google Places listing verified (+5.0 pts)",
+            "High verified evidence depth: >= 3 discrete verifiable facts (+4.0 pts)"
+          ],
+          "criteria_not_met": [],
+          "missing_information": [],
+          "explanation": "Awarded 15.0/15.0 pts based on multi-source verified evidence."
+        },
+        "decision_maker_availability": {
+          "dimension_name": "Decision-Maker Availability",
+          "maximum_points": 10.0,
+          "awarded_points": 0.0,
+          "dimension_status": "UNAVAILABLE",
+          "evidence_references": [],
+          "criteria_met": [],
+          "criteria_not_met": [
+            "Decision-maker identity unobserved",
+            "Decision-maker role unobserved"
+          ],
+          "missing_information": [
+            "Decision-maker name (B2B credentials unconfigured)",
+            "Decision-maker role/title"
+          ],
+          "explanation": "Decision-maker details unobserved; unconfigured B2B provider data is not treated as a negative signal."
+        },
+        "contact_readiness": {
+          "dimension_name": "Contact Readiness",
+          "maximum_points": 10.0,
+          "awarded_points": 6.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:phone",
+            "lead:website"
+          ],
+          "criteria_met": [
+            "Verified business phone number available: 082408 73232 (+4.0 pts)",
+            "Accessible website domain (+2.0 pts)"
+          ],
+          "criteria_not_met": [
+            "Business email address unobserved"
+          ],
+          "missing_information": [
+            "Business email address"
+          ],
+          "explanation": "Awarded 6.0/10.0 pts for direct business communication channels."
+        },
+        "mindartdigital_business_fit": {
+          "dimension_name": "MindArtDigital Business Fit",
+          "maximum_points": 5.0,
+          "awarded_points": 5.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:industry"
+          ],
+          "criteria_met": [
+            "Industry aligns with target verticals: INTERIOR_DESIGN (+3.0 pts)",
+            "Grounded alignment with MindArtDigital service portfolio (+2.0 pts)"
+          ],
+          "criteria_not_met": [],
+          "missing_information": [],
+          "explanation": "Awarded 5.0/5.0 pts for agency strategic fit."
+        }
+      },
+      "qualification_reasoning": "Limited observable commercial problems or unverified presence. Deprioritize pending fresh evidence.",
+      "supporting_evidence": [
+        "Marketing infrastructure detected: Google Analytics / GTM",
+        "Established local market presence verified with >= 50 customer reviews",
+        "Direct phone contact available: 082408 73232",
+        "Core vertical fit: INTERIOR_DESIGN"
+      ],
+      "missing_information": [
+        "External ad library credentials unconfigured for off-site ad inspection",
+        "Decision-maker name (B2B credentials unconfigured)",
+        "Decision-maker role/title",
+        "Business email address"
+      ],
+      "score_limitations": [
+        "External ad library credentials not configured; off-site paid campaigns were unobserved.",
+        "B2B individual enrichment credentials unconfigured; decision-maker identity remains unobserved."
+      ],
+      "raw_opportunities": []
+    },
+    {
+      "index": 4,
+      "company_name": "Livspace - Interior Design Studio, Tangra",
+      "website": "https://www.livspace.com/in/interiors/kolkata/tangra?utm_medium=GMB&utm_source=wb_tangra",
+      "website_available": true,
+      "phone": "080 4775 9123",
+      "google_places_reviews": 4165,
+      "google_places_rating": 4.7,
+      "is_duplicate": false,
+      "duplicate_reason": null,
+      "qualification_score": 51,
+      "scoring_coverage": 75.0,
+      "classification": "NURTURE",
+      "recommended_sales_action": "CONTINUE_RESEARCH",
+      "recommended_priority": "LOW",
+      "is_deterministic": true,
+      "dimension_scores": {
+        "problem_severity": 10.0,
+        "commercial_opportunity_value": 8.0,
+        "buying_intent": 7.0,
+        "evidence_confidence": 15.0,
+        "decision_maker_availability": 0.0,
+        "contact_readiness": 6.0,
+        "mindartdigital_business_fit": 5.0
+      },
+      "dimension_breakdown": {
+        "problem_severity": {
+          "dimension_name": "Problem Severity",
+          "maximum_points": 25.0,
+          "awarded_points": 10.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "seven_category:content_marketing"
+          ],
+          "criteria_met": [
+            "Medium-severity verified issue: Missing educational blog or content marketing hub"
+          ],
+          "criteria_not_met": [
+            "No high or critical severity issues detected"
+          ],
+          "missing_information": [],
+          "explanation": "Awarded 10.0/25.0 pts based on verified medium-severity issue: Missing educational blog or content marketing hub."
+        },
+        "commercial_opportunity_value": {
+          "dimension_name": "Commercial Opportunity Value",
+          "maximum_points": 20.0,
+          "awarded_points": 8.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "opportunity:81baf6ad-d96d-4dc6-8be3-e9d173feb0ef"
+          ],
+          "criteria_met": [
+            "1 distinct service opportunity: Content Marketing"
+          ],
+          "criteria_not_met": [
+            "Fewer than 2 distinct service offerings identified"
+          ],
+          "missing_information": [],
+          "explanation": "Awarded 8.0/20.0 pts based on single service opportunity (Content Marketing)."
+        },
+        "buying_intent": {
+          "dimension_name": "Buying Intent Indicators",
+          "maximum_points": 15.0,
+          "awarded_points": 7.0,
+          "dimension_status": "PARTIALLY_EVALUATED",
+          "evidence_references": [
+            "website_analysis:tracking_tags",
+            "evidence:cb5d9f4a-7d26-47fd-9886-c279e5d5e0d2"
+          ],
+          "criteria_met": [
+            "Verified marketing infrastructure: 0 tracking tags, 1 social profiles (+4.0 pts)",
+            "Verified commercial scale: high consumer engagement (>= 50 Google reviews) (+3.0 pts)"
+          ],
+          "criteria_not_met": [
+            "No active advertising campaigns verified via ad library"
+          ],
+          "missing_information": [
+            "External ad library credentials unconfigured for off-site ad inspection"
+          ],
+          "explanation": "Awarded 7.0/15.0 pts based on verified marketing activity (2 criteria met)."
+        },
+        "evidence_confidence": {
+          "dimension_name": "Evidence Confidence",
+          "maximum_points": 15.0,
+          "awarded_points": 15.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "website_analysis:https",
+            "evidence:cb5d9f4a-7d26-47fd-9886-c279e5d5e0d2",
+            "evidence:89628943-a1ea-4cfd-9ea7-2a5394671638"
+          ],
+          "criteria_met": [
+            "Website verified accessible with valid HTTPS security (+6.0 pts)",
+            "Authorized provider verification: Google Places listing verified (+5.0 pts)",
+            "High verified evidence depth: >= 3 discrete verifiable facts (+4.0 pts)"
+          ],
+          "criteria_not_met": [],
+          "missing_information": [],
+          "explanation": "Awarded 15.0/15.0 pts based on multi-source verified evidence."
+        },
+        "decision_maker_availability": {
+          "dimension_name": "Decision-Maker Availability",
+          "maximum_points": 10.0,
+          "awarded_points": 0.0,
+          "dimension_status": "UNAVAILABLE",
+          "evidence_references": [],
+          "criteria_met": [],
+          "criteria_not_met": [
+            "Decision-maker identity unobserved",
+            "Decision-maker role unobserved"
+          ],
+          "missing_information": [
+            "Decision-maker name (B2B credentials unconfigured)",
+            "Decision-maker role/title"
+          ],
+          "explanation": "Decision-maker details unobserved; unconfigured B2B provider data is not treated as a negative signal."
+        },
+        "contact_readiness": {
+          "dimension_name": "Contact Readiness",
+          "maximum_points": 10.0,
+          "awarded_points": 6.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:phone",
+            "lead:website"
+          ],
+          "criteria_met": [
+            "Verified business phone number available: 080 4775 9123 (+4.0 pts)",
+            "Accessible website domain (+2.0 pts)"
+          ],
+          "criteria_not_met": [
+            "Business email address unobserved"
+          ],
+          "missing_information": [
+            "Business email address"
+          ],
+          "explanation": "Awarded 6.0/10.0 pts for direct business communication channels."
+        },
+        "mindartdigital_business_fit": {
+          "dimension_name": "MindArtDigital Business Fit",
+          "maximum_points": 5.0,
+          "awarded_points": 5.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:industry"
+          ],
+          "criteria_met": [
+            "Industry aligns with target verticals: INTERIOR_DESIGN (+3.0 pts)",
+            "Grounded alignment with MindArtDigital service portfolio (+2.0 pts)"
+          ],
+          "criteria_not_met": [],
+          "missing_information": [],
+          "explanation": "Awarded 5.0/5.0 pts for agency strategic fit."
+        }
+      },
+      "qualification_reasoning": "Moderate potential or partial evidence. Continue research and monitor for additional buying signals.",
+      "supporting_evidence": [
+        "Medium-severity gap in content_marketing: Missing educational blog or content marketing hub",
+        "Commercial service opportunity: Content Marketing",
+        "Marketing infrastructure detected: Social profiles",
+        "Established local market presence verified with >= 50 customer reviews",
+        "Direct phone contact available: 080 4775 9123",
+        "Core vertical fit: INTERIOR_DESIGN"
+      ],
+      "missing_information": [
+        "External ad library credentials unconfigured for off-site ad inspection",
+        "Decision-maker name (B2B credentials unconfigured)",
+        "Decision-maker role/title",
+        "Business email address"
+      ],
+      "score_limitations": [
+        "External ad library credentials not configured; off-site paid campaigns were unobserved.",
+        "B2B individual enrichment credentials unconfigured; decision-maker identity remains unobserved."
+      ],
+      "raw_opportunities": [
+        {
+          "title": "Content Marketing: Missing educational blog or content marketing hub",
+          "description": "Content marketing evaluation conducted; no active blog/content hub found.",
+          "category": "CONTENT_MARKETING",
+          "priority": "MEDIUM",
+          "score": 65,
+          "confidence": "HIGH",
+          "recommended_action": "Deliver service: Content Marketing"
+        }
+      ]
+    },
+    {
+      "index": 5,
+      "company_name": "Creazione Interiors - The Decor Specialist Since 2012 | Best Interior Designer In Kolkata",
+      "website": "http://www.creazioneinteriors.in/",
+      "website_available": false,
+      "phone": "089617 89510",
+      "google_places_reviews": 687,
+      "google_places_rating": 4.2,
+      "is_duplicate": false,
+      "duplicate_reason": null,
+      "qualification_score": 17,
+      "scoring_coverage": 15.0,
+      "classification": "LOW_PRIORITY",
+      "recommended_sales_action": "DEPRIORITIZE",
+      "recommended_priority": "LOW",
+      "is_deterministic": true,
+      "dimension_scores": {
+        "problem_severity": 0.0,
+        "commercial_opportunity_value": 0.0,
+        "buying_intent": 3.0,
+        "evidence_confidence": 5.0,
+        "decision_maker_availability": 0.0,
+        "contact_readiness": 4.0,
+        "mindartdigital_business_fit": 5.0
+      },
+      "dimension_breakdown": {
+        "problem_severity": {
+          "dimension_name": "Problem Severity",
+          "maximum_points": 25.0,
+          "awarded_points": 0.0,
+          "dimension_status": "UNAVAILABLE",
+          "evidence_references": [],
+          "criteria_met": [],
+          "criteria_not_met": [],
+          "missing_information": [
+            "Website presence unavailable for problem inspection"
+          ],
+          "explanation": "Website is unreachable or not provided. Problem severity cannot be directly verified."
+        },
+        "commercial_opportunity_value": {
+          "dimension_name": "Commercial Opportunity Value",
+          "maximum_points": 20.0,
+          "awarded_points": 0.0,
+          "dimension_status": "PARTIALLY_EVALUATED",
+          "evidence_references": [],
+          "criteria_met": [],
+          "criteria_not_met": [
+            "Zero verified commercial opportunities identified"
+          ],
+          "missing_information": [],
+          "explanation": "No grounded sales opportunities mapped to MindArtDigital services; awarded 0.0 pts without budget speculation."
+        },
+        "buying_intent": {
+          "dimension_name": "Buying Intent Indicators",
+          "maximum_points": 15.0,
+          "awarded_points": 3.0,
+          "dimension_status": "PARTIALLY_EVALUATED",
+          "evidence_references": [
+            "evidence:27c8f062-56d5-41fb-aaff-583a011f97cf"
+          ],
+          "criteria_met": [
+            "Verified commercial scale: high consumer engagement (>= 50 Google reviews) (+3.0 pts)"
+          ],
+          "criteria_not_met": [
+            "No active advertising campaigns verified via ad library",
+            "No marketing tracking tags or social profile infrastructure detected"
+          ],
+          "missing_information": [
+            "External ad library credentials unconfigured for off-site ad inspection"
+          ],
+          "explanation": "Awarded 3.0/15.0 pts based on verified marketing activity (1 criteria met)."
+        },
+        "evidence_confidence": {
+          "dimension_name": "Evidence Confidence",
+          "maximum_points": 15.0,
+          "awarded_points": 5.0,
+          "dimension_status": "PARTIALLY_EVALUATED",
+          "evidence_references": [
+            "evidence:27c8f062-56d5-41fb-aaff-583a011f97cf",
+            "evidence:7d662e6e-5f1a-468b-8b50-ce4b67ad079d"
+          ],
+          "criteria_met": [
+            "Authorized provider verification: Google Places listing verified (+5.0 pts)"
+          ],
+          "criteria_not_met": [
+            "Website unreachable or missing",
+            "Limited verified fact depth (< 3 discrete facts)"
+          ],
+          "missing_information": [
+            "Website availability could not be verified"
+          ],
+          "explanation": "Awarded 5.0/15.0 pts based on multi-source verified evidence."
+        },
+        "decision_maker_availability": {
+          "dimension_name": "Decision-Maker Availability",
+          "maximum_points": 10.0,
+          "awarded_points": 0.0,
+          "dimension_status": "UNAVAILABLE",
+          "evidence_references": [],
+          "criteria_met": [],
+          "criteria_not_met": [
+            "Decision-maker identity unobserved",
+            "Decision-maker role unobserved"
+          ],
+          "missing_information": [
+            "Decision-maker name (B2B credentials unconfigured)",
+            "Decision-maker role/title"
+          ],
+          "explanation": "Decision-maker details unobserved; unconfigured B2B provider data is not treated as a negative signal."
+        },
+        "contact_readiness": {
+          "dimension_name": "Contact Readiness",
+          "maximum_points": 10.0,
+          "awarded_points": 4.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:phone"
+          ],
+          "criteria_met": [
+            "Verified business phone number available: 089617 89510 (+4.0 pts)"
+          ],
+          "criteria_not_met": [
+            "Business email address unobserved",
+            "No accessible website domain"
+          ],
+          "missing_information": [
+            "Business email address",
+            "Verified web domain"
+          ],
+          "explanation": "Awarded 4.0/10.0 pts for direct business communication channels."
+        },
+        "mindartdigital_business_fit": {
+          "dimension_name": "MindArtDigital Business Fit",
+          "maximum_points": 5.0,
+          "awarded_points": 5.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:industry"
+          ],
+          "criteria_met": [
+            "Industry aligns with target verticals: INTERIOR_DESIGN (+3.0 pts)",
+            "Grounded alignment with MindArtDigital service portfolio (+2.0 pts)"
+          ],
+          "criteria_not_met": [],
+          "missing_information": [],
+          "explanation": "Awarded 5.0/5.0 pts for agency strategic fit."
+        }
+      },
+      "qualification_reasoning": "Limited observable commercial problems or unverified presence. Deprioritize pending fresh evidence.",
+      "supporting_evidence": [
+        "Established local market presence verified with >= 50 customer reviews",
+        "Direct phone contact available: 089617 89510",
+        "Core vertical fit: INTERIOR_DESIGN"
+      ],
+      "missing_information": [
+        "Website presence unavailable for problem inspection",
+        "External ad library credentials unconfigured for off-site ad inspection",
+        "Website availability could not be verified",
+        "Decision-maker name (B2B credentials unconfigured)",
+        "Decision-maker role/title",
+        "Business email address",
+        "Verified web domain"
+      ],
+      "score_limitations": [
+        "Low scoring coverage (15.0%) indicates multiple unresearched dimensions. This limits evaluation confidence and cross-lead comparability.",
+        "External ad library credentials not configured; off-site paid campaigns were unobserved.",
+        "B2B individual enrichment credentials unconfigured; decision-maker identity remains unobserved."
+      ],
+      "raw_opportunities": []
+    },
+    {
+      "index": 6,
+      "company_name": "HomeLane",
+      "website": "https://www.homelane.com/cities/interior-designers-kolkata?utm_source=Local&utm_medium=Organic&utm_campaign=GMB-park-street-kolkata",
+      "website_available": true,
+      "phone": "1800 102 4663",
+      "google_places_reviews": 1212,
+      "google_places_rating": 4.8,
+      "is_duplicate": false,
+      "duplicate_reason": null,
+      "qualification_score": 51,
+      "scoring_coverage": 90.0,
+      "classification": "NURTURE",
+      "recommended_sales_action": "CONTINUE_RESEARCH",
+      "recommended_priority": "LOW",
+      "is_deterministic": true,
+      "dimension_scores": {
+        "problem_severity": 10.0,
+        "commercial_opportunity_value": 8.0,
+        "buying_intent": 7.0,
+        "evidence_confidence": 15.0,
+        "decision_maker_availability": 0.0,
+        "contact_readiness": 6.0,
+        "mindartdigital_business_fit": 5.0
+      },
+      "dimension_breakdown": {
+        "problem_severity": {
+          "dimension_name": "Problem Severity",
+          "maximum_points": 25.0,
+          "awarded_points": 10.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "seven_category:content_marketing"
+          ],
+          "criteria_met": [
+            "Medium-severity verified issue: Missing educational blog or content marketing hub"
+          ],
+          "criteria_not_met": [
+            "No high or critical severity issues detected"
+          ],
+          "missing_information": [],
+          "explanation": "Awarded 10.0/25.0 pts based on verified medium-severity issue: Missing educational blog or content marketing hub."
+        },
+        "commercial_opportunity_value": {
+          "dimension_name": "Commercial Opportunity Value",
+          "maximum_points": 20.0,
+          "awarded_points": 8.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "opportunity:8544fbb6-26e5-487b-a6ec-61bec76cacee"
+          ],
+          "criteria_met": [
+            "1 distinct service opportunity: Content Marketing"
+          ],
+          "criteria_not_met": [
+            "Fewer than 2 distinct service offerings identified"
+          ],
+          "missing_information": [],
+          "explanation": "Awarded 8.0/20.0 pts based on single service opportunity (Content Marketing)."
+        },
+        "buying_intent": {
+          "dimension_name": "Buying Intent Indicators",
+          "maximum_points": 15.0,
+          "awarded_points": 7.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "website_analysis:tracking_tags",
+            "evidence:5f440696-f439-4535-a71f-1b75e8dcffe7"
+          ],
+          "criteria_met": [
+            "Verified marketing infrastructure: 1 tracking tags, 1 social profiles (+4.0 pts)",
+            "Verified commercial scale: high consumer engagement (>= 50 Google reviews) (+3.0 pts)"
+          ],
+          "criteria_not_met": [
+            "No active advertising campaigns verified via ad library"
+          ],
+          "missing_information": [
+            "External ad library credentials unconfigured for off-site ad inspection"
+          ],
+          "explanation": "Awarded 7.0/15.0 pts based on verified marketing activity (2 criteria met)."
+        },
+        "evidence_confidence": {
+          "dimension_name": "Evidence Confidence",
+          "maximum_points": 15.0,
+          "awarded_points": 15.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "website_analysis:https",
+            "evidence:5f440696-f439-4535-a71f-1b75e8dcffe7",
+            "evidence:e230bd0f-92c6-49c4-8acf-33e3f07731ff"
+          ],
+          "criteria_met": [
+            "Website verified accessible with valid HTTPS security (+6.0 pts)",
+            "Authorized provider verification: Google Places listing verified (+5.0 pts)",
+            "High verified evidence depth: >= 3 discrete verifiable facts (+4.0 pts)"
+          ],
+          "criteria_not_met": [],
+          "missing_information": [],
+          "explanation": "Awarded 15.0/15.0 pts based on multi-source verified evidence."
+        },
+        "decision_maker_availability": {
+          "dimension_name": "Decision-Maker Availability",
+          "maximum_points": 10.0,
+          "awarded_points": 0.0,
+          "dimension_status": "UNAVAILABLE",
+          "evidence_references": [],
+          "criteria_met": [],
+          "criteria_not_met": [
+            "Decision-maker identity unobserved",
+            "Decision-maker role unobserved"
+          ],
+          "missing_information": [
+            "Decision-maker name (B2B credentials unconfigured)",
+            "Decision-maker role/title"
+          ],
+          "explanation": "Decision-maker details unobserved; unconfigured B2B provider data is not treated as a negative signal."
+        },
+        "contact_readiness": {
+          "dimension_name": "Contact Readiness",
+          "maximum_points": 10.0,
+          "awarded_points": 6.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:phone",
+            "lead:website"
+          ],
+          "criteria_met": [
+            "Verified business phone number available: 1800 102 4663 (+4.0 pts)",
+            "Accessible website domain (+2.0 pts)"
+          ],
+          "criteria_not_met": [
+            "Business email address unobserved"
+          ],
+          "missing_information": [
+            "Business email address"
+          ],
+          "explanation": "Awarded 6.0/10.0 pts for direct business communication channels."
+        },
+        "mindartdigital_business_fit": {
+          "dimension_name": "MindArtDigital Business Fit",
+          "maximum_points": 5.0,
+          "awarded_points": 5.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:industry"
+          ],
+          "criteria_met": [
+            "Industry aligns with target verticals: INTERIOR_DESIGN (+3.0 pts)",
+            "Grounded alignment with MindArtDigital service portfolio (+2.0 pts)"
+          ],
+          "criteria_not_met": [],
+          "missing_information": [],
+          "explanation": "Awarded 5.0/5.0 pts for agency strategic fit."
+        }
+      },
+      "qualification_reasoning": "Moderate potential or partial evidence. Continue research and monitor for additional buying signals.",
+      "supporting_evidence": [
+        "Medium-severity gap in content_marketing: Missing educational blog or content marketing hub",
+        "Commercial service opportunity: Content Marketing",
+        "Marketing infrastructure detected: Google Analytics / GTM",
+        "Established local market presence verified with >= 50 customer reviews",
+        "Direct phone contact available: 1800 102 4663",
+        "Core vertical fit: INTERIOR_DESIGN"
+      ],
+      "missing_information": [
+        "External ad library credentials unconfigured for off-site ad inspection",
+        "Decision-maker name (B2B credentials unconfigured)",
+        "Decision-maker role/title",
+        "Business email address"
+      ],
+      "score_limitations": [
+        "External ad library credentials not configured; off-site paid campaigns were unobserved.",
+        "B2B individual enrichment credentials unconfigured; decision-maker identity remains unobserved."
+      ],
+      "raw_opportunities": [
+        {
+          "title": "Content Marketing: Missing educational blog or content marketing hub",
+          "description": "Content marketing evaluation conducted; no active blog/content hub found.",
+          "category": "CONTENT_MARKETING",
+          "priority": "MEDIUM",
+          "score": 65,
+          "confidence": "HIGH",
+          "recommended_action": "Deliver service: Content Marketing"
+        }
+      ]
+    },
+    {
+      "index": 7,
+      "company_name": "Custom Design Interiors Pvt Ltd",
+      "website": "https://customdesigninteriors-pvtltd.com/",
+      "website_available": true,
+      "phone": "094296 93643",
+      "google_places_reviews": 174,
+      "google_places_rating": 4.6,
+      "is_duplicate": false,
+      "duplicate_reason": null,
+      "qualification_score": 33,
+      "scoring_coverage": 70.0,
+      "classification": "LOW_PRIORITY",
+      "recommended_sales_action": "DEPRIORITIZE",
+      "recommended_priority": "LOW",
+      "is_deterministic": true,
+      "dimension_scores": {
+        "problem_severity": 0.0,
+        "commercial_opportunity_value": 0.0,
+        "buying_intent": 7.0,
+        "evidence_confidence": 15.0,
+        "decision_maker_availability": 0.0,
+        "contact_readiness": 6.0,
+        "mindartdigital_business_fit": 5.0
+      },
+      "dimension_breakdown": {
+        "problem_severity": {
+          "dimension_name": "Problem Severity",
+          "maximum_points": 25.0,
+          "awarded_points": 0.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [],
+          "criteria_met": [],
+          "criteria_not_met": [
+            "No verified digital marketing issues observed"
+          ],
+          "missing_information": [],
+          "explanation": "Evaluated across all observable digital marketing channels; no verified problems were identified."
+        },
+        "commercial_opportunity_value": {
+          "dimension_name": "Commercial Opportunity Value",
+          "maximum_points": 20.0,
+          "awarded_points": 0.0,
+          "dimension_status": "PARTIALLY_EVALUATED",
+          "evidence_references": [],
+          "criteria_met": [],
+          "criteria_not_met": [
+            "Zero verified commercial opportunities identified"
+          ],
+          "missing_information": [],
+          "explanation": "No grounded sales opportunities mapped to MindArtDigital services; awarded 0.0 pts without budget speculation."
+        },
+        "buying_intent": {
+          "dimension_name": "Buying Intent Indicators",
+          "maximum_points": 15.0,
+          "awarded_points": 7.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "website_analysis:tracking_tags",
+            "evidence:5be1b1df-c3f2-4ba1-84a2-34dbd7861f78"
+          ],
+          "criteria_met": [
+            "Verified marketing infrastructure: 1 tracking tags, 1 social profiles (+4.0 pts)",
+            "Verified commercial scale: high consumer engagement (>= 50 Google reviews) (+3.0 pts)"
+          ],
+          "criteria_not_met": [
+            "No active advertising campaigns verified via ad library"
+          ],
+          "missing_information": [
+            "External ad library credentials unconfigured for off-site ad inspection"
+          ],
+          "explanation": "Awarded 7.0/15.0 pts based on verified marketing activity (2 criteria met)."
+        },
+        "evidence_confidence": {
+          "dimension_name": "Evidence Confidence",
+          "maximum_points": 15.0,
+          "awarded_points": 15.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "website_analysis:https",
+            "evidence:5be1b1df-c3f2-4ba1-84a2-34dbd7861f78",
+            "evidence:c8e10254-f5bd-415d-8683-7f22f7617ee1"
+          ],
+          "criteria_met": [
+            "Website verified accessible with valid HTTPS security (+6.0 pts)",
+            "Authorized provider verification: Google Places listing verified (+5.0 pts)",
+            "High verified evidence depth: >= 3 discrete verifiable facts (+4.0 pts)"
+          ],
+          "criteria_not_met": [],
+          "missing_information": [],
+          "explanation": "Awarded 15.0/15.0 pts based on multi-source verified evidence."
+        },
+        "decision_maker_availability": {
+          "dimension_name": "Decision-Maker Availability",
+          "maximum_points": 10.0,
+          "awarded_points": 0.0,
+          "dimension_status": "UNAVAILABLE",
+          "evidence_references": [],
+          "criteria_met": [],
+          "criteria_not_met": [
+            "Decision-maker identity unobserved",
+            "Decision-maker role unobserved"
+          ],
+          "missing_information": [
+            "Decision-maker name (B2B credentials unconfigured)",
+            "Decision-maker role/title"
+          ],
+          "explanation": "Decision-maker details unobserved; unconfigured B2B provider data is not treated as a negative signal."
+        },
+        "contact_readiness": {
+          "dimension_name": "Contact Readiness",
+          "maximum_points": 10.0,
+          "awarded_points": 6.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:phone",
+            "lead:website"
+          ],
+          "criteria_met": [
+            "Verified business phone number available: 094296 93643 (+4.0 pts)",
+            "Accessible website domain (+2.0 pts)"
+          ],
+          "criteria_not_met": [
+            "Business email address unobserved"
+          ],
+          "missing_information": [
+            "Business email address"
+          ],
+          "explanation": "Awarded 6.0/10.0 pts for direct business communication channels."
+        },
+        "mindartdigital_business_fit": {
+          "dimension_name": "MindArtDigital Business Fit",
+          "maximum_points": 5.0,
+          "awarded_points": 5.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:industry"
+          ],
+          "criteria_met": [
+            "Industry aligns with target verticals: INTERIOR_DESIGN (+3.0 pts)",
+            "Grounded alignment with MindArtDigital service portfolio (+2.0 pts)"
+          ],
+          "criteria_not_met": [],
+          "missing_information": [],
+          "explanation": "Awarded 5.0/5.0 pts for agency strategic fit."
+        }
+      },
+      "qualification_reasoning": "Limited observable commercial problems or unverified presence. Deprioritize pending fresh evidence.",
+      "supporting_evidence": [
+        "Marketing infrastructure detected: Google Analytics / GTM",
+        "Established local market presence verified with >= 50 customer reviews",
+        "Direct phone contact available: 094296 93643",
+        "Core vertical fit: INTERIOR_DESIGN"
+      ],
+      "missing_information": [
+        "External ad library credentials unconfigured for off-site ad inspection",
+        "Decision-maker name (B2B credentials unconfigured)",
+        "Decision-maker role/title",
+        "Business email address"
+      ],
+      "score_limitations": [
+        "External ad library credentials not configured; off-site paid campaigns were unobserved.",
+        "B2B individual enrichment credentials unconfigured; decision-maker identity remains unobserved."
+      ],
+      "raw_opportunities": []
+    },
+    {
+      "index": 8,
+      "company_name": "Livspace",
+      "website": "https://www.livspace.com/in/interiors/kolkata/new-town?utm_medium=GMB&utm_source=wb_newtown",
+      "website_available": true,
+      "phone": "080 4775 9124",
+      "google_places_reviews": 3593,
+      "google_places_rating": 4.7,
+      "is_duplicate": true,
+      "duplicate_reason": "Duplicate branch or location of 'Livspace - Interior Design Studio, Tangra'",
+      "qualification_score": 51,
+      "scoring_coverage": 75.0,
+      "classification": "NURTURE",
+      "recommended_sales_action": "CONTINUE_RESEARCH",
+      "recommended_priority": "LOW",
+      "is_deterministic": true,
+      "dimension_scores": {
+        "problem_severity": 10.0,
+        "commercial_opportunity_value": 8.0,
+        "buying_intent": 7.0,
+        "evidence_confidence": 15.0,
+        "decision_maker_availability": 0.0,
+        "contact_readiness": 6.0,
+        "mindartdigital_business_fit": 5.0
+      },
+      "dimension_breakdown": {
+        "problem_severity": {
+          "dimension_name": "Problem Severity",
+          "maximum_points": 25.0,
+          "awarded_points": 10.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "seven_category:content_marketing"
+          ],
+          "criteria_met": [
+            "Medium-severity verified issue: Missing educational blog or content marketing hub"
+          ],
+          "criteria_not_met": [
+            "No high or critical severity issues detected"
+          ],
+          "missing_information": [],
+          "explanation": "Awarded 10.0/25.0 pts based on verified medium-severity issue: Missing educational blog or content marketing hub."
+        },
+        "commercial_opportunity_value": {
+          "dimension_name": "Commercial Opportunity Value",
+          "maximum_points": 20.0,
+          "awarded_points": 8.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "opportunity:7933ae3f-6a5e-4e86-b62c-70e601c7f140"
+          ],
+          "criteria_met": [
+            "1 distinct service opportunity: Content Marketing"
+          ],
+          "criteria_not_met": [
+            "Fewer than 2 distinct service offerings identified"
+          ],
+          "missing_information": [],
+          "explanation": "Awarded 8.0/20.0 pts based on single service opportunity (Content Marketing)."
+        },
+        "buying_intent": {
+          "dimension_name": "Buying Intent Indicators",
+          "maximum_points": 15.0,
+          "awarded_points": 7.0,
+          "dimension_status": "PARTIALLY_EVALUATED",
+          "evidence_references": [
+            "website_analysis:tracking_tags",
+            "evidence:ba3b8d36-71ea-4dba-877c-f1301971dcd2"
+          ],
+          "criteria_met": [
+            "Verified marketing infrastructure: 0 tracking tags, 1 social profiles (+4.0 pts)",
+            "Verified commercial scale: high consumer engagement (>= 50 Google reviews) (+3.0 pts)"
+          ],
+          "criteria_not_met": [
+            "No active advertising campaigns verified via ad library"
+          ],
+          "missing_information": [
+            "External ad library credentials unconfigured for off-site ad inspection"
+          ],
+          "explanation": "Awarded 7.0/15.0 pts based on verified marketing activity (2 criteria met)."
+        },
+        "evidence_confidence": {
+          "dimension_name": "Evidence Confidence",
+          "maximum_points": 15.0,
+          "awarded_points": 15.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "website_analysis:https",
+            "evidence:ba3b8d36-71ea-4dba-877c-f1301971dcd2",
+            "evidence:dbf49fab-98d0-450f-a00f-d45a92d95409"
+          ],
+          "criteria_met": [
+            "Website verified accessible with valid HTTPS security (+6.0 pts)",
+            "Authorized provider verification: Google Places listing verified (+5.0 pts)",
+            "High verified evidence depth: >= 3 discrete verifiable facts (+4.0 pts)"
+          ],
+          "criteria_not_met": [],
+          "missing_information": [],
+          "explanation": "Awarded 15.0/15.0 pts based on multi-source verified evidence."
+        },
+        "decision_maker_availability": {
+          "dimension_name": "Decision-Maker Availability",
+          "maximum_points": 10.0,
+          "awarded_points": 0.0,
+          "dimension_status": "UNAVAILABLE",
+          "evidence_references": [],
+          "criteria_met": [],
+          "criteria_not_met": [
+            "Decision-maker identity unobserved",
+            "Decision-maker role unobserved"
+          ],
+          "missing_information": [
+            "Decision-maker name (B2B credentials unconfigured)",
+            "Decision-maker role/title"
+          ],
+          "explanation": "Decision-maker details unobserved; unconfigured B2B provider data is not treated as a negative signal."
+        },
+        "contact_readiness": {
+          "dimension_name": "Contact Readiness",
+          "maximum_points": 10.0,
+          "awarded_points": 6.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:phone",
+            "lead:website"
+          ],
+          "criteria_met": [
+            "Verified business phone number available: 080 4775 9124 (+4.0 pts)",
+            "Accessible website domain (+2.0 pts)"
+          ],
+          "criteria_not_met": [
+            "Business email address unobserved"
+          ],
+          "missing_information": [
+            "Business email address"
+          ],
+          "explanation": "Awarded 6.0/10.0 pts for direct business communication channels."
+        },
+        "mindartdigital_business_fit": {
+          "dimension_name": "MindArtDigital Business Fit",
+          "maximum_points": 5.0,
+          "awarded_points": 5.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:industry"
+          ],
+          "criteria_met": [
+            "Industry aligns with target verticals: INTERIOR_DESIGN (+3.0 pts)",
+            "Grounded alignment with MindArtDigital service portfolio (+2.0 pts)"
+          ],
+          "criteria_not_met": [],
+          "missing_information": [],
+          "explanation": "Awarded 5.0/5.0 pts for agency strategic fit."
+        }
+      },
+      "qualification_reasoning": "Moderate potential or partial evidence. Continue research and monitor for additional buying signals.",
+      "supporting_evidence": [
+        "Medium-severity gap in content_marketing: Missing educational blog or content marketing hub",
+        "Commercial service opportunity: Content Marketing",
+        "Marketing infrastructure detected: Social profiles",
+        "Established local market presence verified with >= 50 customer reviews",
+        "Direct phone contact available: 080 4775 9124",
+        "Core vertical fit: INTERIOR_DESIGN"
+      ],
+      "missing_information": [
+        "External ad library credentials unconfigured for off-site ad inspection",
+        "Decision-maker name (B2B credentials unconfigured)",
+        "Decision-maker role/title",
+        "Business email address"
+      ],
+      "score_limitations": [
+        "External ad library credentials not configured; off-site paid campaigns were unobserved.",
+        "B2B individual enrichment credentials unconfigured; decision-maker identity remains unobserved."
+      ],
+      "raw_opportunities": [
+        {
+          "title": "Content Marketing: Missing educational blog or content marketing hub",
+          "description": "Content marketing evaluation conducted; no active blog/content hub found.",
+          "category": "CONTENT_MARKETING",
+          "priority": "MEDIUM",
+          "score": 65,
+          "confidence": "HIGH",
+          "recommended_action": "Deliver service: Content Marketing"
+        }
+      ]
+    },
+    {
+      "index": 9,
+      "company_name": "DREAM VISION IDEA",
+      "website": "https://www.dreamvisionidea.com/",
+      "website_available": true,
+      "phone": "093306 40553",
+      "google_places_reviews": 430,
+      "google_places_rating": 5,
+      "is_duplicate": false,
+      "duplicate_reason": null,
+      "qualification_score": 57,
+      "scoring_coverage": 75.0,
+      "classification": "NURTURE",
+      "recommended_sales_action": "CONTINUE_RESEARCH",
+      "recommended_priority": "LOW",
+      "is_deterministic": true,
+      "dimension_scores": {
+        "problem_severity": 10.0,
+        "commercial_opportunity_value": 14.0,
+        "buying_intent": 7.0,
+        "evidence_confidence": 15.0,
+        "decision_maker_availability": 0.0,
+        "contact_readiness": 6.0,
+        "mindartdigital_business_fit": 5.0
+      },
+      "dimension_breakdown": {
+        "problem_severity": {
+          "dimension_name": "Problem Severity",
+          "maximum_points": 25.0,
+          "awarded_points": 10.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "seven_category:social_media",
+            "seven_category:content_marketing"
+          ],
+          "criteria_met": [
+            "Medium-severity verified issue: Missing educational blog or content marketing hub"
+          ],
+          "criteria_not_met": [
+            "No high or critical severity issues detected"
+          ],
+          "missing_information": [],
+          "explanation": "Awarded 10.0/25.0 pts based on verified medium-severity issue: Missing educational blog or content marketing hub."
+        },
+        "commercial_opportunity_value": {
+          "dimension_name": "Commercial Opportunity Value",
+          "maximum_points": 20.0,
+          "awarded_points": 14.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "opportunity:d144a026-6b28-42bc-8d61-853574f5d14b"
+          ],
+          "criteria_met": [
+            "2 distinct service opportunities: Content Marketing, Social Media Strategy"
+          ],
+          "criteria_not_met": [
+            "Fewer than 3 distinct service offerings identified"
+          ],
+          "missing_information": [],
+          "explanation": "Awarded 14.0/20.0 pts based on 2 verified service opportunities (Content Marketing, Social Media Strategy)."
+        },
+        "buying_intent": {
+          "dimension_name": "Buying Intent Indicators",
+          "maximum_points": 15.0,
+          "awarded_points": 7.0,
+          "dimension_status": "PARTIALLY_EVALUATED",
+          "evidence_references": [
+            "website_analysis:tracking_tags",
+            "evidence:f267f0b2-0d5c-42fd-b9ed-b0db5e109056"
+          ],
+          "criteria_met": [
+            "Verified marketing infrastructure: 0 tracking tags, 1 social profiles (+4.0 pts)",
+            "Verified commercial scale: high consumer engagement (>= 50 Google reviews) (+3.0 pts)"
+          ],
+          "criteria_not_met": [
+            "No active advertising campaigns verified via ad library"
+          ],
+          "missing_information": [
+            "External ad library credentials unconfigured for off-site ad inspection"
+          ],
+          "explanation": "Awarded 7.0/15.0 pts based on verified marketing activity (2 criteria met)."
+        },
+        "evidence_confidence": {
+          "dimension_name": "Evidence Confidence",
+          "maximum_points": 15.0,
+          "awarded_points": 15.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "website_analysis:https",
+            "evidence:f267f0b2-0d5c-42fd-b9ed-b0db5e109056",
+            "evidence:cb923c74-bd4b-4d7f-a886-0938ef7d2952"
+          ],
+          "criteria_met": [
+            "Website verified accessible with valid HTTPS security (+6.0 pts)",
+            "Authorized provider verification: Google Places listing verified (+5.0 pts)",
+            "High verified evidence depth: >= 3 discrete verifiable facts (+4.0 pts)"
+          ],
+          "criteria_not_met": [],
+          "missing_information": [],
+          "explanation": "Awarded 15.0/15.0 pts based on multi-source verified evidence."
+        },
+        "decision_maker_availability": {
+          "dimension_name": "Decision-Maker Availability",
+          "maximum_points": 10.0,
+          "awarded_points": 0.0,
+          "dimension_status": "UNAVAILABLE",
+          "evidence_references": [],
+          "criteria_met": [],
+          "criteria_not_met": [
+            "Decision-maker identity unobserved",
+            "Decision-maker role unobserved"
+          ],
+          "missing_information": [
+            "Decision-maker name (B2B credentials unconfigured)",
+            "Decision-maker role/title"
+          ],
+          "explanation": "Decision-maker details unobserved; unconfigured B2B provider data is not treated as a negative signal."
+        },
+        "contact_readiness": {
+          "dimension_name": "Contact Readiness",
+          "maximum_points": 10.0,
+          "awarded_points": 6.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:phone",
+            "lead:website"
+          ],
+          "criteria_met": [
+            "Verified business phone number available: 093306 40553 (+4.0 pts)",
+            "Accessible website domain (+2.0 pts)"
+          ],
+          "criteria_not_met": [
+            "Business email address unobserved"
+          ],
+          "missing_information": [
+            "Business email address"
+          ],
+          "explanation": "Awarded 6.0/10.0 pts for direct business communication channels."
+        },
+        "mindartdigital_business_fit": {
+          "dimension_name": "MindArtDigital Business Fit",
+          "maximum_points": 5.0,
+          "awarded_points": 5.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:industry"
+          ],
+          "criteria_met": [
+            "Industry aligns with target verticals: INTERIOR_DESIGN (+3.0 pts)",
+            "Grounded alignment with MindArtDigital service portfolio (+2.0 pts)"
+          ],
+          "criteria_not_met": [],
+          "missing_information": [],
+          "explanation": "Awarded 5.0/5.0 pts for agency strategic fit."
+        }
+      },
+      "qualification_reasoning": "Moderate potential or partial evidence. Continue research and monitor for additional buying signals.",
+      "supporting_evidence": [
+        "Medium-severity gap in content_marketing: Missing educational blog or content marketing hub",
+        "Commercial service opportunities: Content Marketing, Social Media Strategy",
+        "Marketing infrastructure detected: Social profiles",
+        "Established local market presence verified with >= 50 customer reviews",
+        "Direct phone contact available: 093306 40553",
+        "Core vertical fit: INTERIOR_DESIGN"
+      ],
+      "missing_information": [
+        "External ad library credentials unconfigured for off-site ad inspection",
+        "Decision-maker name (B2B credentials unconfigured)",
+        "Decision-maker role/title",
+        "Business email address"
+      ],
+      "score_limitations": [
+        "External ad library credentials not configured; off-site paid campaigns were unobserved.",
+        "B2B individual enrichment credentials unconfigured; decision-maker identity remains unobserved."
+      ],
+      "raw_opportunities": [
+        {
+          "title": "Content Marketing: Missing educational blog or content marketing hub",
+          "description": "Content marketing evaluation conducted; no active blog/content hub found.",
+          "category": "CONTENT_MARKETING",
+          "priority": "MEDIUM",
+          "score": 65,
+          "confidence": "HIGH",
+          "recommended_action": "Deliver service: Content Marketing"
+        }
+      ]
+    },
+    {
+      "index": 10,
+      "company_name": "NANDINI INTERIOR",
+      "website": "http://www.nandiniinterior.in/",
+      "website_available": true,
+      "phone": "089812 22564",
+      "google_places_reviews": 336,
+      "google_places_rating": 4.9,
+      "is_duplicate": false,
+      "duplicate_reason": null,
+      "qualification_score": 57,
+      "scoring_coverage": 75.0,
+      "classification": "NURTURE",
+      "recommended_sales_action": "CONTINUE_RESEARCH",
+      "recommended_priority": "LOW",
+      "is_deterministic": true,
+      "dimension_scores": {
+        "problem_severity": 10.0,
+        "commercial_opportunity_value": 14.0,
+        "buying_intent": 7.0,
+        "evidence_confidence": 15.0,
+        "decision_maker_availability": 0.0,
+        "contact_readiness": 6.0,
+        "mindartdigital_business_fit": 5.0
+      },
+      "dimension_breakdown": {
+        "problem_severity": {
+          "dimension_name": "Problem Severity",
+          "maximum_points": 25.0,
+          "awarded_points": 10.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "seven_category:seo",
+            "seven_category:website_performance"
+          ],
+          "criteria_met": [
+            "Medium-severity verified issue: Missing HTML meta description tag"
+          ],
+          "criteria_not_met": [
+            "No high or critical severity issues detected"
+          ],
+          "missing_information": [],
+          "explanation": "Awarded 10.0/25.0 pts based on verified medium-severity issue: Missing HTML meta description tag."
+        },
+        "commercial_opportunity_value": {
+          "dimension_name": "Commercial Opportunity Value",
+          "maximum_points": 20.0,
+          "awarded_points": 14.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "opportunity:727c3e77-220b-4217-8e29-965e91e13635",
+            "opportunity:d74e8694-db74-4f32-bde2-f19cd4560522"
+          ],
+          "criteria_met": [
+            "2 distinct service opportunities: SEO, Website Performance Optimization"
+          ],
+          "criteria_not_met": [
+            "Fewer than 3 distinct service offerings identified"
+          ],
+          "missing_information": [],
+          "explanation": "Awarded 14.0/20.0 pts based on 2 verified service opportunities (SEO, Website Performance Optimization)."
+        },
+        "buying_intent": {
+          "dimension_name": "Buying Intent Indicators",
+          "maximum_points": 15.0,
+          "awarded_points": 7.0,
+          "dimension_status": "PARTIALLY_EVALUATED",
+          "evidence_references": [
+            "website_analysis:tracking_tags",
+            "evidence:f0b28b6e-f52d-4d05-81fa-efef1796f63e"
+          ],
+          "criteria_met": [
+            "Verified marketing infrastructure: 0 tracking tags, 1 social profiles (+4.0 pts)",
+            "Verified commercial scale: high consumer engagement (>= 50 Google reviews) (+3.0 pts)"
+          ],
+          "criteria_not_met": [
+            "No active advertising campaigns verified via ad library"
+          ],
+          "missing_information": [
+            "External ad library credentials unconfigured for off-site ad inspection"
+          ],
+          "explanation": "Awarded 7.0/15.0 pts based on verified marketing activity (2 criteria met)."
+        },
+        "evidence_confidence": {
+          "dimension_name": "Evidence Confidence",
+          "maximum_points": 15.0,
+          "awarded_points": 15.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "website_analysis:https",
+            "evidence:f0b28b6e-f52d-4d05-81fa-efef1796f63e",
+            "evidence:49a83c62-37e9-4a26-be71-8f0ce44d8718"
+          ],
+          "criteria_met": [
+            "Website verified accessible with valid HTTPS security (+6.0 pts)",
+            "Authorized provider verification: Google Places listing verified (+5.0 pts)",
+            "High verified evidence depth: >= 3 discrete verifiable facts (+4.0 pts)"
+          ],
+          "criteria_not_met": [],
+          "missing_information": [],
+          "explanation": "Awarded 15.0/15.0 pts based on multi-source verified evidence."
+        },
+        "decision_maker_availability": {
+          "dimension_name": "Decision-Maker Availability",
+          "maximum_points": 10.0,
+          "awarded_points": 0.0,
+          "dimension_status": "UNAVAILABLE",
+          "evidence_references": [],
+          "criteria_met": [],
+          "criteria_not_met": [
+            "Decision-maker identity unobserved",
+            "Decision-maker role unobserved"
+          ],
+          "missing_information": [
+            "Decision-maker name (B2B credentials unconfigured)",
+            "Decision-maker role/title"
+          ],
+          "explanation": "Decision-maker details unobserved; unconfigured B2B provider data is not treated as a negative signal."
+        },
+        "contact_readiness": {
+          "dimension_name": "Contact Readiness",
+          "maximum_points": 10.0,
+          "awarded_points": 6.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:phone",
+            "lead:website"
+          ],
+          "criteria_met": [
+            "Verified business phone number available: 089812 22564 (+4.0 pts)",
+            "Accessible website domain (+2.0 pts)"
+          ],
+          "criteria_not_met": [
+            "Business email address unobserved"
+          ],
+          "missing_information": [
+            "Business email address"
+          ],
+          "explanation": "Awarded 6.0/10.0 pts for direct business communication channels."
+        },
+        "mindartdigital_business_fit": {
+          "dimension_name": "MindArtDigital Business Fit",
+          "maximum_points": 5.0,
+          "awarded_points": 5.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:industry"
+          ],
+          "criteria_met": [
+            "Industry aligns with target verticals: INTERIOR_DESIGN (+3.0 pts)",
+            "Grounded alignment with MindArtDigital service portfolio (+2.0 pts)"
+          ],
+          "criteria_not_met": [],
+          "missing_information": [],
+          "explanation": "Awarded 5.0/5.0 pts for agency strategic fit."
+        }
+      },
+      "qualification_reasoning": "Moderate potential or partial evidence. Continue research and monitor for additional buying signals.",
+      "supporting_evidence": [
+        "Medium-severity gap in seo: Missing HTML meta description tag",
+        "Commercial service opportunities: SEO, Website Performance Optimization",
+        "Marketing infrastructure detected: Social profiles",
+        "Established local market presence verified with >= 50 customer reviews",
+        "Direct phone contact available: 089812 22564",
+        "Core vertical fit: INTERIOR_DESIGN"
+      ],
+      "missing_information": [
+        "External ad library credentials unconfigured for off-site ad inspection",
+        "Decision-maker name (B2B credentials unconfigured)",
+        "Decision-maker role/title",
+        "Business email address"
+      ],
+      "score_limitations": [
+        "External ad library credentials not configured; off-site paid campaigns were unobserved.",
+        "B2B individual enrichment credentials unconfigured; decision-maker identity remains unobserved."
+      ],
+      "raw_opportunities": [
+        {
+          "title": "SEO: Missing HTML meta description tag",
+          "description": "Missing meta description tag results in unoptimized search result previews.",
+          "category": "SEO",
+          "priority": "MEDIUM",
+          "score": 65,
+          "confidence": "HIGH",
+          "recommended_action": "Deliver service: SEO"
+        },
+        {
+          "title": "Website Performance: High server response latency (6424ms)",
+          "description": "Server response latency (6424ms) exceeds the recommended 1000ms threshold.",
+          "category": "WEBSITE_PERFORMANCE",
+          "priority": "MEDIUM",
+          "score": 65,
+          "confidence": "HIGH",
+          "recommended_action": "Deliver service: Website Performance Optimization"
+        }
+      ]
+    },
+    {
+      "index": 11,
+      "company_name": "Kalakrity",
+      "website": "http://www.kalakrityinteriors.com/?utm_source=google&utm_medium=wix_google_business_profile&utm_campaign=11868441826571871969",
+      "website_available": false,
+      "phone": "098300 41164",
+      "google_places_reviews": 227,
+      "google_places_rating": 4.9,
+      "is_duplicate": false,
+      "duplicate_reason": null,
+      "qualification_score": 17,
+      "scoring_coverage": 15.0,
+      "classification": "LOW_PRIORITY",
+      "recommended_sales_action": "DEPRIORITIZE",
+      "recommended_priority": "LOW",
+      "is_deterministic": true,
+      "dimension_scores": {
+        "problem_severity": 0.0,
+        "commercial_opportunity_value": 0.0,
+        "buying_intent": 3.0,
+        "evidence_confidence": 5.0,
+        "decision_maker_availability": 0.0,
+        "contact_readiness": 4.0,
+        "mindartdigital_business_fit": 5.0
+      },
+      "dimension_breakdown": {
+        "problem_severity": {
+          "dimension_name": "Problem Severity",
+          "maximum_points": 25.0,
+          "awarded_points": 0.0,
+          "dimension_status": "UNAVAILABLE",
+          "evidence_references": [],
+          "criteria_met": [],
+          "criteria_not_met": [],
+          "missing_information": [
+            "Website presence unavailable for problem inspection"
+          ],
+          "explanation": "Website is unreachable or not provided. Problem severity cannot be directly verified."
+        },
+        "commercial_opportunity_value": {
+          "dimension_name": "Commercial Opportunity Value",
+          "maximum_points": 20.0,
+          "awarded_points": 0.0,
+          "dimension_status": "PARTIALLY_EVALUATED",
+          "evidence_references": [],
+          "criteria_met": [],
+          "criteria_not_met": [
+            "Zero verified commercial opportunities identified"
+          ],
+          "missing_information": [],
+          "explanation": "No grounded sales opportunities mapped to MindArtDigital services; awarded 0.0 pts without budget speculation."
+        },
+        "buying_intent": {
+          "dimension_name": "Buying Intent Indicators",
+          "maximum_points": 15.0,
+          "awarded_points": 3.0,
+          "dimension_status": "PARTIALLY_EVALUATED",
+          "evidence_references": [
+            "evidence:7517384b-5d17-4704-87d7-bb8f199ced70"
+          ],
+          "criteria_met": [
+            "Verified commercial scale: high consumer engagement (>= 50 Google reviews) (+3.0 pts)"
+          ],
+          "criteria_not_met": [
+            "No active advertising campaigns verified via ad library",
+            "No marketing tracking tags or social profile infrastructure detected"
+          ],
+          "missing_information": [
+            "External ad library credentials unconfigured for off-site ad inspection"
+          ],
+          "explanation": "Awarded 3.0/15.0 pts based on verified marketing activity (1 criteria met)."
+        },
+        "evidence_confidence": {
+          "dimension_name": "Evidence Confidence",
+          "maximum_points": 15.0,
+          "awarded_points": 5.0,
+          "dimension_status": "PARTIALLY_EVALUATED",
+          "evidence_references": [
+            "evidence:7517384b-5d17-4704-87d7-bb8f199ced70",
+            "evidence:c6251bc6-ce14-4d31-ba94-a2b0b156b47e"
+          ],
+          "criteria_met": [
+            "Authorized provider verification: Google Places listing verified (+5.0 pts)"
+          ],
+          "criteria_not_met": [
+            "Website unreachable or missing",
+            "Limited verified fact depth (< 3 discrete facts)"
+          ],
+          "missing_information": [
+            "Website availability could not be verified"
+          ],
+          "explanation": "Awarded 5.0/15.0 pts based on multi-source verified evidence."
+        },
+        "decision_maker_availability": {
+          "dimension_name": "Decision-Maker Availability",
+          "maximum_points": 10.0,
+          "awarded_points": 0.0,
+          "dimension_status": "UNAVAILABLE",
+          "evidence_references": [],
+          "criteria_met": [],
+          "criteria_not_met": [
+            "Decision-maker identity unobserved",
+            "Decision-maker role unobserved"
+          ],
+          "missing_information": [
+            "Decision-maker name (B2B credentials unconfigured)",
+            "Decision-maker role/title"
+          ],
+          "explanation": "Decision-maker details unobserved; unconfigured B2B provider data is not treated as a negative signal."
+        },
+        "contact_readiness": {
+          "dimension_name": "Contact Readiness",
+          "maximum_points": 10.0,
+          "awarded_points": 4.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:phone"
+          ],
+          "criteria_met": [
+            "Verified business phone number available: 098300 41164 (+4.0 pts)"
+          ],
+          "criteria_not_met": [
+            "Business email address unobserved",
+            "No accessible website domain"
+          ],
+          "missing_information": [
+            "Business email address",
+            "Verified web domain"
+          ],
+          "explanation": "Awarded 4.0/10.0 pts for direct business communication channels."
+        },
+        "mindartdigital_business_fit": {
+          "dimension_name": "MindArtDigital Business Fit",
+          "maximum_points": 5.0,
+          "awarded_points": 5.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:industry"
+          ],
+          "criteria_met": [
+            "Industry aligns with target verticals: INTERIOR_DESIGN (+3.0 pts)",
+            "Grounded alignment with MindArtDigital service portfolio (+2.0 pts)"
+          ],
+          "criteria_not_met": [],
+          "missing_information": [],
+          "explanation": "Awarded 5.0/5.0 pts for agency strategic fit."
+        }
+      },
+      "qualification_reasoning": "Limited observable commercial problems or unverified presence. Deprioritize pending fresh evidence.",
+      "supporting_evidence": [
+        "Established local market presence verified with >= 50 customer reviews",
+        "Direct phone contact available: 098300 41164",
+        "Core vertical fit: INTERIOR_DESIGN"
+      ],
+      "missing_information": [
+        "Website presence unavailable for problem inspection",
+        "External ad library credentials unconfigured for off-site ad inspection",
+        "Website availability could not be verified",
+        "Decision-maker name (B2B credentials unconfigured)",
+        "Decision-maker role/title",
+        "Business email address",
+        "Verified web domain"
+      ],
+      "score_limitations": [
+        "Low scoring coverage (15.0%) indicates multiple unresearched dimensions. This limits evaluation confidence and cross-lead comparability.",
+        "External ad library credentials not configured; off-site paid campaigns were unobserved.",
+        "B2B individual enrichment credentials unconfigured; decision-maker identity remains unobserved."
+      ],
+      "raw_opportunities": []
+    },
+    {
+      "index": 12,
+      "company_name": "HomeLane Kasba, Interior Design Studio",
+      "website": "https://www.homelane.com/cities/interior-designers-kolkata?utm_source=Local&utm_medium=Organic&utm_campaign=GMB-kasba-kolkata",
+      "website_available": true,
+      "phone": "1800 102 4663",
+      "google_places_reviews": 1804,
+      "google_places_rating": 4.6,
+      "is_duplicate": false,
+      "duplicate_reason": null,
+      "qualification_score": 51,
+      "scoring_coverage": 90.0,
+      "classification": "NURTURE",
+      "recommended_sales_action": "CONTINUE_RESEARCH",
+      "recommended_priority": "LOW",
+      "is_deterministic": true,
+      "dimension_scores": {
+        "problem_severity": 10.0,
+        "commercial_opportunity_value": 8.0,
+        "buying_intent": 7.0,
+        "evidence_confidence": 15.0,
+        "decision_maker_availability": 0.0,
+        "contact_readiness": 6.0,
+        "mindartdigital_business_fit": 5.0
+      },
+      "dimension_breakdown": {
+        "problem_severity": {
+          "dimension_name": "Problem Severity",
+          "maximum_points": 25.0,
+          "awarded_points": 10.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "seven_category:content_marketing"
+          ],
+          "criteria_met": [
+            "Medium-severity verified issue: Missing educational blog or content marketing hub"
+          ],
+          "criteria_not_met": [
+            "No high or critical severity issues detected"
+          ],
+          "missing_information": [],
+          "explanation": "Awarded 10.0/25.0 pts based on verified medium-severity issue: Missing educational blog or content marketing hub."
+        },
+        "commercial_opportunity_value": {
+          "dimension_name": "Commercial Opportunity Value",
+          "maximum_points": 20.0,
+          "awarded_points": 8.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "opportunity:52904fc3-2fbf-423e-a76d-7bb19680dcb1"
+          ],
+          "criteria_met": [
+            "1 distinct service opportunity: Content Marketing"
+          ],
+          "criteria_not_met": [
+            "Fewer than 2 distinct service offerings identified"
+          ],
+          "missing_information": [],
+          "explanation": "Awarded 8.0/20.0 pts based on single service opportunity (Content Marketing)."
+        },
+        "buying_intent": {
+          "dimension_name": "Buying Intent Indicators",
+          "maximum_points": 15.0,
+          "awarded_points": 7.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "website_analysis:tracking_tags",
+            "evidence:847a8490-f45d-40e1-b390-083b8c552cad"
+          ],
+          "criteria_met": [
+            "Verified marketing infrastructure: 1 tracking tags, 1 social profiles (+4.0 pts)",
+            "Verified commercial scale: high consumer engagement (>= 50 Google reviews) (+3.0 pts)"
+          ],
+          "criteria_not_met": [
+            "No active advertising campaigns verified via ad library"
+          ],
+          "missing_information": [
+            "External ad library credentials unconfigured for off-site ad inspection"
+          ],
+          "explanation": "Awarded 7.0/15.0 pts based on verified marketing activity (2 criteria met)."
+        },
+        "evidence_confidence": {
+          "dimension_name": "Evidence Confidence",
+          "maximum_points": 15.0,
+          "awarded_points": 15.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "website_analysis:https",
+            "evidence:847a8490-f45d-40e1-b390-083b8c552cad",
+            "evidence:ded912d6-b9da-4892-aa9d-5e31f1512521"
+          ],
+          "criteria_met": [
+            "Website verified accessible with valid HTTPS security (+6.0 pts)",
+            "Authorized provider verification: Google Places listing verified (+5.0 pts)",
+            "High verified evidence depth: >= 3 discrete verifiable facts (+4.0 pts)"
+          ],
+          "criteria_not_met": [],
+          "missing_information": [],
+          "explanation": "Awarded 15.0/15.0 pts based on multi-source verified evidence."
+        },
+        "decision_maker_availability": {
+          "dimension_name": "Decision-Maker Availability",
+          "maximum_points": 10.0,
+          "awarded_points": 0.0,
+          "dimension_status": "UNAVAILABLE",
+          "evidence_references": [],
+          "criteria_met": [],
+          "criteria_not_met": [
+            "Decision-maker identity unobserved",
+            "Decision-maker role unobserved"
+          ],
+          "missing_information": [
+            "Decision-maker name (B2B credentials unconfigured)",
+            "Decision-maker role/title"
+          ],
+          "explanation": "Decision-maker details unobserved; unconfigured B2B provider data is not treated as a negative signal."
+        },
+        "contact_readiness": {
+          "dimension_name": "Contact Readiness",
+          "maximum_points": 10.0,
+          "awarded_points": 6.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:phone",
+            "lead:website"
+          ],
+          "criteria_met": [
+            "Verified business phone number available: 1800 102 4663 (+4.0 pts)",
+            "Accessible website domain (+2.0 pts)"
+          ],
+          "criteria_not_met": [
+            "Business email address unobserved"
+          ],
+          "missing_information": [
+            "Business email address"
+          ],
+          "explanation": "Awarded 6.0/10.0 pts for direct business communication channels."
+        },
+        "mindartdigital_business_fit": {
+          "dimension_name": "MindArtDigital Business Fit",
+          "maximum_points": 5.0,
+          "awarded_points": 5.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:industry"
+          ],
+          "criteria_met": [
+            "Industry aligns with target verticals: INTERIOR_DESIGN (+3.0 pts)",
+            "Grounded alignment with MindArtDigital service portfolio (+2.0 pts)"
+          ],
+          "criteria_not_met": [],
+          "missing_information": [],
+          "explanation": "Awarded 5.0/5.0 pts for agency strategic fit."
+        }
+      },
+      "qualification_reasoning": "Moderate potential or partial evidence. Continue research and monitor for additional buying signals.",
+      "supporting_evidence": [
+        "Medium-severity gap in content_marketing: Missing educational blog or content marketing hub",
+        "Commercial service opportunity: Content Marketing",
+        "Marketing infrastructure detected: Google Analytics / GTM",
+        "Established local market presence verified with >= 50 customer reviews",
+        "Direct phone contact available: 1800 102 4663",
+        "Core vertical fit: INTERIOR_DESIGN"
+      ],
+      "missing_information": [
+        "External ad library credentials unconfigured for off-site ad inspection",
+        "Decision-maker name (B2B credentials unconfigured)",
+        "Decision-maker role/title",
+        "Business email address"
+      ],
+      "score_limitations": [
+        "External ad library credentials not configured; off-site paid campaigns were unobserved.",
+        "B2B individual enrichment credentials unconfigured; decision-maker identity remains unobserved."
+      ],
+      "raw_opportunities": [
+        {
+          "title": "Content Marketing: Missing educational blog or content marketing hub",
+          "description": "Content marketing evaluation conducted; no active blog/content hub found.",
+          "category": "CONTENT_MARKETING",
+          "priority": "MEDIUM",
+          "score": 65,
+          "confidence": "HIGH",
+          "recommended_action": "Deliver service: Content Marketing"
+        }
+      ]
+    },
+    {
+      "index": 13,
+      "company_name": "Bosky Interior Rajarhat Newtown",
+      "website": "https://boskyinterior.com/",
+      "website_available": true,
+      "phone": "098300 06424",
+      "google_places_reviews": 478,
+      "google_places_rating": 4.7,
+      "is_duplicate": false,
+      "duplicate_reason": null,
+      "qualification_score": 51,
+      "scoring_coverage": 90.0,
+      "classification": "NURTURE",
+      "recommended_sales_action": "CONTINUE_RESEARCH",
+      "recommended_priority": "LOW",
+      "is_deterministic": true,
+      "dimension_scores": {
+        "problem_severity": 10.0,
+        "commercial_opportunity_value": 8.0,
+        "buying_intent": 7.0,
+        "evidence_confidence": 15.0,
+        "decision_maker_availability": 0.0,
+        "contact_readiness": 6.0,
+        "mindartdigital_business_fit": 5.0
+      },
+      "dimension_breakdown": {
+        "problem_severity": {
+          "dimension_name": "Problem Severity",
+          "maximum_points": 25.0,
+          "awarded_points": 10.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "seven_category:content_marketing"
+          ],
+          "criteria_met": [
+            "Medium-severity verified issue: Missing educational blog or content marketing hub"
+          ],
+          "criteria_not_met": [
+            "No high or critical severity issues detected"
+          ],
+          "missing_information": [],
+          "explanation": "Awarded 10.0/25.0 pts based on verified medium-severity issue: Missing educational blog or content marketing hub."
+        },
+        "commercial_opportunity_value": {
+          "dimension_name": "Commercial Opportunity Value",
+          "maximum_points": 20.0,
+          "awarded_points": 8.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "opportunity:ae8bc00f-5321-4eb1-9857-9f2671889014"
+          ],
+          "criteria_met": [
+            "1 distinct service opportunity: Content Marketing"
+          ],
+          "criteria_not_met": [
+            "Fewer than 2 distinct service offerings identified"
+          ],
+          "missing_information": [],
+          "explanation": "Awarded 8.0/20.0 pts based on single service opportunity (Content Marketing)."
+        },
+        "buying_intent": {
+          "dimension_name": "Buying Intent Indicators",
+          "maximum_points": 15.0,
+          "awarded_points": 7.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "website_analysis:tracking_tags",
+            "evidence:302d1c2e-b730-462f-9d18-a30525f1ab6d"
+          ],
+          "criteria_met": [
+            "Verified marketing infrastructure: 1 tracking tags, 1 social profiles (+4.0 pts)",
+            "Verified commercial scale: high consumer engagement (>= 50 Google reviews) (+3.0 pts)"
+          ],
+          "criteria_not_met": [
+            "No active advertising campaigns verified via ad library"
+          ],
+          "missing_information": [
+            "External ad library credentials unconfigured for off-site ad inspection"
+          ],
+          "explanation": "Awarded 7.0/15.0 pts based on verified marketing activity (2 criteria met)."
+        },
+        "evidence_confidence": {
+          "dimension_name": "Evidence Confidence",
+          "maximum_points": 15.0,
+          "awarded_points": 15.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "website_analysis:https",
+            "evidence:302d1c2e-b730-462f-9d18-a30525f1ab6d",
+            "evidence:8effebec-f0ec-4167-9728-54c6b3dfa413"
+          ],
+          "criteria_met": [
+            "Website verified accessible with valid HTTPS security (+6.0 pts)",
+            "Authorized provider verification: Google Places listing verified (+5.0 pts)",
+            "High verified evidence depth: >= 3 discrete verifiable facts (+4.0 pts)"
+          ],
+          "criteria_not_met": [],
+          "missing_information": [],
+          "explanation": "Awarded 15.0/15.0 pts based on multi-source verified evidence."
+        },
+        "decision_maker_availability": {
+          "dimension_name": "Decision-Maker Availability",
+          "maximum_points": 10.0,
+          "awarded_points": 0.0,
+          "dimension_status": "UNAVAILABLE",
+          "evidence_references": [],
+          "criteria_met": [],
+          "criteria_not_met": [
+            "Decision-maker identity unobserved",
+            "Decision-maker role unobserved"
+          ],
+          "missing_information": [
+            "Decision-maker name (B2B credentials unconfigured)",
+            "Decision-maker role/title"
+          ],
+          "explanation": "Decision-maker details unobserved; unconfigured B2B provider data is not treated as a negative signal."
+        },
+        "contact_readiness": {
+          "dimension_name": "Contact Readiness",
+          "maximum_points": 10.0,
+          "awarded_points": 6.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:phone",
+            "lead:website"
+          ],
+          "criteria_met": [
+            "Verified business phone number available: 098300 06424 (+4.0 pts)",
+            "Accessible website domain (+2.0 pts)"
+          ],
+          "criteria_not_met": [
+            "Business email address unobserved"
+          ],
+          "missing_information": [
+            "Business email address"
+          ],
+          "explanation": "Awarded 6.0/10.0 pts for direct business communication channels."
+        },
+        "mindartdigital_business_fit": {
+          "dimension_name": "MindArtDigital Business Fit",
+          "maximum_points": 5.0,
+          "awarded_points": 5.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:industry"
+          ],
+          "criteria_met": [
+            "Industry aligns with target verticals: INTERIOR_DESIGN (+3.0 pts)",
+            "Grounded alignment with MindArtDigital service portfolio (+2.0 pts)"
+          ],
+          "criteria_not_met": [],
+          "missing_information": [],
+          "explanation": "Awarded 5.0/5.0 pts for agency strategic fit."
+        }
+      },
+      "qualification_reasoning": "Moderate potential or partial evidence. Continue research and monitor for additional buying signals.",
+      "supporting_evidence": [
+        "Medium-severity gap in content_marketing: Missing educational blog or content marketing hub",
+        "Commercial service opportunity: Content Marketing",
+        "Marketing infrastructure detected: Google Analytics / GTM",
+        "Established local market presence verified with >= 50 customer reviews",
+        "Direct phone contact available: 098300 06424",
+        "Core vertical fit: INTERIOR_DESIGN"
+      ],
+      "missing_information": [
+        "External ad library credentials unconfigured for off-site ad inspection",
+        "Decision-maker name (B2B credentials unconfigured)",
+        "Decision-maker role/title",
+        "Business email address"
+      ],
+      "score_limitations": [
+        "External ad library credentials not configured; off-site paid campaigns were unobserved.",
+        "B2B individual enrichment credentials unconfigured; decision-maker identity remains unobserved."
+      ],
+      "raw_opportunities": [
+        {
+          "title": "Content Marketing: Missing educational blog or content marketing hub",
+          "description": "Content marketing evaluation conducted; no active blog/content hub found.",
+          "category": "CONTENT_MARKETING",
+          "priority": "MEDIUM",
+          "score": 65,
+          "confidence": "HIGH",
+          "recommended_action": "Deliver service: Content Marketing"
+        }
+      ]
+    },
+    {
+      "index": 14,
+      "company_name": "Gupta Interior Decoration",
+      "website": "http://guptainterior.co.in/",
+      "website_available": false,
+      "phone": "098836 75750",
+      "google_places_reviews": 129,
+      "google_places_rating": 4.9,
+      "is_duplicate": false,
+      "duplicate_reason": null,
+      "qualification_score": 17,
+      "scoring_coverage": 15.0,
+      "classification": "LOW_PRIORITY",
+      "recommended_sales_action": "DEPRIORITIZE",
+      "recommended_priority": "LOW",
+      "is_deterministic": true,
+      "dimension_scores": {
+        "problem_severity": 0.0,
+        "commercial_opportunity_value": 0.0,
+        "buying_intent": 3.0,
+        "evidence_confidence": 5.0,
+        "decision_maker_availability": 0.0,
+        "contact_readiness": 4.0,
+        "mindartdigital_business_fit": 5.0
+      },
+      "dimension_breakdown": {
+        "problem_severity": {
+          "dimension_name": "Problem Severity",
+          "maximum_points": 25.0,
+          "awarded_points": 0.0,
+          "dimension_status": "UNAVAILABLE",
+          "evidence_references": [],
+          "criteria_met": [],
+          "criteria_not_met": [],
+          "missing_information": [
+            "Website presence unavailable for problem inspection"
+          ],
+          "explanation": "Website is unreachable or not provided. Problem severity cannot be directly verified."
+        },
+        "commercial_opportunity_value": {
+          "dimension_name": "Commercial Opportunity Value",
+          "maximum_points": 20.0,
+          "awarded_points": 0.0,
+          "dimension_status": "PARTIALLY_EVALUATED",
+          "evidence_references": [],
+          "criteria_met": [],
+          "criteria_not_met": [
+            "Zero verified commercial opportunities identified"
+          ],
+          "missing_information": [],
+          "explanation": "No grounded sales opportunities mapped to MindArtDigital services; awarded 0.0 pts without budget speculation."
+        },
+        "buying_intent": {
+          "dimension_name": "Buying Intent Indicators",
+          "maximum_points": 15.0,
+          "awarded_points": 3.0,
+          "dimension_status": "PARTIALLY_EVALUATED",
+          "evidence_references": [
+            "evidence:38fd53ed-4f7f-46d4-9876-4f007d20f52a"
+          ],
+          "criteria_met": [
+            "Verified commercial scale: high consumer engagement (>= 50 Google reviews) (+3.0 pts)"
+          ],
+          "criteria_not_met": [
+            "No active advertising campaigns verified via ad library",
+            "No marketing tracking tags or social profile infrastructure detected"
+          ],
+          "missing_information": [
+            "External ad library credentials unconfigured for off-site ad inspection"
+          ],
+          "explanation": "Awarded 3.0/15.0 pts based on verified marketing activity (1 criteria met)."
+        },
+        "evidence_confidence": {
+          "dimension_name": "Evidence Confidence",
+          "maximum_points": 15.0,
+          "awarded_points": 5.0,
+          "dimension_status": "PARTIALLY_EVALUATED",
+          "evidence_references": [
+            "evidence:38fd53ed-4f7f-46d4-9876-4f007d20f52a",
+            "evidence:e887480d-7385-4a17-95a9-24b3a01b3abf"
+          ],
+          "criteria_met": [
+            "Authorized provider verification: Google Places listing verified (+5.0 pts)"
+          ],
+          "criteria_not_met": [
+            "Website unreachable or missing",
+            "Limited verified fact depth (< 3 discrete facts)"
+          ],
+          "missing_information": [
+            "Website availability could not be verified"
+          ],
+          "explanation": "Awarded 5.0/15.0 pts based on multi-source verified evidence."
+        },
+        "decision_maker_availability": {
+          "dimension_name": "Decision-Maker Availability",
+          "maximum_points": 10.0,
+          "awarded_points": 0.0,
+          "dimension_status": "UNAVAILABLE",
+          "evidence_references": [],
+          "criteria_met": [],
+          "criteria_not_met": [
+            "Decision-maker identity unobserved",
+            "Decision-maker role unobserved"
+          ],
+          "missing_information": [
+            "Decision-maker name (B2B credentials unconfigured)",
+            "Decision-maker role/title"
+          ],
+          "explanation": "Decision-maker details unobserved; unconfigured B2B provider data is not treated as a negative signal."
+        },
+        "contact_readiness": {
+          "dimension_name": "Contact Readiness",
+          "maximum_points": 10.0,
+          "awarded_points": 4.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:phone"
+          ],
+          "criteria_met": [
+            "Verified business phone number available: 098836 75750 (+4.0 pts)"
+          ],
+          "criteria_not_met": [
+            "Business email address unobserved",
+            "No accessible website domain"
+          ],
+          "missing_information": [
+            "Business email address",
+            "Verified web domain"
+          ],
+          "explanation": "Awarded 4.0/10.0 pts for direct business communication channels."
+        },
+        "mindartdigital_business_fit": {
+          "dimension_name": "MindArtDigital Business Fit",
+          "maximum_points": 5.0,
+          "awarded_points": 5.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:industry"
+          ],
+          "criteria_met": [
+            "Industry aligns with target verticals: INTERIOR_DESIGN (+3.0 pts)",
+            "Grounded alignment with MindArtDigital service portfolio (+2.0 pts)"
+          ],
+          "criteria_not_met": [],
+          "missing_information": [],
+          "explanation": "Awarded 5.0/5.0 pts for agency strategic fit."
+        }
+      },
+      "qualification_reasoning": "Limited observable commercial problems or unverified presence. Deprioritize pending fresh evidence.",
+      "supporting_evidence": [
+        "Established local market presence verified with >= 50 customer reviews",
+        "Direct phone contact available: 098836 75750",
+        "Core vertical fit: INTERIOR_DESIGN"
+      ],
+      "missing_information": [
+        "Website presence unavailable for problem inspection",
+        "External ad library credentials unconfigured for off-site ad inspection",
+        "Website availability could not be verified",
+        "Decision-maker name (B2B credentials unconfigured)",
+        "Decision-maker role/title",
+        "Business email address",
+        "Verified web domain"
+      ],
+      "score_limitations": [
+        "Low scoring coverage (15.0%) indicates multiple unresearched dimensions. This limits evaluation confidence and cross-lead comparability.",
+        "External ad library credentials not configured; off-site paid campaigns were unobserved.",
+        "B2B individual enrichment credentials unconfigured; decision-maker identity remains unobserved."
+      ],
+      "raw_opportunities": []
+    },
+    {
+      "index": 15,
+      "company_name": "Cee Bee Design Studio",
+      "website": "https://www.ceebeedesignstudio.com/interior-designer-in-kolkata",
+      "website_available": true,
+      "phone": "086973 06015",
+      "google_places_reviews": 254,
+      "google_places_rating": 4.4,
+      "is_duplicate": false,
+      "duplicate_reason": null,
+      "qualification_score": 33,
+      "scoring_coverage": 70.0,
+      "classification": "LOW_PRIORITY",
+      "recommended_sales_action": "DEPRIORITIZE",
+      "recommended_priority": "LOW",
+      "is_deterministic": true,
+      "dimension_scores": {
+        "problem_severity": 0.0,
+        "commercial_opportunity_value": 0.0,
+        "buying_intent": 7.0,
+        "evidence_confidence": 15.0,
+        "decision_maker_availability": 0.0,
+        "contact_readiness": 6.0,
+        "mindartdigital_business_fit": 5.0
+      },
+      "dimension_breakdown": {
+        "problem_severity": {
+          "dimension_name": "Problem Severity",
+          "maximum_points": 25.0,
+          "awarded_points": 0.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [],
+          "criteria_met": [],
+          "criteria_not_met": [
+            "No verified digital marketing issues observed"
+          ],
+          "missing_information": [],
+          "explanation": "Evaluated across all observable digital marketing channels; no verified problems were identified."
+        },
+        "commercial_opportunity_value": {
+          "dimension_name": "Commercial Opportunity Value",
+          "maximum_points": 20.0,
+          "awarded_points": 0.0,
+          "dimension_status": "PARTIALLY_EVALUATED",
+          "evidence_references": [],
+          "criteria_met": [],
+          "criteria_not_met": [
+            "Zero verified commercial opportunities identified"
+          ],
+          "missing_information": [],
+          "explanation": "No grounded sales opportunities mapped to MindArtDigital services; awarded 0.0 pts without budget speculation."
+        },
+        "buying_intent": {
+          "dimension_name": "Buying Intent Indicators",
+          "maximum_points": 15.0,
+          "awarded_points": 7.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "website_analysis:tracking_tags",
+            "evidence:da87a087-e335-43fb-a6b6-5b4ad28f272b"
+          ],
+          "criteria_met": [
+            "Verified marketing infrastructure: 1 tracking tags, 1 social profiles (+4.0 pts)",
+            "Verified commercial scale: high consumer engagement (>= 50 Google reviews) (+3.0 pts)"
+          ],
+          "criteria_not_met": [
+            "No active advertising campaigns verified via ad library"
+          ],
+          "missing_information": [
+            "External ad library credentials unconfigured for off-site ad inspection"
+          ],
+          "explanation": "Awarded 7.0/15.0 pts based on verified marketing activity (2 criteria met)."
+        },
+        "evidence_confidence": {
+          "dimension_name": "Evidence Confidence",
+          "maximum_points": 15.0,
+          "awarded_points": 15.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "website_analysis:https",
+            "evidence:da87a087-e335-43fb-a6b6-5b4ad28f272b",
+            "evidence:9241e263-ee39-496a-b6ac-ecc77948a047"
+          ],
+          "criteria_met": [
+            "Website verified accessible with valid HTTPS security (+6.0 pts)",
+            "Authorized provider verification: Google Places listing verified (+5.0 pts)",
+            "High verified evidence depth: >= 3 discrete verifiable facts (+4.0 pts)"
+          ],
+          "criteria_not_met": [],
+          "missing_information": [],
+          "explanation": "Awarded 15.0/15.0 pts based on multi-source verified evidence."
+        },
+        "decision_maker_availability": {
+          "dimension_name": "Decision-Maker Availability",
+          "maximum_points": 10.0,
+          "awarded_points": 0.0,
+          "dimension_status": "UNAVAILABLE",
+          "evidence_references": [],
+          "criteria_met": [],
+          "criteria_not_met": [
+            "Decision-maker identity unobserved",
+            "Decision-maker role unobserved"
+          ],
+          "missing_information": [
+            "Decision-maker name (B2B credentials unconfigured)",
+            "Decision-maker role/title"
+          ],
+          "explanation": "Decision-maker details unobserved; unconfigured B2B provider data is not treated as a negative signal."
+        },
+        "contact_readiness": {
+          "dimension_name": "Contact Readiness",
+          "maximum_points": 10.0,
+          "awarded_points": 6.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:phone",
+            "lead:website"
+          ],
+          "criteria_met": [
+            "Verified business phone number available: 086973 06015 (+4.0 pts)",
+            "Accessible website domain (+2.0 pts)"
+          ],
+          "criteria_not_met": [
+            "Business email address unobserved"
+          ],
+          "missing_information": [
+            "Business email address"
+          ],
+          "explanation": "Awarded 6.0/10.0 pts for direct business communication channels."
+        },
+        "mindartdigital_business_fit": {
+          "dimension_name": "MindArtDigital Business Fit",
+          "maximum_points": 5.0,
+          "awarded_points": 5.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:industry"
+          ],
+          "criteria_met": [
+            "Industry aligns with target verticals: INTERIOR_DESIGN (+3.0 pts)",
+            "Grounded alignment with MindArtDigital service portfolio (+2.0 pts)"
+          ],
+          "criteria_not_met": [],
+          "missing_information": [],
+          "explanation": "Awarded 5.0/5.0 pts for agency strategic fit."
+        }
+      },
+      "qualification_reasoning": "Limited observable commercial problems or unverified presence. Deprioritize pending fresh evidence.",
+      "supporting_evidence": [
+        "Marketing infrastructure detected: Google Analytics / GTM",
+        "Established local market presence verified with >= 50 customer reviews",
+        "Direct phone contact available: 086973 06015",
+        "Core vertical fit: INTERIOR_DESIGN"
+      ],
+      "missing_information": [
+        "External ad library credentials unconfigured for off-site ad inspection",
+        "Decision-maker name (B2B credentials unconfigured)",
+        "Decision-maker role/title",
+        "Business email address"
+      ],
+      "score_limitations": [
+        "External ad library credentials not configured; off-site paid campaigns were unobserved.",
+        "B2B individual enrichment credentials unconfigured; decision-maker identity remains unobserved."
+      ],
+      "raw_opportunities": []
+    },
+    {
+      "index": 16,
+      "company_name": "SN INTERIORS",
+      "website": null,
+      "website_available": false,
+      "phone": "091430 78587",
+      "google_places_reviews": 318,
+      "google_places_rating": 5,
+      "is_duplicate": false,
+      "duplicate_reason": null,
+      "qualification_score": 15,
+      "scoring_coverage": 15.0,
+      "classification": "LOW_PRIORITY",
+      "recommended_sales_action": "DEPRIORITIZE",
+      "recommended_priority": "LOW",
+      "is_deterministic": true,
+      "dimension_scores": {
+        "problem_severity": 0.0,
+        "commercial_opportunity_value": 0.0,
+        "buying_intent": 3.0,
+        "evidence_confidence": 5.0,
+        "decision_maker_availability": 0.0,
+        "contact_readiness": 4.0,
+        "mindartdigital_business_fit": 3.0
+      },
+      "dimension_breakdown": {
+        "problem_severity": {
+          "dimension_name": "Problem Severity",
+          "maximum_points": 25.0,
+          "awarded_points": 0.0,
+          "dimension_status": "UNAVAILABLE",
+          "evidence_references": [],
+          "criteria_met": [],
+          "criteria_not_met": [],
+          "missing_information": [
+            "Website presence unavailable for problem inspection"
+          ],
+          "explanation": "Website is unreachable or not provided. Problem severity cannot be directly verified."
+        },
+        "commercial_opportunity_value": {
+          "dimension_name": "Commercial Opportunity Value",
+          "maximum_points": 20.0,
+          "awarded_points": 0.0,
+          "dimension_status": "PARTIALLY_EVALUATED",
+          "evidence_references": [],
+          "criteria_met": [],
+          "criteria_not_met": [
+            "Zero verified commercial opportunities identified"
+          ],
+          "missing_information": [],
+          "explanation": "No grounded sales opportunities mapped to MindArtDigital services; awarded 0.0 pts without budget speculation."
+        },
+        "buying_intent": {
+          "dimension_name": "Buying Intent Indicators",
+          "maximum_points": 15.0,
+          "awarded_points": 3.0,
+          "dimension_status": "PARTIALLY_EVALUATED",
+          "evidence_references": [
+            "evidence:a41cfdf6-ddb5-4654-8adb-6c1cae7f5fe0"
+          ],
+          "criteria_met": [
+            "Verified commercial scale: high consumer engagement (>= 50 Google reviews) (+3.0 pts)"
+          ],
+          "criteria_not_met": [
+            "No active advertising campaigns verified via ad library",
+            "No marketing tracking tags or social profile infrastructure detected"
+          ],
+          "missing_information": [
+            "External ad library credentials unconfigured for off-site ad inspection"
+          ],
+          "explanation": "Awarded 3.0/15.0 pts based on verified marketing activity (1 criteria met)."
+        },
+        "evidence_confidence": {
+          "dimension_name": "Evidence Confidence",
+          "maximum_points": 15.0,
+          "awarded_points": 5.0,
+          "dimension_status": "PARTIALLY_EVALUATED",
+          "evidence_references": [
+            "evidence:a41cfdf6-ddb5-4654-8adb-6c1cae7f5fe0",
+            "evidence:62f55a12-6219-4ee7-b7e0-bbc96e979419"
+          ],
+          "criteria_met": [
+            "Authorized provider verification: Google Places listing verified (+5.0 pts)"
+          ],
+          "criteria_not_met": [
+            "Website unreachable or missing",
+            "Limited verified fact depth (< 3 discrete facts)"
+          ],
+          "missing_information": [
+            "Website availability could not be verified"
+          ],
+          "explanation": "Awarded 5.0/15.0 pts based on multi-source verified evidence."
+        },
+        "decision_maker_availability": {
+          "dimension_name": "Decision-Maker Availability",
+          "maximum_points": 10.0,
+          "awarded_points": 0.0,
+          "dimension_status": "UNAVAILABLE",
+          "evidence_references": [],
+          "criteria_met": [],
+          "criteria_not_met": [
+            "Decision-maker identity unobserved",
+            "Decision-maker role unobserved"
+          ],
+          "missing_information": [
+            "Decision-maker name (B2B credentials unconfigured)",
+            "Decision-maker role/title"
+          ],
+          "explanation": "Decision-maker details unobserved; unconfigured B2B provider data is not treated as a negative signal."
+        },
+        "contact_readiness": {
+          "dimension_name": "Contact Readiness",
+          "maximum_points": 10.0,
+          "awarded_points": 4.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:phone"
+          ],
+          "criteria_met": [
+            "Verified business phone number available: 091430 78587 (+4.0 pts)"
+          ],
+          "criteria_not_met": [
+            "Business email address unobserved",
+            "No accessible website domain"
+          ],
+          "missing_information": [
+            "Business email address",
+            "Verified web domain"
+          ],
+          "explanation": "Awarded 4.0/10.0 pts for direct business communication channels."
+        },
+        "mindartdigital_business_fit": {
+          "dimension_name": "MindArtDigital Business Fit",
+          "maximum_points": 5.0,
+          "awarded_points": 3.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:industry"
+          ],
+          "criteria_met": [
+            "Industry aligns with target verticals: INTERIOR_DESIGN (+3.0 pts)"
+          ],
+          "criteria_not_met": [
+            "No clear alignment with agency services"
+          ],
+          "missing_information": [],
+          "explanation": "Awarded 3.0/5.0 pts for agency strategic fit."
+        }
+      },
+      "qualification_reasoning": "Limited observable commercial problems or unverified presence. Deprioritize pending fresh evidence.",
+      "supporting_evidence": [
+        "Established local market presence verified with >= 50 customer reviews",
+        "Direct phone contact available: 091430 78587",
+        "Core vertical fit: INTERIOR_DESIGN"
+      ],
+      "missing_information": [
+        "Website presence unavailable for problem inspection",
+        "External ad library credentials unconfigured for off-site ad inspection",
+        "Website availability could not be verified",
+        "Decision-maker name (B2B credentials unconfigured)",
+        "Decision-maker role/title",
+        "Business email address",
+        "Verified web domain"
+      ],
+      "score_limitations": [
+        "Low scoring coverage (15.0%) indicates multiple unresearched dimensions. This limits evaluation confidence and cross-lead comparability.",
+        "External ad library credentials not configured; off-site paid campaigns were unobserved.",
+        "B2B individual enrichment credentials unconfigured; decision-maker identity remains unobserved."
+      ],
+      "raw_opportunities": []
+    },
+    {
+      "index": 17,
+      "company_name": "Noor Interior Kolkata",
+      "website": "https://noorinteriorkolkata.in/",
+      "website_available": true,
+      "phone": "089101 96865",
+      "google_places_reviews": 167,
+      "google_places_rating": 4.8,
+      "is_duplicate": false,
+      "duplicate_reason": null,
+      "qualification_score": 57,
+      "scoring_coverage": 90.0,
+      "classification": "NURTURE",
+      "recommended_sales_action": "CONTINUE_RESEARCH",
+      "recommended_priority": "LOW",
+      "is_deterministic": true,
+      "dimension_scores": {
+        "problem_severity": 10.0,
+        "commercial_opportunity_value": 14.0,
+        "buying_intent": 7.0,
+        "evidence_confidence": 15.0,
+        "decision_maker_availability": 0.0,
+        "contact_readiness": 6.0,
+        "mindartdigital_business_fit": 5.0
+      },
+      "dimension_breakdown": {
+        "problem_severity": {
+          "dimension_name": "Problem Severity",
+          "maximum_points": 25.0,
+          "awarded_points": 10.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "seven_category:seo",
+            "seven_category:content_marketing"
+          ],
+          "criteria_met": [
+            "Medium-severity verified issue: Missing HTML meta description tag"
+          ],
+          "criteria_not_met": [
+            "No high or critical severity issues detected"
+          ],
+          "missing_information": [],
+          "explanation": "Awarded 10.0/25.0 pts based on verified medium-severity issue: Missing HTML meta description tag."
+        },
+        "commercial_opportunity_value": {
+          "dimension_name": "Commercial Opportunity Value",
+          "maximum_points": 20.0,
+          "awarded_points": 14.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "opportunity:bd2cd7f9-abb8-426a-a476-735efd6b54fe",
+            "opportunity:df9f9757-55fa-4b4b-a478-a77a063aedd5"
+          ],
+          "criteria_met": [
+            "2 distinct service opportunities: Content Marketing, SEO"
+          ],
+          "criteria_not_met": [
+            "Fewer than 3 distinct service offerings identified"
+          ],
+          "missing_information": [],
+          "explanation": "Awarded 14.0/20.0 pts based on 2 verified service opportunities (Content Marketing, SEO)."
+        },
+        "buying_intent": {
+          "dimension_name": "Buying Intent Indicators",
+          "maximum_points": 15.0,
+          "awarded_points": 7.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "website_analysis:tracking_tags",
+            "evidence:9069e467-42aa-4eab-8be4-d65bf869adb4"
+          ],
+          "criteria_met": [
+            "Verified marketing infrastructure: 1 tracking tags, 1 social profiles (+4.0 pts)",
+            "Verified commercial scale: high consumer engagement (>= 50 Google reviews) (+3.0 pts)"
+          ],
+          "criteria_not_met": [
+            "No active advertising campaigns verified via ad library"
+          ],
+          "missing_information": [
+            "External ad library credentials unconfigured for off-site ad inspection"
+          ],
+          "explanation": "Awarded 7.0/15.0 pts based on verified marketing activity (2 criteria met)."
+        },
+        "evidence_confidence": {
+          "dimension_name": "Evidence Confidence",
+          "maximum_points": 15.0,
+          "awarded_points": 15.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "website_analysis:https",
+            "evidence:9069e467-42aa-4eab-8be4-d65bf869adb4",
+            "evidence:fb6c5808-bc5b-45a9-a95a-0ca79dd8a224"
+          ],
+          "criteria_met": [
+            "Website verified accessible with valid HTTPS security (+6.0 pts)",
+            "Authorized provider verification: Google Places listing verified (+5.0 pts)",
+            "High verified evidence depth: >= 3 discrete verifiable facts (+4.0 pts)"
+          ],
+          "criteria_not_met": [],
+          "missing_information": [],
+          "explanation": "Awarded 15.0/15.0 pts based on multi-source verified evidence."
+        },
+        "decision_maker_availability": {
+          "dimension_name": "Decision-Maker Availability",
+          "maximum_points": 10.0,
+          "awarded_points": 0.0,
+          "dimension_status": "UNAVAILABLE",
+          "evidence_references": [],
+          "criteria_met": [],
+          "criteria_not_met": [
+            "Decision-maker identity unobserved",
+            "Decision-maker role unobserved"
+          ],
+          "missing_information": [
+            "Decision-maker name (B2B credentials unconfigured)",
+            "Decision-maker role/title"
+          ],
+          "explanation": "Decision-maker details unobserved; unconfigured B2B provider data is not treated as a negative signal."
+        },
+        "contact_readiness": {
+          "dimension_name": "Contact Readiness",
+          "maximum_points": 10.0,
+          "awarded_points": 6.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:phone",
+            "lead:website"
+          ],
+          "criteria_met": [
+            "Verified business phone number available: 089101 96865 (+4.0 pts)",
+            "Accessible website domain (+2.0 pts)"
+          ],
+          "criteria_not_met": [
+            "Business email address unobserved"
+          ],
+          "missing_information": [
+            "Business email address"
+          ],
+          "explanation": "Awarded 6.0/10.0 pts for direct business communication channels."
+        },
+        "mindartdigital_business_fit": {
+          "dimension_name": "MindArtDigital Business Fit",
+          "maximum_points": 5.0,
+          "awarded_points": 5.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:industry"
+          ],
+          "criteria_met": [
+            "Industry aligns with target verticals: INTERIOR_DESIGN (+3.0 pts)",
+            "Grounded alignment with MindArtDigital service portfolio (+2.0 pts)"
+          ],
+          "criteria_not_met": [],
+          "missing_information": [],
+          "explanation": "Awarded 5.0/5.0 pts for agency strategic fit."
+        }
+      },
+      "qualification_reasoning": "Moderate potential or partial evidence. Continue research and monitor for additional buying signals.",
+      "supporting_evidence": [
+        "Medium-severity gap in seo: Missing HTML meta description tag",
+        "Commercial service opportunities: Content Marketing, SEO",
+        "Marketing infrastructure detected: Google Analytics / GTM",
+        "Established local market presence verified with >= 50 customer reviews",
+        "Direct phone contact available: 089101 96865",
+        "Core vertical fit: INTERIOR_DESIGN"
+      ],
+      "missing_information": [
+        "External ad library credentials unconfigured for off-site ad inspection",
+        "Decision-maker name (B2B credentials unconfigured)",
+        "Decision-maker role/title",
+        "Business email address"
+      ],
+      "score_limitations": [
+        "External ad library credentials not configured; off-site paid campaigns were unobserved.",
+        "B2B individual enrichment credentials unconfigured; decision-maker identity remains unobserved."
+      ],
+      "raw_opportunities": [
+        {
+          "title": "SEO: Missing HTML meta description tag",
+          "description": "Missing meta description tag results in unoptimized search result previews.",
+          "category": "SEO",
+          "priority": "MEDIUM",
+          "score": 65,
+          "confidence": "HIGH",
+          "recommended_action": "Deliver service: SEO"
+        },
+        {
+          "title": "Content Marketing: Missing educational blog or content marketing hub",
+          "description": "Content marketing evaluation conducted; no active blog/content hub found.",
+          "category": "CONTENT_MARKETING",
+          "priority": "MEDIUM",
+          "score": 65,
+          "confidence": "HIGH",
+          "recommended_action": "Deliver service: Content Marketing"
+        }
+      ]
+    },
+    {
+      "index": 18,
+      "company_name": "Ravi Pugaliya and Associates",
+      "website": "https://www.ravipugaliya.com/",
+      "website_available": true,
+      "phone": "098310 05946",
+      "google_places_reviews": 411,
+      "google_places_rating": 4.6,
+      "is_duplicate": false,
+      "duplicate_reason": null,
+      "qualification_score": 57,
+      "scoring_coverage": 75.0,
+      "classification": "NURTURE",
+      "recommended_sales_action": "CONTINUE_RESEARCH",
+      "recommended_priority": "LOW",
+      "is_deterministic": true,
+      "dimension_scores": {
+        "problem_severity": 10.0,
+        "commercial_opportunity_value": 14.0,
+        "buying_intent": 7.0,
+        "evidence_confidence": 15.0,
+        "decision_maker_availability": 0.0,
+        "contact_readiness": 6.0,
+        "mindartdigital_business_fit": 5.0
+      },
+      "dimension_breakdown": {
+        "problem_severity": {
+          "dimension_name": "Problem Severity",
+          "maximum_points": 25.0,
+          "awarded_points": 10.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "seven_category:seo",
+            "seven_category:content_marketing"
+          ],
+          "criteria_met": [
+            "Medium-severity verified issue: Missing HTML meta description tag"
+          ],
+          "criteria_not_met": [
+            "No high or critical severity issues detected"
+          ],
+          "missing_information": [],
+          "explanation": "Awarded 10.0/25.0 pts based on verified medium-severity issue: Missing HTML meta description tag."
+        },
+        "commercial_opportunity_value": {
+          "dimension_name": "Commercial Opportunity Value",
+          "maximum_points": 20.0,
+          "awarded_points": 14.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "opportunity:22f94a0b-02b1-4a00-8a23-e463752550e9",
+            "opportunity:7507389b-a47b-4812-acd6-ac69fa7eab35"
+          ],
+          "criteria_met": [
+            "2 distinct service opportunities: Content Marketing, SEO"
+          ],
+          "criteria_not_met": [
+            "Fewer than 3 distinct service offerings identified"
+          ],
+          "missing_information": [],
+          "explanation": "Awarded 14.0/20.0 pts based on 2 verified service opportunities (Content Marketing, SEO)."
+        },
+        "buying_intent": {
+          "dimension_name": "Buying Intent Indicators",
+          "maximum_points": 15.0,
+          "awarded_points": 7.0,
+          "dimension_status": "PARTIALLY_EVALUATED",
+          "evidence_references": [
+            "website_analysis:tracking_tags",
+            "evidence:398496a2-cee2-4412-941e-786c5db5da59"
+          ],
+          "criteria_met": [
+            "Verified marketing infrastructure: 0 tracking tags, 1 social profiles (+4.0 pts)",
+            "Verified commercial scale: high consumer engagement (>= 50 Google reviews) (+3.0 pts)"
+          ],
+          "criteria_not_met": [
+            "No active advertising campaigns verified via ad library"
+          ],
+          "missing_information": [
+            "External ad library credentials unconfigured for off-site ad inspection"
+          ],
+          "explanation": "Awarded 7.0/15.0 pts based on verified marketing activity (2 criteria met)."
+        },
+        "evidence_confidence": {
+          "dimension_name": "Evidence Confidence",
+          "maximum_points": 15.0,
+          "awarded_points": 15.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "website_analysis:https",
+            "evidence:398496a2-cee2-4412-941e-786c5db5da59",
+            "evidence:6f540a0f-b828-4753-abd6-83cf8ca0c6b5"
+          ],
+          "criteria_met": [
+            "Website verified accessible with valid HTTPS security (+6.0 pts)",
+            "Authorized provider verification: Google Places listing verified (+5.0 pts)",
+            "High verified evidence depth: >= 3 discrete verifiable facts (+4.0 pts)"
+          ],
+          "criteria_not_met": [],
+          "missing_information": [],
+          "explanation": "Awarded 15.0/15.0 pts based on multi-source verified evidence."
+        },
+        "decision_maker_availability": {
+          "dimension_name": "Decision-Maker Availability",
+          "maximum_points": 10.0,
+          "awarded_points": 0.0,
+          "dimension_status": "UNAVAILABLE",
+          "evidence_references": [],
+          "criteria_met": [],
+          "criteria_not_met": [
+            "Decision-maker identity unobserved",
+            "Decision-maker role unobserved"
+          ],
+          "missing_information": [
+            "Decision-maker name (B2B credentials unconfigured)",
+            "Decision-maker role/title"
+          ],
+          "explanation": "Decision-maker details unobserved; unconfigured B2B provider data is not treated as a negative signal."
+        },
+        "contact_readiness": {
+          "dimension_name": "Contact Readiness",
+          "maximum_points": 10.0,
+          "awarded_points": 6.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:phone",
+            "lead:website"
+          ],
+          "criteria_met": [
+            "Verified business phone number available: 098310 05946 (+4.0 pts)",
+            "Accessible website domain (+2.0 pts)"
+          ],
+          "criteria_not_met": [
+            "Business email address unobserved"
+          ],
+          "missing_information": [
+            "Business email address"
+          ],
+          "explanation": "Awarded 6.0/10.0 pts for direct business communication channels."
+        },
+        "mindartdigital_business_fit": {
+          "dimension_name": "MindArtDigital Business Fit",
+          "maximum_points": 5.0,
+          "awarded_points": 5.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:industry"
+          ],
+          "criteria_met": [
+            "Industry aligns with target verticals: INTERIOR_DESIGN (+3.0 pts)",
+            "Grounded alignment with MindArtDigital service portfolio (+2.0 pts)"
+          ],
+          "criteria_not_met": [],
+          "missing_information": [],
+          "explanation": "Awarded 5.0/5.0 pts for agency strategic fit."
+        }
+      },
+      "qualification_reasoning": "Moderate potential or partial evidence. Continue research and monitor for additional buying signals.",
+      "supporting_evidence": [
+        "Medium-severity gap in seo: Missing HTML meta description tag",
+        "Commercial service opportunities: Content Marketing, SEO",
+        "Marketing infrastructure detected: Social profiles",
+        "Established local market presence verified with >= 50 customer reviews",
+        "Direct phone contact available: 098310 05946",
+        "Core vertical fit: INTERIOR_DESIGN"
+      ],
+      "missing_information": [
+        "External ad library credentials unconfigured for off-site ad inspection",
+        "Decision-maker name (B2B credentials unconfigured)",
+        "Decision-maker role/title",
+        "Business email address"
+      ],
+      "score_limitations": [
+        "External ad library credentials not configured; off-site paid campaigns were unobserved.",
+        "B2B individual enrichment credentials unconfigured; decision-maker identity remains unobserved."
+      ],
+      "raw_opportunities": [
+        {
+          "title": "SEO: Missing HTML meta description tag",
+          "description": "Missing meta description tag results in unoptimized search result previews.",
+          "category": "SEO",
+          "priority": "MEDIUM",
+          "score": 65,
+          "confidence": "HIGH",
+          "recommended_action": "Deliver service: SEO"
+        },
+        {
+          "title": "Content Marketing: Missing educational blog or content marketing hub",
+          "description": "Content marketing evaluation conducted; no active blog/content hub found.",
+          "category": "CONTENT_MARKETING",
+          "priority": "MEDIUM",
+          "score": 65,
+          "confidence": "HIGH",
+          "recommended_action": "Deliver service: Content Marketing"
+        }
+      ]
+    },
+    {
+      "index": 19,
+      "company_name": "Manisha Interior",
+      "website": "https://manishainterior.com/",
+      "website_available": true,
+      "phone": "098309 19329",
+      "google_places_reviews": 249,
+      "google_places_rating": 4.7,
+      "is_duplicate": false,
+      "duplicate_reason": null,
+      "qualification_score": 51,
+      "scoring_coverage": 75.0,
+      "classification": "NURTURE",
+      "recommended_sales_action": "CONTINUE_RESEARCH",
+      "recommended_priority": "LOW",
+      "is_deterministic": true,
+      "dimension_scores": {
+        "problem_severity": 10.0,
+        "commercial_opportunity_value": 8.0,
+        "buying_intent": 7.0,
+        "evidence_confidence": 15.0,
+        "decision_maker_availability": 0.0,
+        "contact_readiness": 6.0,
+        "mindartdigital_business_fit": 5.0
+      },
+      "dimension_breakdown": {
+        "problem_severity": {
+          "dimension_name": "Problem Severity",
+          "maximum_points": 25.0,
+          "awarded_points": 10.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "seven_category:content_marketing"
+          ],
+          "criteria_met": [
+            "Medium-severity verified issue: Missing educational blog or content marketing hub"
+          ],
+          "criteria_not_met": [
+            "No high or critical severity issues detected"
+          ],
+          "missing_information": [],
+          "explanation": "Awarded 10.0/25.0 pts based on verified medium-severity issue: Missing educational blog or content marketing hub."
+        },
+        "commercial_opportunity_value": {
+          "dimension_name": "Commercial Opportunity Value",
+          "maximum_points": 20.0,
+          "awarded_points": 8.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "opportunity:d498d625-ceeb-4906-a8ab-4c6180c86516"
+          ],
+          "criteria_met": [
+            "1 distinct service opportunity: Content Marketing"
+          ],
+          "criteria_not_met": [
+            "Fewer than 2 distinct service offerings identified"
+          ],
+          "missing_information": [],
+          "explanation": "Awarded 8.0/20.0 pts based on single service opportunity (Content Marketing)."
+        },
+        "buying_intent": {
+          "dimension_name": "Buying Intent Indicators",
+          "maximum_points": 15.0,
+          "awarded_points": 7.0,
+          "dimension_status": "PARTIALLY_EVALUATED",
+          "evidence_references": [
+            "website_analysis:tracking_tags",
+            "evidence:9b950cd7-003a-4f1e-8d0e-78e3cc685c69"
+          ],
+          "criteria_met": [
+            "Verified marketing infrastructure: 0 tracking tags, 1 social profiles (+4.0 pts)",
+            "Verified commercial scale: high consumer engagement (>= 50 Google reviews) (+3.0 pts)"
+          ],
+          "criteria_not_met": [
+            "No active advertising campaigns verified via ad library"
+          ],
+          "missing_information": [
+            "External ad library credentials unconfigured for off-site ad inspection"
+          ],
+          "explanation": "Awarded 7.0/15.0 pts based on verified marketing activity (2 criteria met)."
+        },
+        "evidence_confidence": {
+          "dimension_name": "Evidence Confidence",
+          "maximum_points": 15.0,
+          "awarded_points": 15.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "website_analysis:https",
+            "evidence:9b950cd7-003a-4f1e-8d0e-78e3cc685c69",
+            "evidence:9b1cceb7-219d-4df0-9448-74e8e5627e1f"
+          ],
+          "criteria_met": [
+            "Website verified accessible with valid HTTPS security (+6.0 pts)",
+            "Authorized provider verification: Google Places listing verified (+5.0 pts)",
+            "High verified evidence depth: >= 3 discrete verifiable facts (+4.0 pts)"
+          ],
+          "criteria_not_met": [],
+          "missing_information": [],
+          "explanation": "Awarded 15.0/15.0 pts based on multi-source verified evidence."
+        },
+        "decision_maker_availability": {
+          "dimension_name": "Decision-Maker Availability",
+          "maximum_points": 10.0,
+          "awarded_points": 0.0,
+          "dimension_status": "UNAVAILABLE",
+          "evidence_references": [],
+          "criteria_met": [],
+          "criteria_not_met": [
+            "Decision-maker identity unobserved",
+            "Decision-maker role unobserved"
+          ],
+          "missing_information": [
+            "Decision-maker name (B2B credentials unconfigured)",
+            "Decision-maker role/title"
+          ],
+          "explanation": "Decision-maker details unobserved; unconfigured B2B provider data is not treated as a negative signal."
+        },
+        "contact_readiness": {
+          "dimension_name": "Contact Readiness",
+          "maximum_points": 10.0,
+          "awarded_points": 6.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:phone",
+            "lead:website"
+          ],
+          "criteria_met": [
+            "Verified business phone number available: 098309 19329 (+4.0 pts)",
+            "Accessible website domain (+2.0 pts)"
+          ],
+          "criteria_not_met": [
+            "Business email address unobserved"
+          ],
+          "missing_information": [
+            "Business email address"
+          ],
+          "explanation": "Awarded 6.0/10.0 pts for direct business communication channels."
+        },
+        "mindartdigital_business_fit": {
+          "dimension_name": "MindArtDigital Business Fit",
+          "maximum_points": 5.0,
+          "awarded_points": 5.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:industry"
+          ],
+          "criteria_met": [
+            "Industry aligns with target verticals: INTERIOR_DESIGN (+3.0 pts)",
+            "Grounded alignment with MindArtDigital service portfolio (+2.0 pts)"
+          ],
+          "criteria_not_met": [],
+          "missing_information": [],
+          "explanation": "Awarded 5.0/5.0 pts for agency strategic fit."
+        }
+      },
+      "qualification_reasoning": "Moderate potential or partial evidence. Continue research and monitor for additional buying signals.",
+      "supporting_evidence": [
+        "Medium-severity gap in content_marketing: Missing educational blog or content marketing hub",
+        "Commercial service opportunity: Content Marketing",
+        "Marketing infrastructure detected: Social profiles",
+        "Established local market presence verified with >= 50 customer reviews",
+        "Direct phone contact available: 098309 19329",
+        "Core vertical fit: INTERIOR_DESIGN"
+      ],
+      "missing_information": [
+        "External ad library credentials unconfigured for off-site ad inspection",
+        "Decision-maker name (B2B credentials unconfigured)",
+        "Decision-maker role/title",
+        "Business email address"
+      ],
+      "score_limitations": [
+        "External ad library credentials not configured; off-site paid campaigns were unobserved.",
+        "B2B individual enrichment credentials unconfigured; decision-maker identity remains unobserved."
+      ],
+      "raw_opportunities": [
+        {
+          "title": "Content Marketing: Missing educational blog or content marketing hub",
+          "description": "Content marketing evaluation conducted; no active blog/content hub found.",
+          "category": "CONTENT_MARKETING",
+          "priority": "MEDIUM",
+          "score": 65,
+          "confidence": "HIGH",
+          "recommended_action": "Deliver service: Content Marketing"
+        }
+      ]
+    },
+    {
+      "index": 20,
+      "company_name": "ADIL INTERIOR",
+      "website": "https://adil-interior.vercel.app/",
+      "website_available": true,
+      "phone": "093300 40156",
+      "google_places_reviews": 181,
+      "google_places_rating": 5,
+      "is_duplicate": false,
+      "duplicate_reason": null,
+      "qualification_score": 57,
+      "scoring_coverage": 75.0,
+      "classification": "NURTURE",
+      "recommended_sales_action": "CONTINUE_RESEARCH",
+      "recommended_priority": "LOW",
+      "is_deterministic": true,
+      "dimension_scores": {
+        "problem_severity": 10.0,
+        "commercial_opportunity_value": 14.0,
+        "buying_intent": 7.0,
+        "evidence_confidence": 15.0,
+        "decision_maker_availability": 0.0,
+        "contact_readiness": 6.0,
+        "mindartdigital_business_fit": 5.0
+      },
+      "dimension_breakdown": {
+        "problem_severity": {
+          "dimension_name": "Problem Severity",
+          "maximum_points": 25.0,
+          "awarded_points": 10.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "seven_category:seo",
+            "seven_category:content_marketing"
+          ],
+          "criteria_met": [
+            "Medium-severity verified issue: Missing HTML meta description tag"
+          ],
+          "criteria_not_met": [
+            "No high or critical severity issues detected"
+          ],
+          "missing_information": [],
+          "explanation": "Awarded 10.0/25.0 pts based on verified medium-severity issue: Missing HTML meta description tag."
+        },
+        "commercial_opportunity_value": {
+          "dimension_name": "Commercial Opportunity Value",
+          "maximum_points": 20.0,
+          "awarded_points": 14.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "opportunity:65629550-916d-49b3-abf4-571d7e93f27a",
+            "opportunity:c4d2653d-8bcc-4b06-83b7-b546239197a6"
+          ],
+          "criteria_met": [
+            "2 distinct service opportunities: Content Marketing, SEO"
+          ],
+          "criteria_not_met": [
+            "Fewer than 3 distinct service offerings identified"
+          ],
+          "missing_information": [],
+          "explanation": "Awarded 14.0/20.0 pts based on 2 verified service opportunities (Content Marketing, SEO)."
+        },
+        "buying_intent": {
+          "dimension_name": "Buying Intent Indicators",
+          "maximum_points": 15.0,
+          "awarded_points": 7.0,
+          "dimension_status": "PARTIALLY_EVALUATED",
+          "evidence_references": [
+            "website_analysis:tracking_tags",
+            "evidence:3fbb6668-2708-4969-9c86-ad49cc593575"
+          ],
+          "criteria_met": [
+            "Verified marketing infrastructure: 0 tracking tags, 1 social profiles (+4.0 pts)",
+            "Verified commercial scale: high consumer engagement (>= 50 Google reviews) (+3.0 pts)"
+          ],
+          "criteria_not_met": [
+            "No active advertising campaigns verified via ad library"
+          ],
+          "missing_information": [
+            "External ad library credentials unconfigured for off-site ad inspection"
+          ],
+          "explanation": "Awarded 7.0/15.0 pts based on verified marketing activity (2 criteria met)."
+        },
+        "evidence_confidence": {
+          "dimension_name": "Evidence Confidence",
+          "maximum_points": 15.0,
+          "awarded_points": 15.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "website_analysis:https",
+            "evidence:3fbb6668-2708-4969-9c86-ad49cc593575",
+            "evidence:6486d414-8990-460f-8a8b-f62883579464"
+          ],
+          "criteria_met": [
+            "Website verified accessible with valid HTTPS security (+6.0 pts)",
+            "Authorized provider verification: Google Places listing verified (+5.0 pts)",
+            "High verified evidence depth: >= 3 discrete verifiable facts (+4.0 pts)"
+          ],
+          "criteria_not_met": [],
+          "missing_information": [],
+          "explanation": "Awarded 15.0/15.0 pts based on multi-source verified evidence."
+        },
+        "decision_maker_availability": {
+          "dimension_name": "Decision-Maker Availability",
+          "maximum_points": 10.0,
+          "awarded_points": 0.0,
+          "dimension_status": "UNAVAILABLE",
+          "evidence_references": [],
+          "criteria_met": [],
+          "criteria_not_met": [
+            "Decision-maker identity unobserved",
+            "Decision-maker role unobserved"
+          ],
+          "missing_information": [
+            "Decision-maker name (B2B credentials unconfigured)",
+            "Decision-maker role/title"
+          ],
+          "explanation": "Decision-maker details unobserved; unconfigured B2B provider data is not treated as a negative signal."
+        },
+        "contact_readiness": {
+          "dimension_name": "Contact Readiness",
+          "maximum_points": 10.0,
+          "awarded_points": 6.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:phone",
+            "lead:website"
+          ],
+          "criteria_met": [
+            "Verified business phone number available: 093300 40156 (+4.0 pts)",
+            "Accessible website domain (+2.0 pts)"
+          ],
+          "criteria_not_met": [
+            "Business email address unobserved"
+          ],
+          "missing_information": [
+            "Business email address"
+          ],
+          "explanation": "Awarded 6.0/10.0 pts for direct business communication channels."
+        },
+        "mindartdigital_business_fit": {
+          "dimension_name": "MindArtDigital Business Fit",
+          "maximum_points": 5.0,
+          "awarded_points": 5.0,
+          "dimension_status": "EVALUATED",
+          "evidence_references": [
+            "lead:industry"
+          ],
+          "criteria_met": [
+            "Industry aligns with target verticals: INTERIOR_DESIGN (+3.0 pts)",
+            "Grounded alignment with MindArtDigital service portfolio (+2.0 pts)"
+          ],
+          "criteria_not_met": [],
+          "missing_information": [],
+          "explanation": "Awarded 5.0/5.0 pts for agency strategic fit."
+        }
+      },
+      "qualification_reasoning": "Moderate potential or partial evidence. Continue research and monitor for additional buying signals.",
+      "supporting_evidence": [
+        "Medium-severity gap in seo: Missing HTML meta description tag",
+        "Commercial service opportunities: Content Marketing, SEO",
+        "Marketing infrastructure detected: Social profiles",
+        "Established local market presence verified with >= 50 customer reviews",
+        "Direct phone contact available: 093300 40156",
+        "Core vertical fit: INTERIOR_DESIGN"
+      ],
+      "missing_information": [
+        "External ad library credentials unconfigured for off-site ad inspection",
+        "Decision-maker name (B2B credentials unconfigured)",
+        "Decision-maker role/title",
+        "Business email address"
+      ],
+      "score_limitations": [
+        "External ad library credentials not configured; off-site paid campaigns were unobserved.",
+        "B2B individual enrichment credentials unconfigured; decision-maker identity remains unobserved."
+      ],
+      "raw_opportunities": [
+        {
+          "title": "SEO: Missing HTML meta description tag",
+          "description": "Missing meta description tag results in unoptimized search result previews.",
+          "category": "SEO",
+          "priority": "MEDIUM",
+          "score": 65,
+          "confidence": "HIGH",
+          "recommended_action": "Deliver service: SEO"
+        },
+        {
+          "title": "Content Marketing: Missing educational blog or content marketing hub",
+          "description": "Content marketing evaluation conducted; no active blog/content hub found.",
+          "category": "CONTENT_MARKETING",
+          "priority": "MEDIUM",
+          "score": 65,
+          "confidence": "HIGH",
+          "recommended_action": "Deliver service: Content Marketing"
+        }
+      ]
+    }
+  ]
+}

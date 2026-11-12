@@ -21,7 +21,13 @@ class AIProviderRegistry:
         chosen = name.strip().lower()
         if chosen == "ollama":
             from app.providers.ollama import OllamaProvider
-            return OllamaProvider(model=model or self.config.ollama_model, base_url=self.config.ollama_base_url, execution=self.execution, **({"client_factory": self.client_factory} if self.client_factory else {}))
+            return OllamaProvider(
+                model=model or self.config.ollama_model,
+                base_url=self.config.ollama_base_url,
+                execution=self.execution,
+                timeout_seconds=getattr(self.config, "ai_ollama_timeout_seconds", self.config.request_timeout_seconds),
+                **({"client_factory": self.client_factory} if self.client_factory else {}),
+            )
         if chosen == "gemini":
             from app.providers.gemini import GeminiProvider
             return GeminiProvider(self.execution, model=model or self.config.ai_gemini_model, base_url=self.config.ai_gemini_base_url, timeout_seconds=self.config.ai_gemini_timeout_seconds, enabled=self.config.ai_gemini_enabled, **({"client_factory": self.client_factory} if self.client_factory else {}))

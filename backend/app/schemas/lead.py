@@ -38,14 +38,35 @@ class LeadOut(BaseModel):
     audit_video_script: str | None = None
     proposed_package: str | None = None
     confidence_score: float | None = None
+    sub_category: str | None = None
+    advertising_platforms: str | None = None
+    advertising_evidence: str | None = None
+    primary_problem: str | None = None
+    recommended_mindart_service: str | None = None
     intelligence_status: Literal["available", "unavailable"] = "unavailable"
     intelligence_score: int | None = None
     opportunity_count: int = 0
     recommendation_count: int = 0
     personalization_available: bool = False
     latest_enrichment_at: datetime | None = None
+    qualification_score: int | None = None
+    scoring_coverage: float | None = None
+    qualification_class: str | None = None
+    recommended_sales_action: str | None = None
+    qualification_details: dict[str, Any] | None = None
     created_at: Any
     updated_at: Any
+
+class LeadUpdate(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    phone: str | None = None
+    email: str | None = None
+    website: str | None = None
+    decision_maker: str | None = None
+    job_title: str | None = None
+    industry: str | None = None
+    city: str | None = None
+    country: str | None = None
 
 class AIAnalysis(BaseModel):
     model_config = ConfigDict(extra="forbid")

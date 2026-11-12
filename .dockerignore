@@ -7,3 +7,9 @@
 .env
 *.db
 .pytest_cache
+.pytest_cache/*
+.pytest_cache/**
+**/.pytest_cache
+**/.pytest_cache/**
+.pytest-temp
+*.log

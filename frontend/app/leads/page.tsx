@@ -41,6 +41,8 @@ export default function LeadsDashboard() {
   const [salesStatus, setSalesStatus] = useState("");
   const [priority, setPriority] = useState("");
   const [followUpDue, setFollowUpDue] = useState("");
+  const [qualificationClass, setQualificationClass] = useState("");
+  const [sortBy, setSortBy] = useState("");
   const [appliedFilters, setAppliedFilters] = useState("");
 
   const load = useCallback(async () => {
@@ -80,6 +82,8 @@ export default function LeadsDashboard() {
     if (salesStatus) params.set("sales_status", salesStatus);
     if (priority) params.set("priority", priority);
     if (followUpDue) params.set("follow_up_due", followUpDue);
+    if (qualificationClass) params.set("qualification_class", qualificationClass);
+    if (sortBy) params.set("sort_by", sortBy);
     setPage(1);
     setAppliedFilters(params.toString());
   }
@@ -88,6 +92,7 @@ export default function LeadsDashboard() {
     setMinScore(""); setMaxScore(""); setIntelligenceStatus("");
     setPersonalization(""); setHasOpportunity(""); setPage(1); setAppliedFilters("");
     setSalesStatus(""); setPriority(""); setFollowUpDue("");
+    setQualificationClass(""); setSortBy("");
   }
 
   const withIntelligence = leads.filter((lead) => lead.intelligence_status === "available").length;
@@ -109,6 +114,7 @@ export default function LeadsDashboard() {
           <p className="mt-1 text-slate-500">Review evidence-backed opportunities and prioritize accounts.</p>
         </div>
         <div className="flex items-center gap-3 text-sm">
+          <Link href="/research" className="rounded-lg border border-teal-600 bg-teal-50 px-4 py-2 font-semibold text-teal-800 hover:bg-teal-100">Business Research</Link>
           <Link href="/outreach" className="rounded-lg border border-slate-300 bg-white px-4 py-2 font-semibold text-teal hover:bg-slate-50">Outreach</Link>
           <Link href="/leads/tasks" className="rounded-lg border border-slate-300 bg-white px-4 py-2 font-semibold text-teal hover:bg-slate-50">Sales tasks</Link>
           <Link href="/sales/supervisor" className="rounded-lg border border-slate-300 bg-white px-4 py-2 font-semibold text-teal hover:bg-slate-50">Sales supervisor</Link>
@@ -164,6 +170,22 @@ export default function LeadsDashboard() {
             <label className="text-xs font-semibold text-slate-600">Follow-up
               <select value={followUpDue} onChange={(event) => setFollowUpDue(event.target.value)} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"><option value="">Any</option><option value="true">Due now</option><option value="false">Not due</option></select>
             </label>
+            <label className="text-xs font-semibold text-slate-600">Qualification
+              <select value={qualificationClass} onChange={(event) => setQualificationClass(event.target.value)} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
+                <option value="">Any tier</option>
+                <option value="HOT">HOT (80-100)</option>
+                <option value="WARM">WARM (60-79)</option>
+                <option value="NURTURE">NURTURE (40-59)</option>
+                <option value="LOW_PRIORITY">LOW PRIORITY (0-39)</option>
+              </select>
+            </label>
+            <label className="text-xs font-semibold text-slate-600">Sort by
+              <select value={sortBy} onChange={(event) => setSortBy(event.target.value)} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
+                <option value="">Newest first</option>
+                <option value="qualification_score_desc">Qualification score (High to Low)</option>
+                <option value="qualification_score_asc">Qualification score (Low to High)</option>
+              </select>
+            </label>
             <div className="flex items-end gap-2">
               <button type="submit" className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700">Apply</button>
               <button type="button" onClick={clearFilters} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Clear</button>
@@ -183,13 +205,35 @@ export default function LeadsDashboard() {
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1120px] text-left text-sm">
               <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
-                <tr>{["Business / Lead", "Location", "Intelligence score", "Opportunities", "Recommended service", "Personalization", "Enrichment", "Sales status", "Priority", "Next follow-up", "Last enriched", "Action"].map((heading) => <th key={heading} className="px-4 py-3 font-semibold">{heading}</th>)}</tr>
+                <tr>{["Business / Lead", "Location", "Qualification", "Intelligence score", "Opportunities", "Recommended service", "Personalization", "Enrichment", "Sales status", "Priority", "Next follow-up", "Last enriched", "Action"].map((heading) => <th key={heading} className="px-4 py-3 font-semibold">{heading}</th>)}</tr>
               </thead>
               <tbody>
                 {leads.map((lead) => (
                   <tr key={lead.id} className="border-t border-slate-100 hover:bg-slate-50/70">
                     <td className="px-4 py-4"><Link href={`/leads/${lead.id}`} className="font-semibold text-ink hover:text-teal">{lead.company_name}</Link><div className="mt-1 max-w-52 truncate text-xs text-slate-400">{lead.website || lead.industry || "Business profile"}</div></td>
                     <td className="px-4 py-4 text-slate-600">{[lead.city, lead.state, lead.country].filter(Boolean).join(", ") || "—"}</td>
+                    <td className="px-4 py-4">
+                      {lead.qualification_class ? (
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-bold ${
+                              lead.qualification_class === "HOT" ? "bg-rose-100 text-rose-800 border border-rose-200" :
+                              lead.qualification_class === "WARM" ? "bg-amber-100 text-amber-800 border border-amber-200" :
+                              lead.qualification_class === "NURTURE" ? "bg-blue-100 text-blue-800 border border-blue-200" :
+                              "bg-slate-100 text-slate-600 border border-slate-200"
+                            }`}>
+                              {lead.qualification_class}
+                            </span>
+                            <span className="font-semibold text-ink text-xs">{lead.qualification_score ?? "—"}/100</span>
+                          </div>
+                          <div className="mt-1 text-[11px] text-slate-400">
+                            {lead.scoring_coverage !== null && lead.scoring_coverage !== undefined ? `${Math.round(lead.scoring_coverage * 100)}% coverage` : ""}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
+                    </td>
                     <td className="px-4 py-4"><Score value={lead.intelligence_score} /></td>
                     <td className="px-4 py-4"><span className={lead.opportunity_count ? "rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800" : "text-slate-400"}>{lead.opportunity_count || "None"}</span></td>
                     <td className="px-4 py-4 text-slate-700">{lead.recommended_services?.[0] || (lead.recommendation_count ? `${lead.recommendation_count} recommendation${lead.recommendation_count === 1 ? "" : "s"}` : "—")}</td>

@@ -1,5 +1,30 @@
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-const TOKEN = process.env.NEXT_PUBLIC_API_TOKEN || "";
+export const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+export function getApiToken(): string {
+  if (typeof window !== "undefined") {
+    try {
+      const stored = window.localStorage.getItem("lead_agent_api_token") || window.sessionStorage.getItem("lead_agent_api_token");
+      if (stored) return stored.trim();
+    } catch {
+      // Storage access may be restricted
+    }
+  }
+  return (process.env.NEXT_PUBLIC_API_TOKEN || "").trim();
+}
+
+export function setApiToken(token: string): void {
+  if (typeof window !== "undefined") {
+    try {
+      if (token) {
+        window.localStorage.setItem("lead_agent_api_token", token.trim());
+      } else {
+        window.localStorage.removeItem("lead_agent_api_token");
+      }
+    } catch {
+      // Storage access may be restricted
+    }
+  }
+}
 
 export class ApiError extends Error {
   constructor(
@@ -14,12 +39,33 @@ export class ApiError extends Error {
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
-  if (TOKEN) headers.set("Authorization", `Bearer ${TOKEN}`);
-  const response = await fetch(`${API}${path}`, {
-    ...init,
-    headers,
-    cache: "no-store",
-  });
+  const token = getApiToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+
+  const defaultSignal =
+    typeof AbortSignal !== "undefined" && "timeout" in AbortSignal
+      ? AbortSignal.timeout(480_000)
+      : undefined;
+
+  let response: Response;
+  try {
+    response = await fetch(`${API}${path}`, {
+      ...init,
+      headers,
+      cache: "no-store",
+      signal: init?.signal ?? defaultSignal,
+    });
+  } catch (cause: unknown) {
+    const errorName = cause && typeof cause === "object" && "name" in cause ? String((cause as { name: unknown }).name) : "";
+    if (errorName === "TimeoutError" || errorName === "AbortError") {
+      throw new ApiError(
+        "Request timed out. The local AI model took longer than expected to respond (timeout limit: 450s).",
+        504,
+        "TIMEOUT"
+      );
+    }
+    throw cause;
+  }
 
   if (!response.ok) {
     let message = `Request failed (${response.status})`;
@@ -84,6 +130,10 @@ export type LeadListItem = {
   recommendation_count: number;
   personalization_available: boolean;
   latest_enrichment_at: string | null;
+  qualification_score?: number | null;
+  scoring_coverage?: number | null;
+  qualification_class?: "HOT" | "WARM" | "NURTURE" | "LOW_PRIORITY" | null;
+  recommended_sales_action?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -108,6 +158,11 @@ export type LeadDetail = {
   intelligence_status: "available" | "unavailable";
   intelligence_score: number | null;
   latest_enrichment_at: string | null;
+  qualification_score?: number | null;
+  scoring_coverage?: number | null;
+  qualification_class?: "HOT" | "WARM" | "NURTURE" | "LOW_PRIORITY" | null;
+  recommended_sales_action?: string | null;
+  qualification_details?: Record<string, unknown> | null;
 };
 
 export type SalesStatus = "NEW" | "QUALIFIED" | "CONTACTED" | "ENGAGED" | "PROPOSAL" | "NEGOTIATION" | "WON" | "LOST";
@@ -715,6 +770,10 @@ export type IntelligenceOpportunity = {
   score: number | null; priority: string | null; recommended_action: string | null; evidence: any | null;
   source_type: string; source_reference: string | null; confidence: string; created_at: string; updated_at: string;
   related_task_id?: string | null; related_task_status?: string | null;
+  opportunity_category?: string | null; recommended_service?: string | null;
+  commercial_relevance?: string | null; suggested_next_action?: string | null;
+  status?: string | null; opportunity_status?: string | null;
+  evidence_source?: string | null; last_evaluated?: string | null;
 };
 export type SalesOpportunitiesResponse = { opportunities: IntelligenceOpportunity[] };
 export type IntelligenceBusinessContext = {
@@ -775,6 +834,34 @@ export type WebsiteIntelligenceProfileSchema = {
   updated_at: string;
 };
 
+export type CategoryFinding = {
+  category: string;
+  title: string;
+  status: "RESEARCHED" | "PARTIALLY_RESEARCHED" | "NOT_RESEARCHED" | "UNAVAILABLE" | "NOT_APPLICABLE";
+  signal_detected: boolean;
+  finding: string;
+  problem_identified: boolean;
+  problem_severity?: "critical" | "high" | "medium" | "low" | null;
+  problem_summary?: string | null;
+  recommended_service?: string | null;
+  confidence_score: number;
+  evidence_type: string;
+  verified_fact_or_inference: "verified_fact" | "supported_inference";
+  source_name?: string | null;
+  diagnostic_reason?: string | null;
+  details?: Record<string, any> | null;
+  last_researched_at?: string | null;
+};
+
+export type CoverageSummary = {
+  researched: number;
+  partially_researched: number;
+  not_researched: number;
+  unavailable: number;
+  total_categories: number;
+  completeness: number;
+};
+
 export type DigitalMarketingIntelligenceProfileSchema = {
   id: string;
   company_id: string;
@@ -788,9 +875,26 @@ export type DigitalMarketingIntelligenceProfileSchema = {
   source_type: string;
   confidence: string;
   completeness: number;
+  category_research_status?: Record<string, string> | null;
+  seven_category_coverage?: Record<string, CategoryFinding> | null;
+  coverage_summary?: CoverageSummary | null;
   created_at: string;
   updated_at: string;
 };
+
+export async function researchDigitalMarketingCategory(leadId: string, category: string, retry = false): Promise<DigitalMarketingIntelligenceProfileSchema> {
+  return api<DigitalMarketingIntelligenceProfileSchema>(
+    `/api/leads/${encodeURIComponent(leadId)}/digital-marketing-intelligence/research-category?category=${encodeURIComponent(category)}&retry=${retry}`,
+    { method: "POST" }
+  );
+}
+
+export async function refreshDigitalMarketingIntelligence(leadId: string): Promise<DigitalMarketingIntelligenceProfileSchema> {
+  return api<DigitalMarketingIntelligenceProfileSchema>(
+    `/api/leads/${encodeURIComponent(leadId)}/digital-marketing-intelligence/refresh`,
+    { method: "POST" }
+  );
+}
 
 export type BuyingSignalSchema = {
   id: string;
@@ -1035,6 +1139,175 @@ export type LeadIntelligenceOrchestrationResponse = {
 
 export async function orchestrateLeadIntelligence(leadId: string): Promise<LeadIntelligenceOrchestrationResponse> {
   return api<LeadIntelligenceOrchestrationResponse>(`/api/leads/${encodeURIComponent(leadId)}/intelligence/orchestrate`, {
+    method: "POST",
+  });
+}
+
+export type ResearchInput = {
+  industry: string;
+  location: string;
+  sub_category?: string | null;
+  target_business_count?: number;
+  research_depth?: "basic" | "standard" | "deep";
+};
+
+export type SourceEvidence = {
+  source_url: string;
+  observed_at: string;
+  verified_facts: string[];
+  inferred_opportunities: string[];
+  unavailable_fields: string[];
+};
+
+export type ResearchResultItem = {
+  item_id: string;
+  company_name: string;
+  website: string | null;
+  industry: string;
+  sub_category: string | null;
+  country: string;
+  city: string;
+  decision_maker: string | null;
+  decision_maker_role: string | null;
+  business_email: string | null;
+  phone: string | null;
+  linkedin: string | null;
+  advertising_platforms: string | null;
+  advertising_evidence: string | null;
+  primary_problem: string | null;
+  recommended_mindart_service: string | null;
+  research_status: string;
+  source_evidence: SourceEvidence;
+  is_duplicate: boolean;
+  existing_lead_id: string | null;
+  confidence_score: number;
+};
+
+export type ResearchJobState = {
+  job_id: string;
+  status: "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED";
+  created_at: string;
+  updated_at: string;
+  input_params: ResearchInput;
+  target_count: number;
+  found_count: number;
+  processed_count: number;
+  progress_percent: number;
+  error_message: string | null;
+  provider_name: string;
+  results: ResearchResultItem[];
+};
+
+export type ResearchProvidersStatus = {
+  active_discovery_provider: string;
+  is_configured: boolean;
+  message: string;
+  providers: Array<{ name: string; is_configured: boolean }>;
+};
+
+export type SaveLeadsRequest = {
+  leads: ResearchResultItem[];
+};
+
+export type SaveLeadsResponse = {
+  success: boolean;
+  saved_count: number;
+  updated_count: number;
+  created_count: number;
+  lead_ids: string[];
+  errors: string[];
+};
+
+export async function getResearchProvidersStatus(): Promise<ResearchProvidersStatus> {
+  return api<ResearchProvidersStatus>("/api/research/providers/status");
+}
+
+export async function startResearchJob(input: ResearchInput): Promise<{ job_id: string; status: string; message: string }> {
+  return api<{ job_id: string; status: string; message: string }>("/api/research/jobs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function getResearchJob(jobId: string): Promise<ResearchJobState> {
+  return api<ResearchJobState>(`/api/research/jobs/${encodeURIComponent(jobId)}`);
+}
+
+export async function listResearchJobs(): Promise<{ jobs: ResearchJobState[] }> {
+  return api<{ jobs: ResearchJobState[] }>("/api/research/jobs");
+}
+
+export async function cancelResearchJob(jobId: string): Promise<{ success: boolean; message: string }> {
+  return api<{ success: boolean; message: string }>(`/api/research/jobs/${encodeURIComponent(jobId)}/cancel`, {
+    method: "POST",
+  });
+}
+
+export async function saveResearchedLeads(request: SaveLeadsRequest): Promise<SaveLeadsResponse> {
+  return api<SaveLeadsResponse>("/api/research/save-leads", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+}
+
+export async function downloadResearchCsv(jobId: string): Promise<Blob> {
+  const token = getApiToken();
+  const headers = new Headers();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const response = await fetch(`${API}/api/research/export/${encodeURIComponent(jobId)}`, {
+    headers,
+  });
+  if (!response.ok) {
+    throw new ApiError(`Failed to download CSV (${response.status})`, response.status);
+  }
+  return response.blob();
+}
+
+export type DimensionStatus = "EVALUATED" | "PARTIALLY_EVALUATED" | "UNAVAILABLE" | "NOT_APPLICABLE";
+
+export type DimensionScoreExplanation = {
+  dimension_name: string;
+  maximum_points: number;
+  awarded_points: number;
+  dimension_status: DimensionStatus;
+  evidence_references: string[];
+  criteria_met: string[];
+  criteria_not_met: string[];
+  missing_information: string[];
+  explanation: string;
+};
+
+export type LeadQualificationResult = {
+  lead_id: string;
+  qualification_score: number;
+  scoring_coverage: number;
+  classification: "HOT" | "WARM" | "NURTURE" | "LOW_PRIORITY";
+  recommended_sales_action: string;
+  recommended_priority: string;
+  problem_severity_score: number;
+  commercial_opportunity_value_score: number;
+  buying_intent_score: number;
+  evidence_confidence_score: number;
+  decision_maker_availability_score: number;
+  contact_readiness_score: number;
+  mindartdigital_business_fit_score: number;
+  dimension_breakdown: Record<string, DimensionScoreExplanation>;
+  qualification_reasoning: string;
+  supporting_evidence: string[];
+  missing_information: string[];
+  score_limitations: string[];
+  scoring_version: string;
+  evaluated_at: string;
+};
+
+export async function getLeadQualification(leadId: string): Promise<LeadQualificationResult> {
+  return api<LeadQualificationResult>(`/api/leads/${encodeURIComponent(leadId)}/qualification`);
+}
+
+export async function qualifyLead(leadId: string): Promise<LeadQualificationResult> {
+  return api<LeadQualificationResult>(`/api/leads/${encodeURIComponent(leadId)}/qualify`, {
     method: "POST",
   });
 }

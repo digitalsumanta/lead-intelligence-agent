@@ -1,3 +1,4 @@
+import re
 import uuid
 from typing import Optional, List, Tuple
 from datetime import datetime, UTC
@@ -34,27 +35,159 @@ def _normalize_industry(industry: Optional[str]) -> Optional[str]:
     if not industry:
         return None
     val = industry.lower().strip()
+    if not val:
+        return None
+    if val == "unknown":
+        return "UNKNOWN"
+
+    # Canonical normalized industry codes
+    canonical = {
+        "TECHNOLOGY", "AGENCY", "ECOMMERCE", "RETAIL", "FINANCE",
+        "MANUFACTURING", "HEALTHCARE", "EDUCATION", "REAL_ESTATE",
+        "BEAUTY_AND_PERSONAL_CARE", "INTERIOR_DESIGN", "HOSPITALITY",
+        "FASHION_AND_APPAREL", "AUTOMOTIVE", "PROFESSIONAL_SERVICES",
+        "LOGISTICS_AND_SUPPLY_CHAIN", "CONSTRUCTION", "FITNESS_AND_SPORTS",
+        "MEDIA_AND_ENTERTAINMENT"
+    }
+    if val.upper() in canonical:
+        return val.upper()
+
     mapping = {
+        # Technology & Software
         "software": "TECHNOLOGY",
+        "saas": "TECHNOLOGY",
         "it": "TECHNOLOGY",
         "tech": "TECHNOLOGY",
         "technology": "TECHNOLOGY",
+        "cloud": "TECHNOLOGY",
+        "cybersecurity": "TECHNOLOGY",
+        "artificial intelligence": "TECHNOLOGY",
+        # Agency & Marketing
         "agency": "AGENCY",
         "marketing": "AGENCY",
         "advertising": "AGENCY",
+        "seo": "AGENCY",
+        # E-Commerce & Direct-to-Consumer
         "ecommerce": "ECOMMERCE",
+        "e-commerce": "ECOMMERCE",
+        "d2c": "ECOMMERCE",
+        "online store": "ECOMMERCE",
+        "shopify": "ECOMMERCE",
+        # Retail
         "retail": "RETAIL",
+        "boutique": "RETAIL",
+        "store": "RETAIL",
+        "supermarket": "RETAIL",
+        # Finance & Banking
         "finance": "FINANCE",
         "banking": "FINANCE",
+        "fintech": "FINANCE",
+        "insurance": "FINANCE",
+        "investment": "FINANCE",
+        "wealth": "FINANCE",
+        # Manufacturing & Industrial
         "manufacturing": "MANUFACTURING",
+        "industrial": "MANUFACTURING",
+        "factory": "MANUFACTURING",
+        # Healthcare & Medical
         "healthcare": "HEALTHCARE",
+        "health": "HEALTHCARE",
         "medical": "HEALTHCARE",
+        "clinic": "HEALTHCARE",
+        "hospital": "HEALTHCARE",
+        "pharma": "HEALTHCARE",
+        "dental": "HEALTHCARE",
+        "dentist": "HEALTHCARE",
+        # Education & EdTech
         "education": "EDUCATION",
+        "edtech": "EDUCATION",
+        "school": "EDUCATION",
+        "academy": "EDUCATION",
+        "university": "EDUCATION",
+        "tutoring": "EDUCATION",
+        # Real Estate & Property
         "real estate": "REAL_ESTATE",
+        "realtor": "REAL_ESTATE",
+        "property": "REAL_ESTATE",
+        "realty": "REAL_ESTATE",
+        # Beauty & Personal Care
+        "skincare": "BEAUTY_AND_PERSONAL_CARE",
+        "skin care": "BEAUTY_AND_PERSONAL_CARE",
+        "beauty": "BEAUTY_AND_PERSONAL_CARE",
+        "cosmetic": "BEAUTY_AND_PERSONAL_CARE",
+        "cosmetics": "BEAUTY_AND_PERSONAL_CARE",
+        "personal care": "BEAUTY_AND_PERSONAL_CARE",
+        "lip balm": "BEAUTY_AND_PERSONAL_CARE",
+        "balm": "BEAUTY_AND_PERSONAL_CARE",
+        "haircare": "BEAUTY_AND_PERSONAL_CARE",
+        "hair care": "BEAUTY_AND_PERSONAL_CARE",
+        "organics": "BEAUTY_AND_PERSONAL_CARE",
+        "wellness": "BEAUTY_AND_PERSONAL_CARE",
+        "salon": "BEAUTY_AND_PERSONAL_CARE",
+        "spa": "BEAUTY_AND_PERSONAL_CARE",
+        # Interior Design & Home Decor
+        "interior design": "INTERIOR_DESIGN",
+        "interior": "INTERIOR_DESIGN",
+        "home decor": "INTERIOR_DESIGN",
+        "decor": "INTERIOR_DESIGN",
+        "furnishing": "INTERIOR_DESIGN",
+        "furniture": "INTERIOR_DESIGN",
+        "architecture": "INTERIOR_DESIGN",
+        # Hospitality, Food & Dining
+        "hospitality": "HOSPITALITY",
+        "hotel": "HOSPITALITY",
+        "restaurant": "HOSPITALITY",
+        "dining": "HOSPITALITY",
+        "cafe": "HOSPITALITY",
+        "food": "HOSPITALITY",
+        "beverage": "HOSPITALITY",
+        "catering": "HOSPITALITY",
+        # Fashion & Apparel
+        "fashion": "FASHION_AND_APPAREL",
+        "apparel": "FASHION_AND_APPAREL",
+        "clothing": "FASHION_AND_APPAREL",
+        "garment": "FASHION_AND_APPAREL",
+        "footwear": "FASHION_AND_APPAREL",
+        # Automotive
+        "automotive": "AUTOMOTIVE",
+        "automobile": "AUTOMOTIVE",
+        "car": "AUTOMOTIVE",
+        "dealership": "AUTOMOTIVE",
+        # Professional Services
+        "consulting": "PROFESSIONAL_SERVICES",
+        "legal": "PROFESSIONAL_SERVICES",
+        "law": "PROFESSIONAL_SERVICES",
+        "attorney": "PROFESSIONAL_SERVICES",
+        "advisory": "PROFESSIONAL_SERVICES",
+        "recruitment": "PROFESSIONAL_SERVICES",
+        "staffing": "PROFESSIONAL_SERVICES",
+        # Logistics & Supply Chain
+        "logistics": "LOGISTICS_AND_SUPPLY_CHAIN",
+        "supply chain": "LOGISTICS_AND_SUPPLY_CHAIN",
+        "freight": "LOGISTICS_AND_SUPPLY_CHAIN",
+        "transport": "LOGISTICS_AND_SUPPLY_CHAIN",
+        "shipping": "LOGISTICS_AND_SUPPLY_CHAIN",
+        # Construction
+        "construction": "CONSTRUCTION",
+        "contractor": "CONSTRUCTION",
+        "builder": "CONSTRUCTION",
+        "renovation": "CONSTRUCTION",
+        # Fitness & Sports
+        "fitness": "FITNESS_AND_SPORTS",
+        "gym": "FITNESS_AND_SPORTS",
+        "sports": "FITNESS_AND_SPORTS",
+        # Media & Entertainment
+        "media": "MEDIA_AND_ENTERTAINMENT",
+        "entertainment": "MEDIA_AND_ENTERTAINMENT",
+        "publishing": "MEDIA_AND_ENTERTAINMENT",
     }
     for key, mapped in mapping.items():
-        if key in val:
-            return mapped
+        if " " in key or "-" in key:
+            if key in val:
+                return mapped
+        else:
+            if re.search(r'\b' + re.escape(key) + r'\b', val):
+                return mapped
     return "UNKNOWN"
 
 def _normalize_company_size(size: Optional[str]) -> Optional[str]:

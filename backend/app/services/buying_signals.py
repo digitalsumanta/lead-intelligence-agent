@@ -118,13 +118,36 @@ async def refresh_buying_signals_for_company(session: AsyncSession, company_id: 
             detected_at=enrichment.updated_at
         ))
 
+    # Evidence 5: Active Advertising Activity / Paid Acquisition
+    ad_platforms = None
+    ad_notes = None
+    if isinstance(lead.website_analysis, dict) and lead.website_analysis.get("advertising_platforms"):
+        ad_platforms = lead.website_analysis.get("advertising_platforms")
+        ad_notes = lead.website_analysis.get("advertising_evidence")
+    elif digital_intel and digital_intel.paid_advertising_signals and digital_intel.paid_advertising_signals.get("platforms"):
+        ad_platforms = digital_intel.paid_advertising_signals.get("platforms")
+        ad_notes = digital_intel.paid_advertising_signals.get("evidence")
+
+    if ad_platforms:
+        ad_evidence = {
+            "platforms": ad_platforms,
+            "notes": ad_notes,
+            "channels_involved": 3 if "," in str(ad_platforms) else 2
+        }
+        new_signals.append(build_buying_signal(
+            company_id=company_id,
+            raw_type="PAID_ACQUISITION_INVESTMENT",
+            raw_category="advertising_activity",
+            raw_source="SYSTEM_DERIVED",
+            evidence=ad_evidence,
+            detected_at=digital_intel.updated_at if digital_intel else (website_intel.updated_at if website_intel else lead.updated_at)
+        ))
+
     # Deduplicate before saving
     new_signals = deduplicate_signals(new_signals)
     new_signals = sort_signals_by_recency(new_signals)
 
     # Idempotent save: remove all ACTIVE signals for this company first, then insert new.
-    # Note: For strict event sourcing we might not delete, but instructions say:
-    # "Upsert or replace only the signals owned by the refresh operation according to the existing project pattern."
     await session.execute(
         delete(BuyingSignal).where(BuyingSignal.company_id == company_id)
     )

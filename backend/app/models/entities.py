@@ -3,7 +3,7 @@ import enum
 import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal
-from sqlalchemy import CheckConstraint, Column, Date, DateTime, Enum, ForeignKey, ForeignKeyConstraint, Index, Integer, String, Text, JSON, Float, Boolean, Uuid, Table, text, Numeric, UniqueConstraint
+from sqlalchemy import CheckConstraint, Column, Date, DateTime, Enum, ForeignKey, ForeignKeyConstraint, Index, Integer, String, Text, JSON, Float, Boolean, Uuid, Table, text, Numeric, UniqueConstraint, event
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -1319,6 +1319,100 @@ class DigitalMarketingIntelligenceProfile(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc)
 
+    @property
+    def seven_category_coverage(self) -> dict[str, dict]:
+        if isinstance(self.paid_advertising_signals, dict) and "_seven_category_coverage" in self.paid_advertising_signals:
+            return self.paid_advertising_signals["_seven_category_coverage"]
+        if isinstance(self.seo_signals, dict) and "_seven_category_coverage" in self.seo_signals:
+            return self.seo_signals["_seven_category_coverage"]
+        return {}
+
+    @property
+    def coverage_summary(self) -> dict[str, int | float]:
+        if isinstance(self.paid_advertising_signals, dict) and "_coverage_summary" in self.paid_advertising_signals:
+            return self.paid_advertising_signals["_coverage_summary"]
+        if isinstance(self.seo_signals, dict) and "_coverage_summary" in self.seo_signals:
+            return self.seo_signals["_coverage_summary"]
+        
+        cov = self.seven_category_coverage
+        if cov:
+            from app.domain.digital_marketing_intelligence import build_coverage_summary
+            return build_coverage_summary(cov)
+
+        st_map = self.category_research_status
+        researched = sum(1 for v in st_map.values() if v in ("SIGNAL_DETECTED", "NO_SIGNAL_FOUND", "RESEARCHED"))
+        partially = sum(1 for v in st_map.values() if v == "PARTIALLY_RESEARCHED")
+        unavailable = sum(1 for v in st_map.values() if v == "UNAVAILABLE")
+        not_res = sum(1 for v in st_map.values() if v == "NOT_RESEARCHED")
+        comp = round((researched / 7.0) * 100.0, 2)
+        return {
+            "researched": researched,
+            "partially_researched": partially,
+            "not_researched": not_res,
+            "unavailable": unavailable,
+            "total_categories": 7,
+            "completeness": comp,
+        }
+
+    @property
+    def category_research_status(self) -> dict[str, str]:
+        cov = self.seven_category_coverage
+        if cov:
+            result = {}
+            for cat, data in cov.items():
+                st = data.get("status", "NOT_RESEARCHED")
+                if st == "RESEARCHED":
+                    result[cat] = "SIGNAL_DETECTED" if data.get("signal_detected", True) else "NO_SIGNAL_FOUND"
+                else:
+                    result[cat] = st
+            return result
+
+        if isinstance(self.paid_advertising_signals, dict) and "_category_statuses" in self.paid_advertising_signals:
+            return self.paid_advertising_signals["_category_statuses"]
+        if isinstance(self.seo_signals, dict) and "_category_statuses" in self.seo_signals:
+            return self.seo_signals["_category_statuses"]
+
+        def _get_status(sig: dict | None, default: str = "NOT_RESEARCHED") -> str:
+            if isinstance(sig, dict) and "status" in sig:
+                return sig["status"]
+            return "SIGNAL_DETECTED" if sig else default
+
+        seo_st = _get_status(self.seo_signals)
+        paid_st = _get_status(self.paid_advertising_signals)
+        social_st = _get_status(self.social_media_signals)
+        content_st = _get_status(self.content_marketing_signals)
+
+        has_cro = False
+        has_perf = False
+        if self.marketing_gaps:
+            for g in self.marketing_gaps:
+                g_lower = str(g).lower()
+                if "conversion" in g_lower or "landing page" in g_lower or "cro" in g_lower:
+                    has_cro = True
+                if "performance" in g_lower or "speed" in g_lower:
+                    has_perf = True
+        if self.marketing_opportunities:
+            for o in self.marketing_opportunities:
+                o_lower = str(o).lower()
+                if "conversion" in o_lower or "cro" in o_lower:
+                    has_cro = True
+                if "performance" in o_lower or "speed" in o_lower:
+                    has_perf = True
+
+        cro_st = "SIGNAL_DETECTED" if has_cro else "NOT_RESEARCHED"
+        perf_st = "SIGNAL_DETECTED" if has_perf else "NOT_RESEARCHED"
+        rep_st = "NOT_RESEARCHED"
+
+        return {
+            "seo": seo_st,
+            "paid_advertising": paid_st,
+            "social_media": social_st,
+            "content_marketing": content_st,
+            "website_performance": perf_st,
+            "conversion_optimization": cro_st,
+            "online_reputation": rep_st,
+        }
+
 class BuyingSignal(Base):
     __tablename__ = "buying_signals"
     __table_args__ = (
@@ -1355,3 +1449,333 @@ class ContactIntelligenceProfile(Base):
     evaluated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc)
+
+
+DEFAULT_APPROVAL_VALIDITY_HOURS = 48
+
+
+class SupervisorHumanApproval(Base):
+    __tablename__ = "supervisor_human_approvals"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('PENDING', 'APPROVED', 'REJECTED', 'REVOKED', 'EXPIRED')",
+            name="ck_supervisor_approvals_status",
+        ),
+        CheckConstraint(
+            "action_tier IN ('INTERNAL_OPERATION', 'EXTERNAL_OUTREACH')",
+            name="ck_supervisor_approvals_action_tier",
+        ),
+        CheckConstraint(
+            "channel IS NULL OR channel IN ('EMAIL', 'PHONE', 'DIRECT', 'MULTI_CHANNEL')",
+            name="ck_supervisor_approvals_channel",
+        ),
+        Index(
+            "uq_supervisor_approvals_active_action",
+            "action_id",
+            "context_fingerprint",
+            unique=True,
+            postgresql_where=text("status = 'APPROVED'"),
+            sqlite_where=text("status = 'APPROVED'"),
+        ),
+        Index("ix_supervisor_approvals_lead_created", "lead_id", "created_at"),
+        Index("ix_supervisor_approvals_status_expiry", "status", "expires_at"),
+        Index("ix_supervisor_approvals_action_id", "action_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    action_id: Mapped[str] = mapped_column(String(180), nullable=False)
+    lead_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("leads.id", ondelete="CASCADE"), nullable=False)
+    opportunity_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    contact_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    recommended_action: Mapped[str] = mapped_column(String(60), nullable=False)
+    action_tier: Mapped[str] = mapped_column(String(30), nullable=False)
+    channel: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    context_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING", server_default="PENDING")
+    requested_by_user_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    approved_by_user_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    rejected_by_user_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    revoked_by_user_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    decision_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    execution_claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    execution_claimed_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
+
+    audit_events: Mapped[list["SupervisorApprovalAuditEvent"]] = relationship(
+        "SupervisorApprovalAuditEvent",
+        back_populates="approval",
+        cascade="save-update, merge",
+        passive_deletes=True,
+        order_by="SupervisorApprovalAuditEvent.created_at.asc()",
+        lazy="selectin",
+    )
+
+
+class SupervisorApprovalAuditEvent(Base):
+    __tablename__ = "supervisor_approval_audit_events"
+    __table_args__ = (
+        Index("ix_supervisor_audit_approval_created", "approval_id", "created_at"),
+        Index("ix_supervisor_audit_approval_ref_created", "approval_reference_id", "created_at"),
+        Index("ix_supervisor_audit_action_created", "action_id", "created_at"),
+        Index("ix_supervisor_audit_lead_created", "lead_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    approval_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("supervisor_human_approvals.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    approval_reference_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        nullable=False,
+    )
+    action_id: Mapped[str] = mapped_column(String(180), nullable=False)
+    lead_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    actor_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    actor_role: Mapped[str] = mapped_column(String(60), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    from_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    to_status: Mapped[str] = mapped_column(String(20), nullable=False)
+    context_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    metadata_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+
+    approval: Mapped["SupervisorHumanApproval | None"] = relationship(
+        "SupervisorHumanApproval",
+        back_populates="audit_events",
+        lazy="selectin",
+    )
+
+    def __init__(self, **kwargs):
+        if "approval_reference_id" not in kwargs and "approval_id" in kwargs and kwargs["approval_id"] is not None:
+            kwargs["approval_reference_id"] = kwargs["approval_id"]
+        super().__init__(**kwargs)
+
+
+@event.listens_for(SupervisorApprovalAuditEvent, "before_insert")
+def _supervisor_approval_audit_event_before_insert(mapper, connection, target):
+    if getattr(target, "approval_reference_id", None) is None:
+        if target.approval_id is not None:
+            target.approval_reference_id = target.approval_id
+        elif target.approval and target.approval.id is not None:
+            target.approval_reference_id = target.approval.id
+
+
+class SupervisorApprovalDispatchStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    IN_PROGRESS = "IN_PROGRESS"
+    SENT = "SENT"
+    FAILED = "FAILED"
+    RETRYABLE_FAILURE = "RETRYABLE_FAILURE"
+    OUTCOME_UNKNOWN = "OUTCOME_UNKNOWN"
+    ABORTED = "ABORTED"
+    RECONCILED = "RECONCILED"
+
+
+class SupervisorApprovalDispatch(Base):
+    __tablename__ = "supervisor_approval_dispatches"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('PENDING', 'IN_PROGRESS', 'SENT', 'FAILED', 'RETRYABLE_FAILURE', 'OUTCOME_UNKNOWN', 'ABORTED', 'RECONCILED')",
+            name="ck_dispatch_status",
+        ),
+        CheckConstraint(
+            "channel IN ('EMAIL', 'WHATSAPP', 'PHONE', 'WEBHOOK')",
+            name="ck_dispatch_channel",
+        ),
+        Index("uq_dispatch_idempotency_key", "idempotency_key", unique=True),
+        Index("ix_dispatch_status_next_retry", "status", "next_retry_at"),
+        Index("ix_dispatch_approval_ref_created", "approval_reference_id", "created_at"),
+        Index("ix_dispatch_lead_ref_created", "lead_reference_id", "created_at"),
+        Index("ix_dispatch_lead_created", "lead_id", "created_at"),
+        Index("ix_dispatch_stale_in_progress", "status", "last_attempt_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    approval_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("supervisor_human_approvals.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    approval_reference_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        nullable=False,
+    )
+    lead_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("leads.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    lead_reference_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        nullable=False,
+    )
+    action_id: Mapped[str] = mapped_column(String(180), nullable=False)
+    channel: Mapped[str] = mapped_column(String(30), nullable=False)
+    recipient: Mapped[str] = mapped_column(String(255), nullable=False)
+    context_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="PENDING", server_default="PENDING")
+    dispatch_worker_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    lease_generation: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    provider_name: Mapped[str] = mapped_column(String(60), nullable=False)
+    provider_message_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=3, server_default="3")
+    last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    reconciliation_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc)
+
+    approval: Mapped["SupervisorHumanApproval | None"] = relationship(
+        "SupervisorHumanApproval",
+        foreign_keys=[approval_id],
+        lazy="selectin",
+    )
+    lead: Mapped["Lead | None"] = relationship(
+        "Lead",
+        foreign_keys=[lead_id],
+        lazy="selectin",
+    )
+
+    def __init__(self, **kwargs):
+        if "approval_reference_id" not in kwargs and "approval_id" in kwargs and kwargs["approval_id"] is not None:
+            kwargs["approval_reference_id"] = kwargs["approval_id"]
+        if "lead_reference_id" not in kwargs and "lead_id" in kwargs and kwargs["lead_id"] is not None:
+            kwargs["lead_reference_id"] = kwargs["lead_id"]
+        super().__init__(**kwargs)
+
+
+@event.listens_for(SupervisorApprovalDispatch, "before_insert")
+def _supervisor_approval_dispatch_before_insert(mapper, connection, target):
+    if getattr(target, "approval_reference_id", None) is None:
+        if target.approval_id is not None:
+            target.approval_reference_id = target.approval_id
+        elif target.approval and target.approval.id is not None:
+            target.approval_reference_id = target.approval.id
+    if getattr(target, "lead_reference_id", None) is None:
+        if target.lead_id is not None:
+            target.lead_reference_id = target.lead_id
+        elif target.lead and target.lead.id is not None:
+            target.lead_reference_id = target.lead.id
+
+
+class SupervisorDispatchDeliveryEvent(Base):
+    __tablename__ = "supervisor_dispatch_delivery_events"
+    __table_args__ = (
+        CheckConstraint(
+            "event_type IN ('ACCEPTED', 'DELIVERED', 'BOUNCED', 'DROPPED', 'COMPLAINT', 'REJECTED', 'OTHER')",
+            name="ck_delivery_event_type",
+        ),
+        Index("uq_delivery_event_provider_event_id", "provider_name", "provider_event_id", unique=True),
+        Index("ix_delivery_event_provider_message_id", "provider_message_id", "created_at"),
+        Index("ix_delivery_event_dispatch_ref_created", "dispatch_reference_id", "created_at"),
+        Index("ix_delivery_event_unprocessed", "processed_for_reconciliation", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    dispatch_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("supervisor_approval_dispatches.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    dispatch_reference_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        nullable=True,
+    )
+    lead_reference_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        nullable=True,
+    )
+    provider_name: Mapped[str] = mapped_column(String(60), nullable=False)
+    provider_message_id: Mapped[str] = mapped_column(String(512), nullable=False)
+    provider_event_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    raw_event_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    event_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+    recipient_masked: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    bounce_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    bounce_code: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    bounce_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    metadata_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    processed_for_reconciliation: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+
+    dispatch: Mapped["SupervisorApprovalDispatch | None"] = relationship(
+        "SupervisorApprovalDispatch",
+        foreign_keys=[dispatch_id],
+        lazy="selectin",
+    )
+
+
+class CanaryFlightStatus(str, enum.Enum):
+    PENDING_APPROVAL = "PENDING_APPROVAL"
+    AUTHORIZED = "AUTHORIZED"
+    REJECTED = "REJECTED"
+    EXPIRED = "EXPIRED"
+    REVOKED = "REVOKED"
+    EXHAUSTED = "EXHAUSTED"
+
+
+class CanaryFlightAuthorization(Base):
+    __tablename__ = "canary_flight_authorizations"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('PENDING_APPROVAL', 'AUTHORIZED', 'REJECTED', 'EXPIRED', 'REVOKED', 'EXHAUSTED')",
+            name="ck_canary_flight_status",
+        ),
+        Index("ix_canary_flight_status_expires", "status", "expires_at"),
+        Index("ix_canary_flight_fingerprint", "scope_fingerprint"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    flight_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    environment: Mapped[str] = mapped_column(String(30), nullable=False, default="staging")
+    provider_name: Mapped[str] = mapped_column(String(60), nullable=False, default="RESEND")
+    channel: Mapped[str] = mapped_column(String(30), nullable=False, default="EMAIL", server_default="EMAIL")
+    sender_identity: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    allowed_domains_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    max_messages: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
+    dispatched_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    max_concurrency: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    rate_limit_per_second: Mapped[float] = mapped_column(Float, nullable=False, default=0.2)
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    scope_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="PENDING_APPROVAL", server_default="PENDING_APPROVAL")
+    execution_authorized: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+
+    # Signer 1 (e.g. Lead Architect / Engineering Lead)
+    signer_1_user_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    signer_1_role: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    signer_1_signed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Signer 2 (e.g. Security / Compliance Officer)
+    signer_2_user_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    signer_2_role: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    signer_2_signed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Rejection / Revocation
+    rejection_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    revoked_by_user_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revocation_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc)
+
+

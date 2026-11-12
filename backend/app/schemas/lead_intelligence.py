@@ -1,8 +1,12 @@
-from datetime import datetime
+import uuid
+from datetime import datetime, timezone
 from uuid import UUID
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from typing import List, Optional, Dict, Any
 from app.models.entities import ConfidenceLevel, SourceType
+
+def _utc_now():
+    return datetime.now(timezone.utc)
 
 class IntelligenceCompanyProfile(BaseModel):
     name: Optional[str] = None
@@ -33,33 +37,41 @@ class IntelligenceDigitalPresence(BaseModel):
     other_urls: List[str] = []
 
 class IntelligencePainPoint(BaseModel):
-    id: UUID
+    id: UUID = Field(default_factory=uuid.uuid4)
     title: str
     description: Optional[str] = None
     source_type: SourceType
     source_reference: Optional[str] = None
     confidence: ConfidenceLevel
-    created_at: datetime
-    updated_at: datetime
+    created_at: datetime = Field(default_factory=_utc_now)
+    updated_at: datetime = Field(default_factory=_utc_now)
 
     model_config = ConfigDict(from_attributes=True)
 
 class IntelligenceOpportunity(BaseModel):
-    id: UUID
+    id: UUID = Field(default_factory=uuid.uuid4)
     title: str
     description: Optional[str] = None
     opportunity_type: Optional[str] = None
+    opportunity_category: Optional[str] = None
+    recommended_service: Optional[str] = None
+    commercial_relevance: Optional[str] = None
+    suggested_next_action: Optional[str] = None
+    status: Optional[str] = "ACTIVE"
+    opportunity_status: Optional[str] = "ACTIVE"
     score: Optional[int] = None
     priority: Optional[str] = None
     recommended_action: Optional[str] = None
     evidence: Optional[Dict[str, Any]] = None
+    evidence_source: Optional[str] = None
     source_type: SourceType
     source_reference: Optional[str] = None
     confidence: ConfidenceLevel
     related_task_id: Optional[UUID] = None
     related_task_status: Optional[str] = None
-    created_at: datetime
-    updated_at: datetime
+    last_evaluated: Optional[Any] = None
+    created_at: datetime = Field(default_factory=_utc_now)
+    updated_at: datetime = Field(default_factory=_utc_now)
 
     model_config = ConfigDict(from_attributes=True)
 

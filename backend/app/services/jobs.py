@@ -98,6 +98,12 @@ async def run_job(
             )
             await derive_and_persist_intelligence(factory, lead.id, enrichment_run.id)
             intelligence_score_applied = True
+            try:
+                from app.services.unified_intelligence import sync_unified_intelligence_for_lead
+                async with factory() as sync_session:
+                    await sync_unified_intelligence_for_lead(sync_session, lead.id, session_factory=factory)
+            except Exception as sync_exc:
+                logger.warning("Unified intelligence sync during job execution non-fatal: %s", sync_exc)
             await session.refresh(lead)
             advance_checkpoint(job, "WEBSITE_ANALYZED"); await session.commit()
         else:

@@ -1,0 +1,50 @@
+{
+  "action_planner_run1": {
+    "model_identifier": "qwen2.5-coder:latest",
+    "prompt_version": "ai-sales-action-planner-prompt-v1",
+    "contract_version": "ai-sales-action-planner-v1",
+    "duration_seconds": 129.7,
+    "output_token_count": 180,
+    "number_of_actions": 1,
+    "schema_validation_result": "PASSED",
+    "evidence_validation_result": "PASSED",
+    "persistence_result": "PERSISTED",
+    "error_details": null
+  },
+  "action_planner_run2": {
+    "model_identifier": "qwen2.5-coder:latest",
+    "prompt_version": "ai-sales-action-planner-prompt-v1",
+    "contract_version": "ai-sales-action-planner-v1",
+    "duration_seconds": 67.34,
+    "output_token_count": 180,
+    "number_of_actions": 1,
+    "schema_validation_result": "PASSED",
+    "evidence_validation_result": "PASSED",
+    "persistence_result": "PERSISTED",
+    "error_details": null
+  },
+  "proposal_intelligence": {
+    "model_identifier": "qwen2.5-coder:latest",
+    "prompt_version": "ai-proposal-intelligence-prompt-v1",
+    "contract_version": "ai-proposal-intelligence-v1",
+    "duration_seconds": 263.53,
+    "output_token_count": 577,
+    "schema_validation_result": "PASSED",
+    "evidence_validation_result": "PASSED",
+    "persistence_result": "PERSISTED",
+    "error_details": null,
+    "proposal_type": "COMMERCIAL_REVIEW"
+  },
+  "sales_intelligence": {
+    "model_identifier": "qwen2.5-coder:latest",
+    "prompt_version": "ai-sales-intelligence-prompt-v1",
+    "contract_version": "ai-sales-intelligence-v1",
+    "duration_seconds": 167.91,
+    "output_token_count": 347,
+    "schema_validation_result": "PASSED",
+    "evidence_validation_result": "PASSED",
+    "persistence_result": "PERSISTED",
+    "error_details": null,
+    "summary_claims_count": 1
+  }
+}

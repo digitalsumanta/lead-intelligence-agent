@@ -17,11 +17,12 @@ class OllamaProvider(AIProvider):
 
     name = "ollama"
 
-    def __init__(self, base_url: str | None = None, model: str | None = None, *, execution: ProviderExecutionService | None = None, client_factory=None):
+    def __init__(self, base_url: str | None = None, model: str | None = None, *, execution: ProviderExecutionService | None = None, client_factory=None, timeout_seconds: float | None = None):
         self.base_url = (base_url or settings.ollama_base_url).rstrip("/")
         self.model = model or settings.ollama_model
         self.execution = execution
         self.client_factory = client_factory or httpx.AsyncClient
+        self.timeout = timeout_seconds if timeout_seconds is not None else getattr(settings, "ai_ollama_timeout_seconds", settings.request_timeout_seconds)
 
     async def generate(self, prompt: str | AIRequest) -> str | AIResponse:
         if isinstance(prompt, str):
@@ -34,7 +35,7 @@ class OllamaProvider(AIProvider):
 
     async def _request(self, payload: dict):
         async def send(_credential):
-            async with self.client_factory(timeout=settings.request_timeout_seconds, follow_redirects=False) as client:
+            async with self.client_factory(timeout=self.timeout, follow_redirects=False) as client:
                 response = await client.post(f"{self.base_url}/api/generate", json=payload)
             if 200 <= response.status_code < 300:
                 try:
@@ -46,7 +47,7 @@ class OllamaProvider(AIProvider):
             return response
 
         if self.execution is None:
-            async with self.client_factory(timeout=settings.request_timeout_seconds, follow_redirects=False) as client:
+            async with self.client_factory(timeout=self.timeout, follow_redirects=False) as client:
                 response = await client.post(f"{self.base_url}/api/generate", json=payload)
             response.raise_for_status()
             try:

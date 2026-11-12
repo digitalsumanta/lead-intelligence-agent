@@ -17,6 +17,9 @@ class DigitalMarketingIntelligenceProfileSchema(BaseModel):
     source_type: SourceType
     confidence: ConfidenceLevel
     completeness: float
+    category_research_status: Optional[Dict[str, str]] = None
+    seven_category_coverage: Optional[Dict[str, Dict[str, Any]]] = None
+    coverage_summary: Optional[Dict[str, Any]] = None
     created_at: datetime
     updated_at: datetime
 

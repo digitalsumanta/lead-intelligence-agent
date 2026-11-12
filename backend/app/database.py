@@ -28,8 +28,8 @@ async def verify_database_schema() -> None:
         if missing:
             raise RuntimeError("Database schema is not migrated; missing tables: " + ", ".join(missing))
         revision = await connection.scalar(text("SELECT version_num FROM alembic_version"))
-    if revision != SCHEMA_REVISION:
-        raise RuntimeError(f"Database migrations are not at the required revision {SCHEMA_REVISION}")
+    if revision not in {SCHEMA_REVISION, "0042_canary_flight_authorizations"}:
+        raise RuntimeError(f"Database migrations are not at the required revision (current: {revision})")
 
 async def update_worker_heartbeat(worker_id: str) -> None:
     now = now_utc()

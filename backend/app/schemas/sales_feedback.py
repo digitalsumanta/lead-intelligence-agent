@@ -30,6 +30,8 @@ class ActionPerformanceSummary(BaseModel):
     positive_rate: float
     negative_rate: float
     neutral_rate: float
+    verified_executions: int = 0
+    verified_positive_rate: Optional[float] = None
 
 
 class SalesFeedbackSummaryResponse(BaseModel):
@@ -43,6 +45,8 @@ class SalesFeedbackSummaryResponse(BaseModel):
     positive_rate: float
     negative_rate: float
     neutral_rate: float
+    verified_executions: int = 0
+    verified_positive_rate: Optional[float] = None
     outcome_distribution: Dict[str, int]
     action_performance: Dict[str, ActionPerformanceSummary]
     attribution_summary: Dict[str, int]

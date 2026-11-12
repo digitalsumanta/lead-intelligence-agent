@@ -1,51 +1,99 @@
 services:
-  postgres:
+  database:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-lead_agent}
       POSTGRES_USER: ${POSTGRES_USER:-lead_agent}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
-    volumes: ["postgres_data:/var/lib/postgresql/data"]
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lead_agent_local_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      default:
+        aliases:
+          - postgres
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lead_agent} -d ${POSTGRES_DB:-lead_agent}"]
       interval: 5s
       timeout: 3s
       retries: 20
+      start_period: 5s
+
   backend:
     build:
-      context: .
-      dockerfile: docker/backend/Dockerfile
-    env_file: .env
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-lead_agent}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-lead_agent}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-lead_agent}:${POSTGRES_PASSWORD:-lead_agent_local_password}@database:5432/${POSTGRES_DB:-lead_agent}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       API_AUTH_TOKEN: ${API_AUTH_TOKEN:-}
-    ports: ["8000:8000"]
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3001}
+      OUTREACH_DISPATCH_ENABLED: "false"
+      OUTREACH_CANARY_MODE: "false"
+    ports:
+      - "8000:8000"
     depends_on:
-      postgres: { condition: service_healthy }
-  worker:
+      database:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  outbox_worker:
     build:
-      context: .
-      dockerfile: docker/backend/Dockerfile
-    env_file: .env
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-lead_agent}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-lead_agent}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-lead_agent}:${POSTGRES_PASSWORD:-lead_agent_local_password}@database:5432/${POSTGRES_DB:-lead_agent}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       API_AUTH_TOKEN: ${API_AUTH_TOKEN:-}
-    command: ["python", "-m", "app.workers.runner"]
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3001}
+      OUTREACH_DISPATCH_ENABLED: "false"
+      OUTREACH_CANARY_MODE: "false"
+    command: ["python", "-m", "app.worker"]
+    healthcheck:
+      disable: true
     depends_on:
-      backend: { condition: service_healthy }
+      backend:
+        condition: service_healthy
+
   frontend:
     build:
-      context: .
-      dockerfile: docker/frontend/Dockerfile
+      context: ./frontend
+      dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
-        NEXT_PUBLIC_API_TOKEN: ${NEXT_PUBLIC_API_TOKEN:-}
+        NEXT_PUBLIC_API_TOKEN: ${NEXT_PUBLIC_API_TOKEN:-${API_AUTH_TOKEN:-}}
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
-      NEXT_PUBLIC_API_TOKEN: ${NEXT_PUBLIC_API_TOKEN:-}
-    ports: ["3000:3000"]
-    depends_on: [backend]
+      NEXT_PUBLIC_API_TOKEN: ${NEXT_PUBLIC_API_TOKEN:-${API_AUTH_TOKEN:-}}
+    ports:
+      - "3001:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
 volumes:
   postgres_data:
+    name: lead_intelligence_postgres_data

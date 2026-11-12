@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
-import { api, ApiError, CommercialRecord, IntelligenceClaim, IntelligenceResponse, LeadIntelligenceProfileSchema, CompanyEnrichmentProfileSchema, WebsiteIntelligenceProfileSchema, DigitalMarketingIntelligenceProfileSchema, BuyingSignalSchema, BuyingSignalsResponse, IntelligenceOpportunity, SalesOpportunitiesResponse, LeadDetail, OutreachArtifact, OutreachChannel, OutreachContent, OutreachExecution, OutreachReadResponse, SalesActivity, SalesActivityOutcome, SalesActivityType, SalesCollection, SalesPriority, SalesStatus, SalesTask, SalesTaskCreate, SalesTaskStatus, SalesTaskType, SalesWorkflow } from "@/lib/api";
+import { api, ApiError, CommercialRecord, IntelligenceClaim, IntelligenceResponse, LeadIntelligenceProfileSchema, CompanyEnrichmentProfileSchema, WebsiteIntelligenceProfileSchema, DigitalMarketingIntelligenceProfileSchema, CategoryFinding, CoverageSummary, researchDigitalMarketingCategory, refreshDigitalMarketingIntelligence, BuyingSignalSchema, BuyingSignalsResponse, IntelligenceOpportunity, SalesOpportunitiesResponse, LeadDetail, OutreachArtifact, OutreachChannel, OutreachContent, OutreachExecution, OutreachReadResponse, SalesActivity, SalesActivityOutcome, SalesActivityType, SalesCollection, SalesPriority, SalesStatus, SalesTask, SalesTaskCreate, SalesTaskStatus, SalesTaskType, SalesWorkflow } from "@/lib/api";
 import SeoSection from "./seo-section";
 import AISalesIntelligence from "./ai-sales-intelligence";
 import AISalesCopilot from "./ai-sales-copilot";
@@ -11,6 +11,7 @@ import AISalesActionPlanner from "./ai-sales-action-planner";
 import AIProposalIntelligence from "./ai-proposal-intelligence";
 import AgentPolicy from "./agent-policy";
 import LeadIntelligenceOrchestrator from "./lead-intelligence-orchestrator";
+import LeadQualificationPanel from "./lead-qualification-panel";
 
 const NEXT_SALES_STATUS: Record<SalesStatus, SalesStatus[]> = {
   NEW: ["QUALIFIED", "CONTACTED", "LOST"], QUALIFIED: ["CONTACTED", "LOST"],
@@ -487,6 +488,174 @@ function ClaimSection({ title, claims }: { title: string; claims: IntelligenceCl
   </section>;
 }
 
+function SignalCategoryCard({
+  categoryKey,
+  title,
+  finding,
+  legacySignal,
+  defaultReason,
+  hasOpportunity,
+  isBusy,
+  onResearch,
+  onRetry,
+  onViewEvidence,
+  onViewOpportunity,
+}: {
+  categoryKey: string;
+  title: string;
+  finding?: CategoryFinding | null;
+  legacySignal?: Record<string, any> | null;
+  defaultReason: string;
+  hasOpportunity: boolean;
+  isBusy: boolean;
+  onResearch: (key: string) => void;
+  onRetry: (key: string) => void;
+  onViewEvidence: (key: string) => void;
+  onViewOpportunity: (key: string) => void;
+}) {
+  const rawStatus = finding?.status || legacySignal?.status;
+  const status = rawStatus || (legacySignal && Object.keys(legacySignal).length > 0 ? "SIGNAL_DETECTED" : "NOT_RESEARCHED");
+
+  const badgeConfig: Record<string, { label: string; bg: string; text: string; border: string }> = {
+    RESEARCHED: {
+      label: finding?.signal_detected !== false ? "Researched · Signal Detected" : "Researched · No Signal",
+      bg: finding?.signal_detected !== false ? "bg-emerald-50" : "bg-slate-50",
+      text: finding?.signal_detected !== false ? "text-emerald-700" : "text-slate-700",
+      border: finding?.signal_detected !== false ? "border-emerald-200" : "border-slate-200",
+    },
+    SIGNAL_DETECTED: { label: "Signal Detected", bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200" },
+    NO_SIGNAL_FOUND: { label: "No Signal Found", bg: "bg-slate-50", text: "text-slate-600", border: "border-slate-200" },
+    PARTIALLY_RESEARCHED: { label: "Partially Researched", bg: "bg-indigo-50", text: "text-indigo-700", border: "border-indigo-200" },
+    NOT_RESEARCHED: { label: "Not Researched", bg: "bg-amber-50", text: "text-amber-700", border: "border-amber-200" },
+    RESEARCH_FAILED: { label: "Research Failed", bg: "bg-rose-50", text: "text-rose-700", border: "border-rose-200" },
+    UNAVAILABLE: { label: "Unavailable", bg: "bg-zinc-50", text: "text-zinc-600", border: "border-zinc-200" },
+  };
+
+  const badge = badgeConfig[status] || badgeConfig.NOT_RESEARCHED;
+  const displayText = finding?.finding || legacySignal?.reason || defaultReason;
+  const isResearched = status === "RESEARCHED" || status === "SIGNAL_DETECTED" || status === "NO_SIGNAL_FOUND";
+  const isUnavailable = status === "UNAVAILABLE";
+
+  return (
+    <div className="flex flex-col justify-between rounded-lg border border-slate-200 bg-white p-4 shadow-sm hover:border-slate-300 transition-colors">
+      <div>
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-700">{title}</span>
+          <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold tracking-wide ${badge.bg} ${badge.text} ${badge.border}`}>
+            {badge.label}
+          </span>
+        </div>
+
+        <div className="mt-2.5 text-xs text-slate-700 space-y-2">
+          <p className="leading-relaxed text-slate-800">{displayText}</p>
+
+          {finding?.problem_identified && (
+            <div className="rounded-md border border-rose-200 bg-rose-50/70 p-2.5 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-rose-800">
+                  Problem Severity: {finding.problem_severity?.toUpperCase()}
+                </span>
+                {finding.confidence_score > 0 && (
+                  <span className="text-[10px] font-medium text-rose-600">{finding.confidence_score}% Confidence</span>
+                )}
+              </div>
+              <p className="font-semibold text-rose-950 text-xs">{finding.problem_summary}</p>
+              {finding.recommended_service && (
+                <div className="pt-1 text-[11px] text-rose-900 font-medium">
+                  Recommended Service: <span className="font-bold underline">{finding.recommended_service}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {finding?.diagnostic_reason && (
+            <div className="rounded-md border border-zinc-200 bg-zinc-50 p-2 text-[11px] text-zinc-600 italic">
+              Diagnostic: {finding.diagnostic_reason}
+            </div>
+          )}
+
+          {legacySignal?.platforms && (
+            <div>
+              <span className="font-semibold text-slate-900">Platforms: </span>
+              <span className="text-slate-800">{Array.isArray(legacySignal.platforms) ? legacySignal.platforms.join(", ") : legacySignal.platforms}</span>
+            </div>
+          )}
+
+          {legacySignal?.social_links && Array.isArray(legacySignal.social_links) && (
+            <div>
+              <span className="font-semibold text-slate-900">Detected Links:</span>
+              <ul className="mt-1 list-disc pl-4 space-y-0.5">
+                {legacySignal.social_links.slice(0, 3).map((link: string, i: number) => (
+                  <li key={i}><a href={link} target="_blank" rel="noopener noreferrer" className="text-teal hover:underline break-all">{link}</a></li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {finding?.source_name && (
+            <div className="pt-1 text-[10px] text-slate-400">
+              Source: {finding.source_name} {finding.verified_fact_or_inference === "verified_fact" ? "· Verified Fact" : "· Supported Inference"}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-4 pt-3 border-t border-slate-100 flex flex-wrap items-center gap-1.5 text-xs">
+        {status === "NOT_RESEARCHED" && (
+          <button
+            type="button"
+            disabled={isBusy}
+            onClick={() => onResearch(categoryKey)}
+            className="rounded bg-teal px-2.5 py-1 font-semibold text-white hover:bg-teal/90 disabled:opacity-50"
+          >
+            {isBusy ? "Researching..." : "Research Category"}
+          </button>
+        )}
+
+        {isUnavailable && (
+          <button
+            type="button"
+            disabled={isBusy}
+            onClick={() => onRetry(categoryKey)}
+            className="rounded border border-zinc-300 bg-white px-2.5 py-1 font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+          >
+            {isBusy ? "Retrying..." : "Retry Unavailable Research"}
+          </button>
+        )}
+
+        {(isResearched || status === "PARTIALLY_RESEARCHED") && (
+          <>
+            <button
+              type="button"
+              disabled={isBusy}
+              onClick={() => onResearch(categoryKey)}
+              className="rounded border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              {isBusy ? "Auditing..." : "Re-audit"}
+            </button>
+            <button
+              type="button"
+              onClick={() => onViewEvidence(categoryKey)}
+              className="rounded border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+            >
+              View Evidence
+            </button>
+            {hasOpportunity && (
+              <button
+                type="button"
+                onClick={() => onViewOpportunity(categoryKey)}
+                className="rounded bg-amber-100/80 border border-amber-300 px-2.5 py-1 text-[11px] font-bold text-amber-900 hover:bg-amber-200/80"
+              >
+                View Opportunity
+              </button>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function LeadDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [lead, setLead] = useState<LeadDetail | null>(null);
@@ -497,7 +666,80 @@ export default function LeadDetailPage() {
   const [intelligenceState, setIntelligenceState] = useState<"loading" | "available" | "unavailable" | "error">("loading");
   const [intelligenceRetry, setIntelligenceRetry] = useState(0);
   const [taskRefreshKey, setTaskRefreshKey] = useState(0);
+  const [editingPhone, setEditingPhone] = useState(false);
+  const [phoneValue, setPhoneValue] = useState("");
+  const [savingPhone, setSavingPhone] = useState(false);
+
+  async function savePhone() {
+    if (!lead) return;
+    setSavingPhone(true);
+    try {
+      const updated = await api<LeadDetail>(`/api/leads/${encodeURIComponent(lead.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: phoneValue || null }),
+      });
+      setLead(updated);
+      setEditingPhone(false);
+    } catch (err: any) {
+      alert("Failed to save phone: " + (err?.message || String(err)));
+    } finally {
+      setSavingPhone(false);
+    }
+  }
   const [newOutcomeActivity, setNewOutcomeActivity] = useState<SalesActivity | null>(null);
+  const [refreshingAll, setRefreshingAll] = useState(false);
+  const [researchingCategory, setResearchingCategory] = useState<string | null>(null);
+
+  async function handleCategoryAction(categoryKey: string, retry = false) {
+    if (!id) return;
+    setResearchingCategory(categoryKey);
+    setError("");
+    try {
+      const updated = await researchDigitalMarketingCategory(id, categoryKey, retry);
+      setDigitalMarketingIntelligence(updated);
+      const [bs, opps] = await Promise.all([
+        api<BuyingSignalsResponse>(`/api/leads/${encodeURIComponent(id)}/buying-signals`).catch(() => null),
+        api<SalesOpportunitiesResponse>(`/api/leads/${encodeURIComponent(id)}/sales-opportunities`).catch(() => null),
+      ]);
+      if (bs) setBuyingSignals(bs.signals);
+      if (opps) setSalesOpportunities(opps.opportunities);
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.message : "Category research failed.");
+    } finally {
+      setResearchingCategory(null);
+    }
+  }
+
+  async function handleUnifiedResearchRefresh() {
+    setRefreshingAll(true);
+    setError("");
+    try {
+      const updatedProf = await api<LeadIntelligenceProfileSchema>(`/api/leads/${encodeURIComponent(id)}/intelligence/refresh`, { method: "POST" });
+      setProfile(updatedProf);
+      const [compEnr, webIntel, dmIntel, bs, opps] = await Promise.all([
+        api<CompanyEnrichmentProfileSchema>(`/api/leads/${encodeURIComponent(id)}/company-enrichment`).catch(() => null),
+        api<WebsiteIntelligenceProfileSchema>(`/api/leads/${encodeURIComponent(id)}/website-intelligence`).catch(() => null),
+        api<DigitalMarketingIntelligenceProfileSchema>(`/api/leads/${encodeURIComponent(id)}/digital-marketing-intelligence`).catch(() => null),
+        api<BuyingSignalsResponse>(`/api/leads/${encodeURIComponent(id)}/buying-signals`).catch(() => null),
+        api<SalesOpportunitiesResponse>(`/api/leads/${encodeURIComponent(id)}/sales-opportunities`).catch(() => null),
+      ]);
+      if (compEnr) setCompanyEnrichment(compEnr);
+      if (webIntel) setWebsiteIntelligence(webIntel);
+      if (dmIntel) setDigitalMarketingIntelligence(dmIntel);
+      if (bs) setBuyingSignals(bs.signals);
+      if (opps) setSalesOpportunities(opps.opportunities);
+      try {
+        const detail = await api<IntelligenceResponse>(`/api/leads/${encodeURIComponent(id)}/enrichment`);
+        setIntelligence(detail);
+        setIntelligenceState("available");
+      } catch {}
+    } catch (err: any) {
+      setError("Research refresh failed: " + (err?.message || String(err)));
+    } finally {
+      setRefreshingAll(false);
+    }
+  }
 
   useEffect(() => {
     let current = true;
@@ -557,9 +799,19 @@ export default function LeadDetailPage() {
           <h1 className="mt-2 text-3xl font-bold tracking-tight text-ink">{lead.company_name}</h1>
           <p className="mt-2 text-slate-500">{[lead.industry, lead.city, lead.state, lead.country].filter(Boolean).join(" · ") || "Business profile"}</p>
         </div>
-        <span className={`rounded-full px-3 py-1.5 text-sm font-semibold ${intelligenceState === "available" ? "bg-emerald-50 text-emerald-700" : intelligenceState === "error" ? "bg-rose-50 text-rose-700" : "bg-slate-100 text-slate-600"}`}>
-          {intelligenceState === "available" ? "Intelligence available" : intelligenceState === "unavailable" ? "Intelligence unavailable" : intelligenceState === "error" ? "Intelligence request failed" : "Loading intelligence"}
-        </span>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            disabled={refreshingAll}
+            onClick={handleUnifiedResearchRefresh}
+            className="rounded-lg bg-teal px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal/90 disabled:opacity-50"
+          >
+            {refreshingAll ? "Researching..." : "Run Research & Enrichment"}
+          </button>
+          <span className={`rounded-full px-3 py-1.5 text-sm font-semibold ${intelligenceState === "available" ? "bg-emerald-50 text-emerald-700" : intelligenceState === "error" ? "bg-rose-50 text-rose-700" : "bg-slate-100 text-slate-600"}`}>
+            {intelligenceState === "available" ? "Intelligence available" : intelligenceState === "unavailable" ? "Intelligence unavailable" : intelligenceState === "error" ? "Intelligence request failed" : "Loading intelligence"}
+          </span>
+        </div>
       </header>
 
       {error && <div role="alert" className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">{error}</div>}
@@ -572,14 +824,14 @@ export default function LeadDetailPage() {
           {profile && (
             <div className="mt-2 text-xs font-semibold text-teal">
               Intelligence Completeness: {profile.intelligence_quality.completeness_score.toFixed(0)}%
-              <button onClick={() => api<LeadIntelligenceProfileSchema>(`/api/leads/${lead.id}/intelligence/refresh`, {method:"POST"}).then(p => setProfile(p))} className="ml-3 underline text-teal">Refresh</button>
+              <button onClick={handleUnifiedResearchRefresh} disabled={refreshingAll} className="ml-3 underline text-teal">Refresh</button>
             </div>
           )}
           <dl className="mt-4 grid gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
             <div><dt className="text-xs font-semibold uppercase text-slate-400">Website</dt><dd className="mt-1 break-all">{lead.website ? websiteUrl ? <a className="text-teal hover:underline" href={websiteUrl} target="_blank" rel="noreferrer">{lead.website}</a> : lead.website : "—"}</dd></div>
             <div><dt className="text-xs font-semibold uppercase text-slate-400">Business status</dt><dd className="mt-1">{lead.status}</dd></div>
             <div><dt className="text-xs font-semibold uppercase text-slate-400">Email</dt><dd className="mt-1 break-all">{lead.email || "—"}</dd></div>
-            <div><dt className="text-xs font-semibold uppercase text-slate-400">Phone</dt><dd className="mt-1">{lead.phone || "—"}</dd></div>
+            <div><dt className="text-xs font-semibold uppercase text-slate-400">Phone</dt>{editingPhone ? (<div className="mt-1 flex items-center gap-2"><input type="text" value={phoneValue} onChange={(e) => setPhoneValue(e.target.value)} placeholder="+1..." className="rounded border border-slate-300 px-2 py-1 text-xs" /><button disabled={savingPhone} onClick={savePhone} className="rounded bg-teal px-2 py-1 text-xs font-semibold text-white disabled:opacity-50">{savingPhone ? "Saving…" : "Save"}</button><button disabled={savingPhone} onClick={() => { setEditingPhone(false); setPhoneValue(lead.phone || ""); }} className="text-xs text-slate-500 hover:underline">Cancel</button></div>) : (<dd className="mt-1 flex items-center gap-2"><span>{lead.phone || "—"}</span><button type="button" onClick={() => { setPhoneValue(lead.phone || ""); setEditingPhone(true); }} className="text-xs font-medium text-teal hover:underline">{lead.phone ? "Edit" : "Add phone"}</button></dd>)}</div>
             <div className="sm:col-span-2"><dt className="text-xs font-semibold uppercase text-slate-400">Address</dt><dd className="mt-1">{[lead.address, lead.city, lead.state, lead.country].filter(Boolean).join(", ") || "—"}</dd></div>
           </dl>
         </article>
@@ -588,7 +840,7 @@ export default function LeadDetailPage() {
           <div className="flex items-center justify-between">
             <h2 className="font-bold text-ink">Company Enrichment</h2>
             <button
-              onClick={() => api<CompanyEnrichmentProfileSchema>(`/api/companies/${lead.id}/enrichment/refresh`, {method: "POST"}).then(p => setCompanyEnrichment(p))}
+              onClick={handleUnifiedResearchRefresh} disabled={refreshingAll}
               className="text-xs font-semibold text-teal underline"
             >
               Refresh
@@ -596,12 +848,30 @@ export default function LeadDetailPage() {
           </div>
           {companyEnrichment ? (
             <div className="mt-4 grid gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
-              <div><dt className="text-xs font-semibold uppercase text-slate-400">Legal Name</dt><dd className="mt-1">{companyEnrichment.legal_name || "-"}</dd></div>
+              <div><dt className="text-xs font-semibold uppercase text-slate-400">Legal Name</dt><dd className="mt-1 font-medium">{companyEnrichment.legal_name || "-"}</dd></div>
               <div><dt className="text-xs font-semibold uppercase text-slate-400">Domain</dt><dd className="mt-1">{companyEnrichment.domain || "-"}</dd></div>
-              <div><dt className="text-xs font-semibold uppercase text-slate-400">Industry</dt><dd className="mt-1">{companyEnrichment.normalized_industry || "-"}</dd></div>
+              <div>
+                <dt className="text-xs font-semibold uppercase text-slate-400">Industry</dt>
+                <dd className="mt-1 flex flex-wrap items-center gap-1.5">
+                  <span className="font-medium text-slate-900">{companyEnrichment.industry || companyEnrichment.normalized_industry || "-"}</span>
+                  {companyEnrichment.normalized_industry && companyEnrichment.normalized_industry !== "UNKNOWN" && (
+                    <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 uppercase">
+                      {companyEnrichment.normalized_industry}
+                    </span>
+                  )}
+                </dd>
+              </div>
               <div><dt className="text-xs font-semibold uppercase text-slate-400">Location</dt><dd className="mt-1">{companyEnrichment.location || "-"}</dd></div>
+              <div><dt className="text-xs font-semibold uppercase text-slate-400">Company Size</dt><dd className="mt-1">{companyEnrichment.normalized_company_size || companyEnrichment.company_size || "-"}</dd></div>
+              <div><dt className="text-xs font-semibold uppercase text-slate-400">Source</dt><dd className="mt-1">{companyEnrichment.source}</dd></div>
               <div><dt className="text-xs font-semibold uppercase text-slate-400">Confidence</dt><dd className="mt-1">{companyEnrichment.confidence}</dd></div>
-              <div><dt className="text-xs font-semibold uppercase text-slate-400">Completeness</dt><dd className="mt-1">{companyEnrichment.completeness_percent.toFixed(0)}%</dd></div>
+              <div><dt className="text-xs font-semibold uppercase text-slate-400">Completeness</dt><dd className="mt-1 font-semibold">{companyEnrichment.completeness_percent.toFixed(0)}%</dd></div>
+              {companyEnrichment.description && (
+                <div className="sm:col-span-2 pt-2 border-t border-slate-100">
+                  <dt className="text-xs font-semibold uppercase text-slate-400">Description</dt>
+                  <dd className="mt-1 text-slate-700">{companyEnrichment.description}</dd>
+                </div>
+              )}
             </div>
           ) : (
             <p className="mt-4 text-sm text-slate-500">No company enrichment profile available.</p>
@@ -612,7 +882,7 @@ export default function LeadDetailPage() {
           <div className="flex items-center justify-between">
             <h2 className="font-bold text-ink">Website Intelligence</h2>
             <button
-              onClick={() => api<WebsiteIntelligenceProfileSchema>(`/api/companies/${lead.id}/website-intelligence/refresh`, {method: "POST"}).then(p => setWebsiteIntelligence(p))}
+              onClick={handleUnifiedResearchRefresh} disabled={refreshingAll}
               className="text-xs font-semibold text-teal underline"
             >
               Refresh
@@ -646,37 +916,120 @@ export default function LeadDetailPage() {
 
         <article id="digital-marketing-intelligence" className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm mt-4">
           <div className="flex items-center justify-between">
-            <h2 className="font-bold text-ink">Digital Marketing Intelligence</h2>
+            <div>
+              <h2 className="font-bold text-ink">Digital Marketing Intelligence</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Canonical 7-category evidence engine with verified problem qualification</p>
+            </div>
             <button
-              onClick={() => api<DigitalMarketingIntelligenceProfileSchema>(`/api/companies/${lead.id}/digital-marketing-intelligence/refresh`, {method: "POST"}).then(p => setDigitalMarketingIntelligence(p))}
-              className="text-xs font-semibold text-teal underline"
+              onClick={handleUnifiedResearchRefresh} disabled={refreshingAll}
+              className="rounded-lg bg-teal px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-teal/90 disabled:opacity-50"
             >
-              Refresh
+              {refreshingAll ? "Researching..." : "Refresh All Research"}
             </button>
           </div>
           {digitalMarketingIntelligence ? (
-            <div className="mt-4 grid gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
-              <div><dt className="text-xs font-semibold uppercase text-slate-400">Marketing Maturity</dt><dd className="mt-1 font-semibold">{digitalMarketingIntelligence.marketing_maturity}</dd></div>
-              <div><dt className="text-xs font-semibold uppercase text-slate-400">Completeness</dt><dd className="mt-1">{digitalMarketingIntelligence.completeness.toFixed(0)}%</dd></div>
-              <div className="sm:col-span-2"><dt className="text-xs font-semibold uppercase text-slate-400">SEO Signals</dt><dd className="mt-1">{digitalMarketingIntelligence.seo_signals ? JSON.stringify(digitalMarketingIntelligence.seo_signals) : "None"}</dd></div>
-              <div className="sm:col-span-2"><dt className="text-xs font-semibold uppercase text-slate-400">Paid Advertising Signals</dt><dd className="mt-1">{digitalMarketingIntelligence.paid_advertising_signals ? JSON.stringify(digitalMarketingIntelligence.paid_advertising_signals) : "None"}</dd></div>
-              <div className="sm:col-span-2"><dt className="text-xs font-semibold uppercase text-slate-400">Social Media Signals</dt><dd className="mt-1">{digitalMarketingIntelligence.social_media_signals ? JSON.stringify(digitalMarketingIntelligence.social_media_signals) : "None"}</dd></div>
-              <div className="sm:col-span-2"><dt className="text-xs font-semibold uppercase text-slate-400">Content Marketing Signals</dt><dd className="mt-1">{digitalMarketingIntelligence.content_marketing_signals ? JSON.stringify(digitalMarketingIntelligence.content_marketing_signals) : "None"}</dd></div>
+            <div className="mt-4 space-y-4">
+              {/* Canonical 7-Category Research Coverage Summary Banner */}
+              <div className="rounded-lg bg-slate-50 border border-slate-200 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Verified Completeness</span>
+                    <div className="mt-0.5 flex items-baseline gap-2">
+                      <span className="text-2xl font-extrabold text-slate-900">{digitalMarketingIntelligence.completeness.toFixed(1)}%</span>
+                      <span className="inline-flex items-center rounded-full bg-teal/10 px-2 py-0.5 text-xs font-bold text-teal">
+                        Maturity: {digitalMarketingIntelligence.marketing_maturity}
+                      </span>
+                    </div>
+                  </div>
+                  <span className="text-[11px] text-slate-500 font-medium">
+                    Strict Invariant: Only RESEARCHED categories count toward completeness score.
+                  </span>
+                </div>
+
+                {digitalMarketingIntelligence.coverage_summary && (
+                  <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4 text-xs">
+                    <div className="rounded border border-emerald-200 bg-emerald-50/70 p-2 text-center">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800">Researched</span>
+                      <div className="text-base font-bold text-emerald-900">{digitalMarketingIntelligence.coverage_summary.researched} / 7</div>
+                    </div>
+                    <div className="rounded border border-indigo-200 bg-indigo-50/70 p-2 text-center">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-800">Partially Researched</span>
+                      <div className="text-base font-bold text-indigo-900">{digitalMarketingIntelligence.coverage_summary.partially_researched} / 7</div>
+                    </div>
+                    <div className="rounded border border-amber-200 bg-amber-50/70 p-2 text-center">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800">Not Researched</span>
+                      <div className="text-base font-bold text-amber-900">{digitalMarketingIntelligence.coverage_summary.not_researched} / 7</div>
+                    </div>
+                    <div className="rounded border border-zinc-200 bg-zinc-100/80 p-2 text-center">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-700">Unavailable</span>
+                      <div className="text-base font-bold text-zinc-800">{digitalMarketingIntelligence.coverage_summary.unavailable} / 7</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 7-Category Signals Cards Grid */}
+              <div className="pt-2 border-t border-slate-100">
+                <dt className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">
+                  Canonical Categories Coverage & Action Controls
+                </dt>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {[
+                    { key: "seo", title: "SEO", legacy: digitalMarketingIntelligence.seo_signals, reason: "SEO audit has not been conducted for this lead." },
+                    { key: "paid_advertising", title: "Paid Advertising", legacy: digitalMarketingIntelligence.paid_advertising_signals, reason: "Paid advertising channels have not been researched." },
+                    { key: "social_media", title: "Social Media", legacy: digitalMarketingIntelligence.social_media_signals, reason: "Social media presence has not been researched." },
+                    { key: "content_marketing", title: "Content Marketing", legacy: digitalMarketingIntelligence.content_marketing_signals, reason: "Content marketing evaluation has not been conducted." },
+                    { key: "website_performance", title: "Website Performance", legacy: null, reason: "Website performance evaluation has not been conducted." },
+                    { key: "conversion_optimization", title: "Conversion Optimization", legacy: null, reason: "Conversion optimization audit has not been conducted." },
+                    { key: "online_reputation", title: "Online Reputation", legacy: null, reason: "Google Places reputation research has not been executed." },
+                  ].map((cat) => {
+                    const covFinding = digitalMarketingIntelligence.seven_category_coverage?.[cat.key];
+                    const hasOpp = (salesOpportunities || []).some(
+                      (o) => (o.opportunity_type || "").toLowerCase() === cat.key.toLowerCase() ||
+                             (o.opportunity_category || "").toLowerCase() === cat.key.toLowerCase() ||
+                             (o.title || "").toLowerCase().includes(cat.title.toLowerCase())
+                    );
+                    return (
+                      <SignalCategoryCard
+                        key={cat.key}
+                        categoryKey={cat.key}
+                        title={cat.title}
+                        finding={covFinding}
+                        legacySignal={cat.legacy}
+                        defaultReason={cat.reason}
+                        hasOpportunity={hasOpp}
+                        isBusy={researchingCategory === cat.key}
+                        onResearch={(k) => void handleCategoryAction(k, false)}
+                        onRetry={(k) => void handleCategoryAction(k, true)}
+                        onViewEvidence={() => {
+                          const el = document.getElementById("website-intelligence") || document.getElementById("evidence");
+                          el?.scrollIntoView({ behavior: "smooth" });
+                        }}
+                        onViewOpportunity={() => {
+                          const el = document.getElementById("sales-opportunities") || document.getElementById("opportunities");
+                          el?.scrollIntoView({ behavior: "smooth" });
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+
               {digitalMarketingIntelligence.marketing_gaps && digitalMarketingIntelligence.marketing_gaps.length > 0 && (
-                <div className="sm:col-span-2">
+                <div className="pt-2 border-t border-slate-100">
                   <dt className="text-xs font-semibold uppercase text-slate-400">Marketing Gaps</dt>
                   <dd className="mt-1">
-                    <ul className="list-disc pl-4 text-slate-600">
+                    <ul className="list-disc pl-4 text-slate-600 text-xs space-y-1">
                       {digitalMarketingIntelligence.marketing_gaps.map((gap, i) => <li key={i}>{gap}</li>)}
                     </ul>
                   </dd>
                 </div>
               )}
               {digitalMarketingIntelligence.marketing_opportunities && digitalMarketingIntelligence.marketing_opportunities.length > 0 && (
-                <div className="sm:col-span-2">
+                <div className="pt-2 border-t border-slate-100">
                   <dt className="text-xs font-semibold uppercase text-slate-400">Marketing Opportunities</dt>
                   <dd className="mt-1">
-                    <ul className="list-disc pl-4 text-teal">
+                    <ul className="list-disc pl-4 text-teal text-xs space-y-1">
                       {digitalMarketingIntelligence.marketing_opportunities.map((opp, i) => <li key={i}>{opp}</li>)}
                     </ul>
                   </dd>
@@ -692,7 +1045,7 @@ export default function LeadDetailPage() {
           <div className="flex items-center justify-between">
             <h2 className="font-bold text-ink">Buying Signals</h2>
             <button
-              onClick={() => api<BuyingSignalsResponse>(`/api/companies/${lead.id}/buying-signals/refresh`, {method: "POST"}).then(p => setBuyingSignals(p.signals))}
+              onClick={handleUnifiedResearchRefresh} disabled={refreshingAll}
               className="text-xs font-semibold text-teal underline"
             >
               Refresh
@@ -750,6 +1103,11 @@ export default function LeadDetailPage() {
                       }`}>
                         {opp.priority}
                       </span>
+                      {(opp.opportunity_status || opp.status) && (
+                        <span className="inline-flex rounded-full px-2 py-0.5 text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          {opp.opportunity_status || opp.status}
+                        </span>
+                      )}
                       <span className="text-sm font-bold text-ink">{opp.title}</span>
                     </div>
                     <div className="flex gap-2">
@@ -757,15 +1115,27 @@ export default function LeadDetailPage() {
                     </div>
                   </div>
                   <p className="mt-3 text-sm text-slate-600">{opp.description}</p>
-                  <div className="mt-4 flex flex-wrap gap-4 items-center bg-white p-3 rounded-lg border border-slate-100">
-                    <div className="flex-1">
+                  <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 bg-white p-3 rounded-lg border border-slate-100">
+                    <div>
                       <div className="text-xs font-semibold uppercase text-slate-400">Recommended Action</div>
                       <div className="mt-1 font-medium text-teal-700">{opp.recommended_action?.replace(/_/g, ' ')}</div>
                     </div>
+                    {opp.recommended_service && (
+                      <div>
+                        <div className="text-xs font-semibold uppercase text-slate-400">Recommended Service</div>
+                        <div className="mt-1 font-medium text-slate-800">{opp.recommended_service}</div>
+                      </div>
+                    )}
+                    {opp.commercial_relevance && (
+                      <div className="md:col-span-2 text-xs text-slate-500 bg-slate-50 p-2.5 rounded border border-slate-200">
+                        <span className="font-semibold text-slate-600">Commercial Relevance: </span>
+                        {opp.commercial_relevance}
+                      </div>
+                    )}
                     {opp.related_task_id && (
-                      <div className="flex-1 border-l border-slate-100 pl-4">
+                      <div className="md:col-span-2 border-t border-slate-100 pt-2 flex items-center justify-between">
                         <div className="text-xs font-semibold uppercase text-slate-400">Associated Task</div>
-                        <div className="mt-1 flex items-center gap-2">
+                        <div className="flex items-center gap-2">
                           <span className={`inline-block w-2 h-2 rounded-full ${opp.related_task_status === 'COMPLETED' ? 'bg-emerald-400' : 'bg-amber-400'}`}></span>
                           <span className="text-sm font-mono text-slate-600">{opp.related_task_status}</span>
                         </div>
@@ -797,6 +1167,7 @@ export default function LeadDetailPage() {
         </>}
       </section>
 
+      <LeadQualificationPanel leadId={id} onQualified={() => setTaskRefreshKey((k) => k + 1)} />
       <LeadIntelligenceOrchestrator leadId={id} onTasksChanged={() => setTaskRefreshKey((key) => key + 1)} />
       <SalesWorkflowPanel leadId={id} intelligence={intel} refreshKey={taskRefreshKey} newOutcomeActivity={newOutcomeActivity} onTasksChanged={() => setTaskRefreshKey((key) => key + 1)} />
       <CommercialPanel leadId={id} refreshKey={taskRefreshKey} />

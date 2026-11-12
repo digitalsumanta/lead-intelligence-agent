@@ -100,14 +100,15 @@ async def refresh_company_enrichment(db: AsyncSession, lead_id: uuid.UUID) -> Co
     lead = await db.get(Lead, lead_id)
     if not lead:
         return None
-        
+
     # Delete existing
     await db.execute(delete(CompanyEnrichmentProfile).where(CompanyEnrichmentProfile.lead_id == lead_id))
-    
-    # Build new
-    profile = build_deterministic_company_profile(lead)
+
+    # Build new unified profile using lead record and any accumulated evidence
+    from app.services.unified_intelligence import get_all_lead_evidence, build_unified_company_profile
+    evidence = await get_all_lead_evidence(db, lead_id)
+    profile = build_unified_company_profile(lead, evidence)
     db.add(profile)
     await db.commit()
-    
-    # Return schema
+
     return CompanyEnrichmentProfileSchema.model_validate(profile)

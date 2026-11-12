@@ -115,6 +115,18 @@ export default function AISalesIntelligence({ leadId, onTaskCreated }: { leadId:
   const generated = artifact?.generated;
   return <section className="mt-5 rounded-xl border border-violet-200 bg-white p-5 shadow-sm">
     <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-[10px] font-bold uppercase tracking-[.18em] text-violet-700">AI-generated interpretation</p><h2 className="mt-1 font-bold text-ink">AI Sales Intelligence</h2><p className="mt-1 text-sm text-slate-500">An interpretation of current deterministic evidence. It does not change CRM, task, outreach, or revenue state.</p></div><button type="button" disabled={busy} onClick={() => void generate()} className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{busy ? "Generating…" : artifact ? "Regenerate Intelligence" : "Generate Intelligence"}</button></div>
+    {busy && (
+      <div className="mt-4 flex items-center gap-3 rounded-lg border border-violet-200 bg-violet-50/60 p-4 text-sm text-violet-900">
+        <svg className="h-5 w-5 animate-spin text-violet-600 shrink-0" viewBox="0 0 24 24" fill="none">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+        </svg>
+        <div>
+          <p className="font-semibold">Interpreting lead intelligence via local AI model…</p>
+          <p className="text-xs text-violet-700">CPU inference typically takes 3–5 minutes. Verifying fact citations and syntheses.</p>
+        </div>
+      </div>
+    )}
     {error && <div role="alert" className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800"><p>{error}</p><button type="button" onClick={() => void load()} className="mt-2 font-semibold underline">Retry load</button></div>}
     {loading ? <p className="mt-4 text-sm text-slate-500">Loading saved AI interpretation…</p> : !artifact ? <p className="mt-4 rounded-lg bg-slate-50 p-4 text-sm text-slate-600">No AI sales intelligence has been generated for this lead. Generation is an explicit action and does not occur on page load.</p> : <>
       <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-xs text-slate-500"><span>{artifact.status === "failed" ? "Generation failed" : artifact.is_stale ? "Stale — source context changed" : artifact.is_current ? "Current validated artifact" : "Historical artifact"}</span><span>{artifact.provider} · {artifact.model}</span><span>Generated {shownTime(artifact.generated_at)}</span><span>Contract {artifact.contract_version} · prompt {artifact.prompt_version}</span></div>

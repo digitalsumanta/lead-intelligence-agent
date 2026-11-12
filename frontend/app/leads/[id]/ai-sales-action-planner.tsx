@@ -57,6 +57,18 @@ export default function AISalesActionPlanner({ leadId, onTaskCreated }: { leadId
   const actions = plan?.action_plan?.actions || [];
   return <section id="ai-sales-actions" className="mt-5 rounded-xl border border-violet-200 bg-white p-5 shadow-sm">
     <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-[10px] font-bold uppercase tracking-[.18em] text-violet-700">Advisory only · human review required</p><h2 className="mt-1 font-bold text-ink">AI Recommended Actions</h2><p className="mt-1 text-sm text-slate-500">Actions cite current lead evidence. Nothing is created or executed until you choose Create Task.</p></div><button type="button" disabled={busy} onClick={() => void generate()} className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{busy ? "Generating…" : plan ? "Refresh recommendations" : "Generate recommendations"}</button></div>
+    {busy && (
+      <div className="mt-4 flex items-center gap-3 rounded-lg border border-violet-200 bg-violet-50/60 p-4 text-sm text-violet-900">
+        <svg className="h-5 w-5 animate-spin text-violet-600 shrink-0" viewBox="0 0 24 24" fill="none">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+        </svg>
+        <div>
+          <p className="font-semibold">Generating recommendations via local AI model…</p>
+          <p className="text-xs text-violet-700">CPU inference typically takes 2–4 minutes. Grounding against current lead evidence.</p>
+        </div>
+      </div>
+    )}
     {error && <p role="alert" className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}{message && <p role="status" className="mt-4 text-sm text-emerald-700">{message}</p>}
     {plan?.is_stale && <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">This saved plan uses older context. Refresh it before acting.</p>}
     {plan?.status === "failed" && <p role="alert" className="mt-4 text-sm text-rose-700">{plan.error_message || "No validated action plan is available."}</p>}

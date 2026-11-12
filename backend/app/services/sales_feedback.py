@@ -127,6 +127,8 @@ def build_feedback_summary(
         act_rates = calculate_feedback_rates(
             stats["total"], stats["positive"], stats["negative"], stats["neutral"]
         )
+        act_verified = stats["positive"] + stats["negative"] + stats["neutral"]
+        act_verified_rate = round((stats["positive"] / act_verified) * 100.0, 2) if act_verified > 0 else None
         action_performance[act_name] = ActionPerformanceSummary(
             action=act_name,
             total_executions=stats["total"],
@@ -137,6 +139,8 @@ def build_feedback_summary(
             positive_rate=act_rates["positive_rate"],
             negative_rate=act_rates["negative_rate"],
             neutral_rate=act_rates["neutral_rate"],
+            verified_executions=act_verified,
+            verified_positive_rate=act_verified_rate,
         )
 
     attribution_summary = {
@@ -144,6 +148,9 @@ def build_feedback_summary(
         AttributionLevel.PARTIAL.value: sum(1 for i in items if i.attribution_level == AttributionLevel.PARTIAL),
         AttributionLevel.UNATTRIBUTED.value: sum(1 for i in items if i.attribution_level == AttributionLevel.UNATTRIBUTED),
     }
+
+    verified_executions = positive_count + negative_count + neutral_count
+    verified_positive_rate = round((positive_count / verified_executions) * 100.0, 2) if verified_executions > 0 else None
 
     return SalesFeedbackSummaryResponse(
         scope=scope,
@@ -156,6 +163,8 @@ def build_feedback_summary(
         positive_rate=rates["positive_rate"],
         negative_rate=rates["negative_rate"],
         neutral_rate=rates["neutral_rate"],
+        verified_executions=verified_executions,
+        verified_positive_rate=verified_positive_rate,
         outcome_distribution=outcome_dist,
         action_performance=action_performance,
         attribution_summary=attribution_summary,
@@ -167,7 +176,7 @@ async def _load_feedback_items(
     session: AsyncSession,
     tasks: List[SalesTask]
 ) -> List[SalesFeedbackItem]:
-    """Helper to load activities and produce structured feedback items."""
+    """Helper to load activities and produce structured feedback items with provenance deduplication."""
     if not tasks:
         return []
 
@@ -180,7 +189,24 @@ async def _load_feedback_items(
             activities_map[act.id] = act
 
     items: List[SalesFeedbackItem] = []
+    seen_provenance_keys: set = set()
+
     for task in tasks:
+        # Exclude non-completed tasks from outcome feedback
+        if task.status != SalesTaskStatus.COMPLETED:
+            continue
+
+        # Prevent duplicate records from inflating feedback when multiple tasks
+        # point to the same activity or represent duplicate task records.
+        if task.related_activity_id is not None:
+            prov_key = ("activity", task.related_activity_id)
+        else:
+            prov_key = ("task", task.id)
+
+        if prov_key in seen_provenance_keys:
+            continue
+        seen_provenance_keys.add(prov_key)
+
         activity = activities_map.get(task.related_activity_id) if task.related_activity_id else None
         opp_id, contact_id, rec_action, attr_level = extract_task_attribution(task, activity)
 

@@ -121,7 +121,7 @@ async def test_api_digital_marketing_intelligence_refresh_and_get(session_factor
         # POST refresh again should be idempotent
         res4 = await client.post(f"/api/companies/{lead_id}/digital-marketing-intelligence/refresh", headers=headers)
         assert res4.status_code == 200
-        assert res4.json()["id"] != data["id"] 
+        assert res4.json()["id"] == data["id"]
 
 @pytest.mark.asyncio
 async def test_api_digital_marketing_intelligence_404_for_unknown(session_factory, monkeypatch):

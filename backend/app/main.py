@@ -18,7 +18,7 @@ from app.models import (
     SalesActivity, SalesStatus, SalesPriority, SalesActivityType, SalesActivityOutcome, SalesTask, SalesTaskType, SalesTaskStatus, OutreachArtifact, OutreachStatus, OutreachExecution, SalesCollection, RevenueTarget,
 )
 from app.models.entities import now_utc
-from app.schemas.lead import LeadOut, ProcessBatchIn
+from app.schemas.lead import LeadOut, ProcessBatchIn, LeadUpdate
 from app.schemas.sales import SalesPatch, SalesActivityCreate, SalesOut, SalesActivityOut
 from app.schemas.outreach import OutreachArtifactOut, OutreachReadOut, OutreachContextOut, OutreachPatch, OutreachReject
 from app.schemas.outreach_operations import (
@@ -43,7 +43,9 @@ from app.services.company_enrichment import get_company_enrichment, refresh_comp
 from app.schemas.website_intelligence import WebsiteIntelligenceProfileSchema
 from app.services.website_intelligence import get_website_intelligence, refresh_website_intelligence
 from app.schemas.digital_marketing_intelligence import DigitalMarketingIntelligenceProfileSchema
-from app.services.digital_marketing_intelligence import get_digital_marketing_intelligence, refresh_digital_marketing_intelligence
+from app.services.digital_marketing_intelligence import get_digital_marketing_intelligence, refresh_digital_marketing_intelligence, research_digital_marketing_category
+from app.schemas.lead_qualification import LeadQualificationResponse
+from app.services.lead_qualification import get_lead_qualification, qualify_lead
 from app.schemas.seo import LatestSeoOut, SeoRunCreatedOut, SeoRunDetailOut, SeoRunListOut, SeoRunOut
 from app.schemas.seo_opportunities import SeoSalesOpportunityList
 from app.schemas.ai_sales_intelligence import AISalesIntelligenceHistoryOut, AISalesIntelligenceOut
@@ -68,7 +70,7 @@ from app.schemas.email_delivery_event import (
     NormalizedEmailDeliveryEvent, DeliveryReconciliationOut,
 )
 from app.services.lead_intelligence_api import read_intelligence_summary, read_lead_intelligence
-from app.services.csv_import import import_csv
+from app.services.csv_import import import_csv, get_template_csv_bytes, EMAIL_RE
 from app.services.jobs import create_job, update_batch_status
 from app.services.key_pool import ApiKeyPool
 from app.providers import get_provider, validate_provider_model
@@ -138,7 +140,6 @@ async def lifespan(app: FastAPI):
     await engine.dispose()
 
 app = FastAPI(title=settings.app_name, version="1.0.0", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origin_list, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 
 async def evaluate_provider_readiness(provider, session_factory=SessionLocal) -> tuple[dict, bool]:
@@ -161,6 +162,10 @@ async def evaluate_provider_readiness(provider, session_factory=SessionLocal) ->
 @app.middleware("http")
 async def local_api_auth(request: Request, call_next):
     """Require the configured bearer token for application data and mutation routes."""
+    if request.method == "OPTIONS":
+        return await call_next(request)
+    if request.url.path.startswith("/api/sales-supervisor/webhooks/delivery"):
+        return await call_next(request)
     if request.url.path.startswith("/api/"):
         token = settings.api_auth_token
         supplied = request.headers.get("authorization", "")
@@ -168,7 +173,10 @@ async def local_api_auth(request: Request, call_next):
         if not token or not supplied or not hmac.compare_digest(token, supplied):
             return JSONResponse(status_code=401, content={"success": False, "error": {"code": "UNAUTHORIZED", "message": "Valid API bearer token required", "details": {}}})
         request.state.authenticated_user_id = settings.api_auth_user_id.strip() or None
+        request.state.authenticated_role = settings.api_auth_role.strip() or "viewer"
     return await call_next(request)
+
+app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origin_list, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 @app.exception_handler(Exception)
 async def global_error_handler(request, exc):
@@ -231,6 +239,8 @@ async def list_leads(
     sales_status: SalesStatus | None = None,
     priority: SalesPriority | None = None,
     follow_up_due: bool | None = None,
+    qualification_class: str | None = Query(None, pattern="^(HOT|WARM|NURTURE|LOW_PRIORITY)$"),
+    sort_by: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
     """List leads newest first, with stable created_at/id ordering and one-based pages."""
@@ -291,18 +301,38 @@ async def list_leads(
         query = query.where((Lead.next_follow_up_at.is_(None)) | (Lead.next_follow_up_at > now_utc()))
     if min_score is not None and max_score is not None and min_score > max_score:
         raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": "min_score cannot exceed max_score"})
-    rows = (await db.execute(query.order_by(Lead.created_at.desc(), Lead.id.desc())
+    if qualification_class is not None:
+        query = query.where(Lead.score_factors['qualification']['classification'].as_string() == qualification_class)
+    order_clauses = [Lead.created_at.desc(), Lead.id.desc()]
+    if sort_by == "qualification_score_desc":
+        order_clauses = [Lead.score_factors['qualification']['qualification_score'].as_integer().desc(), Lead.id.desc()]
+    elif sort_by == "qualification_score_asc":
+        order_clauses = [Lead.score_factors['qualification']['qualification_score'].as_integer().asc(), Lead.id.desc()]
+    rows = (await db.execute(query.order_by(*order_clauses)
         .offset((page - 1) * page_size).limit(page_size))).all()
     results = []
     for lead, intel_status, score, opportunities, recommendations, has_personalization_value, enriched_at in rows:
+        wa = lead.website_analysis if isinstance(lead.website_analysis, dict) else {}
+        sf = lead.score_factors if isinstance(lead.score_factors, dict) else {}
+        qual = sf.get("qualification") if isinstance(sf.get("qualification"), dict) else None
         result = LeadOut.model_validate({
             **{column.name: getattr(lead, column.name) for column in Lead.__table__.columns},
             "id": str(lead.id), "status": lead.status.value,
             "sales_status": lead.sales_status.value, "priority": lead.priority.value,
+            "sub_category": wa.get("sub_category"),
+            "advertising_platforms": wa.get("advertising_platforms"),
+            "advertising_evidence": wa.get("advertising_evidence"),
+            "primary_problem": wa.get("primary_problem") or (lead.pain_points[0] if lead.pain_points else None),
+            "recommended_mindart_service": wa.get("recommended_mindart_service") or (lead.recommended_services[0] if lead.recommended_services else None),
             "intelligence_status": intel_status, "intelligence_score": score,
             "opportunity_count": opportunities, "recommendation_count": recommendations,
             "personalization_available": has_personalization_value,
             "latest_enrichment_at": enriched_at,
+            "qualification_score": qual.get("qualification_score") if qual else None,
+            "scoring_coverage": qual.get("scoring_coverage") if qual else None,
+            "qualification_class": qual.get("classification") if qual else None,
+            "recommended_sales_action": qual.get("recommended_sales_action") if qual else None,
+            "qualification_details": qual,
         })
         results.append(result)
     return results
@@ -313,7 +343,79 @@ async def get_lead(lead_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     lead = await db.get(Lead, lead_id)
     if not lead: raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": "Lead not found"})
     summary = await read_intelligence_summary(db, lead_id)
-    return LeadOut.model_validate({**{c.name: getattr(lead, c.name) for c in Lead.__table__.columns}, "id": str(lead.id), "status": lead.status.value, **summary.model_dump()})
+    wa = lead.website_analysis if isinstance(lead.website_analysis, dict) else {}
+    sf = lead.score_factors if isinstance(lead.score_factors, dict) else {}
+    qual = sf.get("qualification") if isinstance(sf.get("qualification"), dict) else None
+    return LeadOut.model_validate({
+        **{c.name: getattr(lead, c.name) for c in Lead.__table__.columns},
+        "id": str(lead.id),
+        "status": lead.status.value,
+        "sub_category": wa.get("sub_category"),
+        "advertising_platforms": wa.get("advertising_platforms"),
+        "advertising_evidence": wa.get("advertising_evidence"),
+        "primary_problem": wa.get("primary_problem") or (lead.pain_points[0] if lead.pain_points else None),
+        "recommended_mindart_service": wa.get("recommended_mindart_service") or (lead.recommended_services[0] if lead.recommended_services else None),
+        "qualification_score": qual.get("qualification_score") if qual else None,
+        "scoring_coverage": qual.get("scoring_coverage") if qual else None,
+        "qualification_class": qual.get("classification") if qual else None,
+        "recommended_sales_action": qual.get("recommended_sales_action") if qual else None,
+        "qualification_details": qual,
+        **summary.model_dump()
+    })
+
+@app.patch("/api/leads/{lead_id}", response_model=LeadOut)
+async def update_lead(lead_id: uuid.UUID, body: LeadUpdate, db: AsyncSession = Depends(get_db)):
+    """Manually update lead details such as phone number without creating duplicate records."""
+    lead = await db.scalar(select(Lead).where(Lead.id == lead_id).with_for_update())
+    if lead is None:
+        raise HTTPException(404, detail={"code": "LEAD_NOT_FOUND", "message": "Lead not found"})
+    supplied = body.model_fields_set
+    if "phone" in supplied:
+        lead.phone = body.phone.strip() if body.phone else None
+    if "email" in supplied:
+        if body.email and not EMAIL_RE.fullmatch(body.email.strip()):
+            raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": "email is invalid"})
+        lead.email = body.email.strip().lower() if body.email else None
+    if "website" in supplied:
+        if body.website:
+            w = body.website.strip()
+            if not w.startswith(("http://", "https://")):
+                w = "https://" + w
+            lead.website = w.rstrip("/")
+        else:
+            lead.website = None
+    if "decision_maker" in supplied:
+        lead.decision_maker = body.decision_maker.strip() if body.decision_maker else None
+    if "job_title" in supplied:
+        lead.job_title = body.job_title.strip() if body.job_title else None
+    if "industry" in supplied:
+        lead.industry = body.industry.strip() if body.industry else None
+    if "city" in supplied:
+        lead.city = body.city.strip() if body.city else None
+    if "country" in supplied:
+        lead.country = body.country.strip() if body.country else None
+    lead.updated_at = now_utc()
+    await db.commit()
+    summary = await read_intelligence_summary(db, lead_id)
+    wa = lead.website_analysis if isinstance(lead.website_analysis, dict) else {}
+    sf = lead.score_factors if isinstance(lead.score_factors, dict) else {}
+    qual = sf.get("qualification") if isinstance(sf.get("qualification"), dict) else None
+    return LeadOut.model_validate({
+        **{c.name: getattr(lead, c.name) for c in Lead.__table__.columns},
+        "id": str(lead.id),
+        "status": lead.status.value,
+        "sub_category": wa.get("sub_category"),
+        "advertising_platforms": wa.get("advertising_platforms"),
+        "advertising_evidence": wa.get("advertising_evidence"),
+        "primary_problem": wa.get("primary_problem") or (lead.pain_points[0] if lead.pain_points else None),
+        "recommended_mindart_service": wa.get("recommended_mindart_service") or (lead.recommended_services[0] if lead.recommended_services else None),
+        "qualification_score": qual.get("qualification_score") if qual else None,
+        "scoring_coverage": qual.get("scoring_coverage") if qual else None,
+        "qualification_class": qual.get("classification") if qual else None,
+        "recommended_sales_action": qual.get("recommended_sales_action") if qual else None,
+        "qualification_details": qual,
+        **summary.model_dump(),
+    })
 
 
 def sales_activity_payload(activity):
@@ -1520,6 +1622,19 @@ async def seo_run_detail(run_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     findings = (await db.execute(select(SeoFinding).where(SeoFinding.seo_run_id == run_id).order_by(SeoFinding.severity, SeoFinding.finding_code, SeoFinding.id))).scalars().all()
     return {"run": run, "observations": observations, "findings": findings}
 
+@app.get("/api/leads/import/template")
+@app.get("/api/leads/template")
+async def download_lead_template():
+    """Download the MindArtDigital Lead Research CSV template."""
+    content = get_template_csv_bytes()
+    return Response(
+        content=content,
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": 'attachment; filename="mindartdigital_lead_research_template.csv"'
+        },
+    )
+
 @app.post("/api/leads/import")
 async def import_leads(file: UploadFile = File(...), db: AsyncSession = Depends(get_db)):
     """Validate and import an uploaded CSV file."""
@@ -1763,12 +1878,46 @@ async def endpoint_refresh_digital_marketing_intelligence(
         raise HTTPException(status_code=404, detail="Company not found")
     return profile
 
+@app.post("/api/companies/{company_id}/digital-marketing-intelligence/research-category", response_model=DigitalMarketingIntelligenceProfileSchema, tags=["Companies"])
+async def endpoint_research_company_digital_marketing_category(
+    company_id: uuid.UUID,
+    category: str = Query(..., description="Canonical category name"),
+    retry: bool = Query(False, description="Retry flag for unavailable providers"),
+    db: AsyncSession = Depends(get_db)
+):
+    profile = await research_digital_marketing_category(db, company_id, category, retry=retry)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return profile
+
 @app.get("/api/leads/{lead_id}/digital-marketing-intelligence", response_model=DigitalMarketingIntelligenceProfileSchema, tags=["Leads"])
 async def endpoint_get_lead_digital_marketing_intelligence(
     lead_id: uuid.UUID,
     db: AsyncSession = Depends(get_db)
 ):
     profile = await get_digital_marketing_intelligence(db, lead_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    return profile
+
+@app.post("/api/leads/{lead_id}/digital-marketing-intelligence/refresh", response_model=DigitalMarketingIntelligenceProfileSchema, tags=["Leads"])
+async def endpoint_refresh_lead_digital_marketing_intelligence(
+    lead_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db)
+):
+    profile = await refresh_digital_marketing_intelligence(db, lead_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    return profile
+
+@app.post("/api/leads/{lead_id}/digital-marketing-intelligence/research-category", response_model=DigitalMarketingIntelligenceProfileSchema, tags=["Leads"])
+async def endpoint_research_lead_digital_marketing_category(
+    lead_id: uuid.UUID,
+    category: str = Query(..., description="Canonical category name"),
+    retry: bool = Query(False, description="Retry flag for unavailable providers"),
+    db: AsyncSession = Depends(get_db)
+):
+    profile = await research_digital_marketing_category(db, lead_id, category, retry=retry)
     if not profile:
         raise HTTPException(status_code=404, detail="Lead not found")
     return profile
@@ -1854,6 +2003,30 @@ async def endpoint_refresh_sales_opportunities(
     opps = await refresh_sales_opportunities_for_lead(db, lead_id)
     return {"opportunities": opps}
 
+@app.get("/api/leads/{lead_id}/qualification", response_model=LeadQualificationResponse, tags=["Leads"])
+async def endpoint_get_lead_qualification(
+    lead_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db)
+):
+    lead = await db.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail={"code": "LEAD_NOT_FOUND", "message": "Lead not found"})
+    qualification = await get_lead_qualification(db, lead_id, auto_compute_if_missing=True)
+    if not qualification:
+        raise HTTPException(status_code=404, detail={"code": "QUALIFICATION_NOT_FOUND", "message": "Lead qualification could not be computed"})
+    return qualification
+
+@app.post("/api/leads/{lead_id}/qualify", response_model=LeadQualificationResponse, tags=["Leads"])
+async def endpoint_qualify_lead(
+    lead_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db)
+):
+    lead = await db.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail={"code": "LEAD_NOT_FOUND", "message": "Lead not found"})
+    qualification = await qualify_lead(db, lead_id)
+    return qualification
+
 from app.api.routes import (
     contact_intelligence,
     opportunity_contact_matching,
@@ -1862,6 +2035,11 @@ from app.api.routes import (
     sales_execution,
     sales_feedback,
     intelligence_orchestrator,
+    supervisor_approval,
+    supervisor_dispatch,
+    supervisor_delivery_webhooks,
+    supervisor_canary,
+    business_research,
 )
 
 app.include_router(contact_intelligence.router)
@@ -1871,3 +2049,27 @@ app.include_router(contact_recommendation_execution.router)
 app.include_router(sales_execution.router)
 app.include_router(sales_feedback.router)
 app.include_router(intelligence_orchestrator.router)
+app.include_router(supervisor_approval.router)
+app.include_router(supervisor_dispatch.router)
+app.include_router(supervisor_delivery_webhooks.router)
+app.include_router(supervisor_canary.router)
+app.include_router(business_research.router)
+
+for _r in (
+    contact_intelligence.router,
+    opportunity_contact_matching.router,
+    contact_recommendation.router,
+    contact_recommendation_execution.router,
+    sales_execution.router,
+    sales_feedback.router,
+    intelligence_orchestrator.router,
+    supervisor_approval.router,
+    supervisor_dispatch.router,
+    supervisor_delivery_webhooks.router,
+    supervisor_canary.router,
+    business_research.router,
+):
+    app.routes.extend([route for route in _r.routes if route not in app.routes])
+
+
+

@@ -1,0 +1,146 @@
+# ==============================================================================
+# INACTIVE REVIEWABLE ARTIFACT - DO NOT DEPLOY TO PRODUCTION DIRECTLY
+# Phase 12J - D2 - Gate D-D3: Single-Replica Canary Outbox Worker Manifest
+# Reference: D2-BLOCK-02 / RSK-01
+# ==============================================================================
+#
+# ARCHITECTURAL SAFETY CONSTRAINTS & CRITICAL OPERATIONAL WARNINGS:
+#
+# 1. HARD SINGLE-REPLICA LIMIT (replicas: 1):
+#    Horizontal scaling (replicas > 1) is STRICTLY PROHIBITED for this worker deployment.
+#    The outreach rate limiter (TokenBucketRateLimiter) and concurrency gate (OutreachConcurrencyGate)
+#    are process-local in-memory state machines (RSK-01).
+#    Scaling to N replicas would multiply the outbound provider dispatch rate and concurrency by N,
+#    risking provider 429 rate limit bans, IP reputation damage, and uncontrollable flight bursts.
+#    Scale-out remains BLOCKED until a distributed Redis-backed rate limiter is implemented.
+#
+# 2. FAIL-CLOSED SAFETY INVARIANTS:
+#    - OUTREACH_DISPATCH_ENABLED must remain "false" until authorized flight execution.
+#    - OUTREACH_CANARY_MODE enforces fail-closed recipient allowlist validation (ACM-06).
+#    - All dispatches require programmatic two-person authorization (ACM-05).
+#
+# ==============================================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: leadintel-canary-outbox-worker
+  namespace: leadintel-canary
+  labels:
+    app.kubernetes.io/name: leadintel-canary-worker
+    app.kubernetes.io/part-of: lead-intelligence-agent
+    app.kubernetes.io/component: outbox-worker
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: argocd
+spec:
+  # CRITICAL: replicas MUST ALWAYS BE 1. Do NOT enable HorizontalPodAutoscaler (HPA).
+  replicas: 1
+  strategy:
+    type: Recreate # Ensures zero overlapping replicas during rollout
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: leadintel-canary-worker
+      app.kubernetes.io/component: outbox-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: leadintel-canary-worker
+        app.kubernetes.io/component: outbox-worker
+    spec:
+      serviceAccountName: leadintel-canary-worker-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      containers:
+        - name: outbox-worker
+          image: leadintel-backend:1.0.0-canary
+          imagePullPolicy: IfNotPresent
+          command:
+            - "python"
+            - "-m"
+            - "app.worker" # Outbox processing worker entrypoint
+          env:
+            # Master Kill Switch (Inactive by default)
+            - name: OUTREACH_DISPATCH_ENABLED
+              value: "false"
+
+            # Canary Mode & Fail-Closed Recipient Domain Allowlist
+            - name: OUTREACH_CANARY_MODE
+              value: "true"
+            - name: OUTREACH_CANARY_ALLOWED_DOMAINS
+              value: "internal-test.leadintel.example.com"
+
+            # Provider Selection
+            - name: OUTREACH_EMAIL_PROVIDER
+              value: "RESEND"
+            - name: OUTREACH_EMAIL_ENABLED
+              value: "true"
+            # Explicit sender configuration reference (unconfigured placeholder; fails closed when empty)
+            - name: OUTREACH_RESEND_FROM
+              value: ""
+
+            # Single-Process Rate Limiter & Concurrency Configuration
+            - name: OUTREACH_WORKER_CONCURRENCY
+              value: "1"
+            - name: OUTREACH_RATE_LIMIT_PER_SECOND
+              value: "0.2"
+
+            # Database Configuration (from Secret)
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: leadintel-db-credentials
+                  key: database_url
+
+            # Provider Secret References (Mock / Sandbox credentials for flight testing)
+            - name: RESEND_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: leadintel-provider-secrets
+                  key: resend_api_key
+                  optional: true
+            - name: RESEND_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: leadintel-provider-secrets
+                  key: resend_webhook_secret
+                  optional: true
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+          livenessProbe:
+            exec:
+              command:
+                - "python"
+                - "-c"
+                - "import sys; sys.exit(0)" # Worker heartbeat check
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            exec:
+              command:
+                - "python"
+                - "-c"
+                - "import sys; sys.exit(0)"
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 2
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL

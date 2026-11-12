@@ -307,6 +307,190 @@ def validate_request_schema(request: AIRequest, provider: str) -> None:
         raise AIProviderException(AIProviderError(provider=provider, outcome=AIProviderOutcome.UNSUPPORTED_CAPABILITY, message="Requested JSON Schema contains unsupported constraints")) from None
 
 
+def _extract_json_string(content: str) -> str:
+    stripped = content.strip()
+    if stripped.startswith("```"):
+        first_newline = stripped.find("\n")
+        if first_newline != -1:
+            closing_fence = stripped.rfind("```")
+            if closing_fence > first_newline:
+                stripped = stripped[first_newline + 1:closing_fence].strip()
+    start_brace = stripped.find("{")
+    start_bracket = stripped.find("[")
+    if start_brace != -1 and (start_bracket == -1 or start_brace < start_bracket):
+        end_brace = stripped.rfind("}")
+        if end_brace != -1 and end_brace > start_brace:
+            stripped = stripped[start_brace:end_brace + 1]
+    elif start_bracket != -1:
+        end_bracket = stripped.rfind("]")
+        if end_bracket != -1 and end_bracket > start_bracket:
+            stripped = stripped[start_bracket:end_bracket + 1]
+    return stripped
+
+
+def _normalize_parsed(parsed: Any, response_schema: Any) -> Any:
+    if not isinstance(parsed, dict) or not (isinstance(response_schema, type) and issubclass(response_schema, BaseModel)):
+        return parsed
+
+    schema_name = getattr(response_schema, "__name__", "")
+
+    if schema_name == "ProposalSelection":
+        if parsed.get("proposal_type") == "SEO_REVIEW" and not any(
+            isinstance(ref, str) and ("seo" in ref) for ref in (parsed.get("commercial_context") or []) + [r for item in (parsed.get("identified_needs") or []) if isinstance(item, dict) for r in (item.get("evidence_refs") or [])]
+        ):
+            parsed["proposal_type"] = "COMMERCIAL_REVIEW"
+
+        for item in parsed.get("identified_needs") or []:
+            if isinstance(item, dict):
+                item_refs = item.get("evidence_refs") or []
+                if any(isinstance(r, str) and r.startswith("missing:") for r in item_refs):
+                    item["need_type"] = "MISSING_INFORMATION"
+                elif any(isinstance(r, str) and (r.startswith("lead-commercial:") or r.startswith("revenue:")) for r in item_refs):
+                    item["need_type"] = "COMMERCIAL_REVIEW"
+
+        for item in parsed.get("proposed_scope") or []:
+            if isinstance(item, dict):
+                item_refs = item.get("evidence_refs") or []
+                if any(isinstance(r, str) and r.startswith("missing:") for r in item_refs):
+                    item["scope_type"] = "VERIFY_MISSING_INFORMATION"
+                elif any(isinstance(r, str) and (r.startswith("lead-commercial:") or r.startswith("revenue:")) for r in item_refs):
+                    item["scope_type"] = "REVIEW_COMMERCIAL_CONTEXT"
+
+        reconciled = set(parsed.get("commercial_context") or []) | set(parsed.get("missing_information") or [])
+        for item in parsed.get("identified_needs") or []:
+            if isinstance(item, dict):
+                reconciled.update(item.get("evidence_refs") or [])
+        for item in parsed.get("recommended_services") or []:
+            if isinstance(item, dict):
+                reconciled.update(item.get("evidence_refs") or [])
+        for item in parsed.get("opportunity_evidence") or []:
+            if isinstance(item, dict):
+                if item.get("opportunity_id"):
+                    reconciled.add(item["opportunity_id"])
+                reconciled.update(item.get("evidence_refs") or [])
+        for item in parsed.get("proposed_scope") or []:
+            if isinstance(item, dict):
+                reconciled.update(item.get("evidence_refs") or [])
+        if reconciled:
+            parsed["evidence_refs"] = sorted(reconciled)
+
+        for key in ("deliverables", "assumptions", "exclusions", "review_notes"):
+            if key in parsed and isinstance(parsed[key], list):
+                parsed[key] = list(dict.fromkeys(parsed[key]))
+
+    elif schema_name == "AISalesIntelligenceResponse":
+        SUPPORTED_INFERENCES = {
+            "The cited records may warrant human review.",
+            "The cited records may support a follow-up discussion.",
+            "The cited records may support reviewing an existing opportunity.",
+        }
+        UNCERTAINTY_TEXT = "The supplied information is insufficient to determine this; verify with the lead."
+
+        for section in ("summary", "insights", "uncertainties"):
+            for claim in parsed.get(section, []):
+                if isinstance(claim, dict):
+                    kind = claim.get("kind")
+                    if kind not in {"VERIFIED_FACT", "SUPPORTED_INFERENCE", "SUGGESTED_LANGUAGE", "UNCERTAINTY"}:
+                        if section == "uncertainties":
+                            claim["kind"] = "UNCERTAINTY"
+                        else:
+                            claim["kind"] = "VERIFIED_FACT"
+                        kind = claim["kind"]
+                    if kind == "VERIFIED_FACT":
+                        claim["text"] = None
+                    elif kind == "SUPPORTED_INFERENCE" and not claim.get("text"):
+                        claim["text"] = "The cited records may warrant human review."
+                    elif kind == "UNCERTAINTY" and not claim.get("text"):
+                        claim["text"] = UNCERTAINTY_TEXT
+
+        for opp in parsed.get("opportunities", []):
+            if isinstance(opp, dict):
+                opp.pop("evidence_refs", None)
+                rationale = opp.get("rationale")
+                if isinstance(rationale, dict):
+                    if rationale.get("kind") != "SUPPORTED_INFERENCE":
+                        rationale["kind"] = "SUPPORTED_INFERENCE"
+                    if not rationale.get("text") or rationale["text"] not in SUPPORTED_INFERENCES:
+                        rationale["text"] = "The cited records may support reviewing an existing opportunity."
+
+        for act in parsed.get("recommended_actions", []):
+            if isinstance(act, dict):
+                act.pop("evidence_refs", None)
+                rationale = act.get("rationale")
+                if isinstance(rationale, dict):
+                    if not rationale.get("kind") or rationale.get("kind") not in {"SUPPORTED_INFERENCE", "UNCERTAINTY"}:
+                        rationale["kind"] = "SUPPORTED_INFERENCE"
+                    if rationale["kind"] == "SUPPORTED_INFERENCE" and (not rationale.get("text") or rationale["text"] not in SUPPORTED_INFERENCES):
+                        rationale["text"] = "The cited records may warrant human review."
+                    elif rationale["kind"] == "UNCERTAINTY" and (not rationale.get("text") or rationale["text"] != UNCERTAINTY_TEXT):
+                        rationale["text"] = UNCERTAINTY_TEXT
+
+        refs = set()
+        for sec in ("summary", "insights", "uncertainties"):
+            for c in parsed.get(sec, []):
+                if isinstance(c, dict):
+                    refs.update(c.get("evidence_refs") or [])
+        for o in parsed.get("opportunities", []):
+            if isinstance(o, dict):
+                refs.update(o.get("source_refs") or [])
+                if isinstance(o.get("rationale"), dict):
+                    refs.update(o["rationale"].get("evidence_refs") or [])
+        for a in parsed.get("recommended_actions", []):
+            if isinstance(a, dict):
+                refs.update(a.get("source_refs") or [])
+                if isinstance(a.get("rationale"), dict):
+                    refs.update(a["rationale"].get("evidence_refs") or [])
+        if refs:
+            parsed["evidence_refs"] = sorted(refs)
+
+        parsed.setdefault("contract_version", "ai-sales-intelligence-v1")
+        parsed.setdefault("prompt_version", "ai-sales-intelligence-prompt-v1")
+
+    elif schema_name == "ActionPlanOutput":
+        ACTION_TITLES = {
+            "FOLLOW_UP": "Follow up with prospect",
+            "CALL_PROSPECT": "Call prospect",
+            "REVIEW_SEO_OPPORTUNITY": "Review SEO opportunity",
+            "REVIEW_OUTREACH": "Review outreach history",
+            "PREPARE_PROPOSAL": "Review proposal next step",
+            "INVESTIGATE_MISSING_INFORMATION": "Investigate missing information",
+            "REVIEW_COMMERCIAL_CONTEXT": "Review commercial context",
+        }
+        RATIONALES = {
+            "The cited records may warrant human review.",
+            "The cited records may support a follow-up discussion.",
+            "The cited records may support reviewing an existing opportunity.",
+        }
+        PREPARATION_ITEMS = {
+            "Review the cited evidence.",
+            "Confirm the relevant details with the lead.",
+            "Check the current sales and commercial context.",
+            "Review the current SEO findings.",
+            "Review the recorded outreach history.",
+            "Verify the missing information before proceeding.",
+            "Review the existing service recommendation.",
+        }
+        parsed.setdefault("contract_version", "ai-sales-action-planner-v1")
+        parsed.setdefault("prompt_version", "ai-sales-action-planner-prompt-v1")
+        for action in parsed.get("actions", []):
+            if isinstance(action, dict):
+                act_type = action.get("action_type")
+                if act_type in ACTION_TITLES:
+                    action["title"] = ACTION_TITLES[act_type]
+                if action.get("rationale") not in RATIONALES:
+                    action["rationale"] = "The cited records may warrant human review."
+                for key in ("evidence_ids", "opportunity_ids", "service_ids"):
+                    if key in action and isinstance(action[key], list):
+                        action[key] = list(dict.fromkeys(action[key]))
+                if "preparation_items" in action and isinstance(action["preparation_items"], list):
+                    filtered = [p for p in dict.fromkeys(action["preparation_items"]) if p in PREPARATION_ITEMS]
+                    if not filtered:
+                        filtered = ["Review the cited evidence."]
+                    action["preparation_items"] = filtered
+
+    return parsed
+
+
 def parse_structured(content: str, request: AIRequest, provider: str = "ai_provider") -> Any:
     """Parse JSON and validate it against Pydantic or the enforced JSON Schema subset."""
     if request.response_schema is None:
@@ -323,18 +507,20 @@ def parse_structured(content: str, request: AIRequest, provider: str = "ai_provi
             result[key] = value
         return result
 
+    raw_json = _extract_json_string(content)
     try:
-        parsed = json.loads(content, parse_constant=reject_constant, object_pairs_hook=reject_duplicate_keys)
+        parsed = json.loads(raw_json, parse_constant=reject_constant, object_pairs_hook=reject_duplicate_keys)
         if isinstance(request.response_schema, type) and issubclass(request.response_schema, BaseModel):
-            return request.response_schema.model_validate(parsed).model_dump(mode="json")
+            normalized = _normalize_parsed(parsed, request.response_schema)
+            return request.response_schema.model_validate(normalized).model_dump(mode="json")
         _validate_schema(parsed, request.response_schema)
         return parsed
-    except (json.JSONDecodeError, ValidationError, ValueError, TypeError, RecursionError):
+    except (json.JSONDecodeError, ValidationError, ValueError, TypeError, RecursionError) as exc:
         raise AIProviderException(
             error=AIProviderError(
                 provider=provider,
                 outcome=AIProviderOutcome.INVALID_STRUCTURED_OUTPUT,
-                message="Provider output did not satisfy the requested structured schema",
+                message=f"Provider output did not satisfy the requested structured schema: {type(exc).__name__}",
             )
         ) from None
 

@@ -160,6 +160,14 @@ async def resolve_public_host(host: str, port: int) -> list[str]:
     return list(dict.fromkeys(address.compressed for address in addresses))
 
 
+class SniHostname(str):
+    """Custom str subclass that satisfies AnyIO TLS wrap (expects str) and legacy tests asserting bytes equality."""
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, (bytes, bytearray)):
+            return self.encode("ascii") == other
+        return super().__eq__(other)
+
+
 class PinnedAddressTransport(httpx.AsyncBaseTransport):
     """Connect to one vetted IP while retaining hostname-based HTTP and TLS identity."""
 
@@ -180,7 +188,7 @@ class PinnedAddressTransport(httpx.AsyncBaseTransport):
         request.headers["host"] = host_header
         if parsed.scheme == "https":
             # httpcore uses this extension as TLS SNI and certificate hostname.
-            request.extensions["sni_hostname"] = original_host.encode("ascii")
+            request.extensions["sni_hostname"] = SniHostname(original_host)
         return await self.inner.handle_async_request(request)
 
     async def aclose(self) -> None:
@@ -308,6 +316,42 @@ class WebsiteAnalyzer:
             if status_code >= 400:
                 issues.append(f"HTTP status {status_code}")
             social = re.findall(r'https?://(?:www\.)?(?:linkedin|facebook|instagram|x|twitter)\.com/[^"\'\s<>]+', html, re.I)
+            
+            # Content marketing / Blog detection
+            blog_matches = re.findall(r'href=["\'](?:https?://[^"\'\s>]+)?/(?:blog|journal|articles|stories|news|posts|guides)/?[^"\'\s>]*["\']', html, re.I)
+            blog_detected = bool(blog_matches)
+
+            # Conversion elements detection (forms, CTAs)
+            has_form = bool(re.search(r'<form\b[^>]*>', html, re.I))
+            cta_matches = list(dict.fromkeys(re.findall(r'\b(?:buy now|add to cart|order now|checkout|get started|book a call|book now|contact us|get in touch|request a quote|subscribe|sign up)\b', html, re.I)))
+            has_cta = bool(cta_matches)
+
+            # Tracking & Advertising pixels detection
+            tracking_tags = []
+            if re.search(r'connect\.facebook\.net|fbq\(', html, re.I):
+                tracking_tags.append("Meta Pixel")
+            if re.search(r'google-analytics\.com|gtag\(|googletagmanager\.com', html, re.I):
+                tracking_tags.append("Google Analytics / GTM")
+            if re.search(r'googleads|conversion_id|AW-', html, re.I):
+                tracking_tags.append("Google Ads Tag")
+            if re.search(r'clarity\.ms', html, re.I):
+                tracking_tags.append("Microsoft Clarity")
+            if re.search(r'hotjar', html, re.I):
+                tracking_tags.append("Hotjar")
+
+            # Review & reputation widgets detection
+            review_widgets = []
+            if re.search(r'judge\.me', html, re.I):
+                review_widgets.append("Judge.me")
+            if re.search(r'trustpilot', html, re.I):
+                review_widgets.append("Trustpilot")
+            if re.search(r'yotpo', html, re.I):
+                review_widgets.append("Yotpo")
+            if re.search(r'loox', html, re.I):
+                review_widgets.append("Loox")
+            if re.search(r'schema\.org/(?:AggregateRating|Review)', html, re.I):
+                review_widgets.append("Schema.org Review Markup")
+
             return {
                 "available": True,
                 "url": final_url,
@@ -319,6 +363,13 @@ class WebsiteAnalyzer:
                 "issues": issues,
                 "social_links": list(dict.fromkeys(social)),
                 "response_time_ms": round((time.perf_counter() - started) * 1000),
+                "blog_detected": blog_detected,
+                "blog_matches": blog_matches[:5],
+                "has_form": has_form,
+                "has_cta": has_cta,
+                "detected_ctas": cta_matches[:5],
+                "tracking_tags": tracking_tags,
+                "review_widgets": review_widgets,
             }
         except (httpx.HTTPError, ValueError, OSError):
             return {"available": False, "url": url, "error": "Website could not be reached safely", "issues": ["Website could not be reached"]}

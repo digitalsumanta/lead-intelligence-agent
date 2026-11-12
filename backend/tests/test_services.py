@@ -32,6 +32,46 @@ def personalization_result(request, *, summary="Local company", video="Show page
         "confidence_score":0.8,
     })
 
+from app.domain.enrichment import (
+    ProviderIdentity,
+    ProviderKind,
+    ProviderResult,
+    ProviderResultStatus,
+    ProviderRequestMetadata,
+    EvidenceInput,
+    EvidenceSource,
+    EvidenceSourceType,
+)
+from app.models.entities import now_utc
+
+_MOCK_IDENTITY = ProviderIdentity(name="mock", kind=ProviderKind.EXTERNAL_DATA, implementation="test")
+
+@pytest.fixture(autouse=True)
+def mock_enrichment_providers_in_legacy_tests(monkeypatch):
+    from app.services.enrichment_pipeline import GooglePlacesProvider, PageSpeedProvider
+    async def mock_collect(self, lead):
+        import asyncio
+        await asyncio.sleep(0.01)
+        fetched = now_utc()
+        ev = EvidenceInput(
+            lead_id=lead.lead_id,
+            enrichment_run_id=lead.enrichment_run_id,
+            evidence_type="mock_signal",
+            source=EvidenceSource(source_type=EvidenceSourceType.OTHER_VERIFIED_SOURCE, provider=_MOCK_IDENTITY),
+            observed_value="verified",
+            observed_at=fetched,
+            fetched_at=fetched,
+            confidence=0.9,
+        )
+        return ProviderResult(
+            provider=_MOCK_IDENTITY,
+            status=ProviderResultStatus.SUCCEEDED,
+            metadata=ProviderRequestMetadata(operation="mock"),
+            evidence=(ev,),
+        )
+    monkeypatch.setattr(GooglePlacesProvider, "collect", mock_collect)
+    monkeypatch.setattr(PageSpeedProvider, "collect", mock_collect)
+
 def test_normalizes_and_adds_https():
     assert normalize_row({"company_name":" Acme ","website":" acme.com ","email":" SALES@ACME.COM "}) == {"company_name":"Acme","website":"https://acme.com","email":"sales@acme.com"}
 
