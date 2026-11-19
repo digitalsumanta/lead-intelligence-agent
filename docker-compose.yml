@@ -32,8 +32,8 @@ services:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       API_AUTH_TOKEN: ${API_AUTH_TOKEN:-}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3001}
-      OUTREACH_DISPATCH_ENABLED: "false"
-      OUTREACH_CANARY_MODE: "false"
+      OUTREACH_DISPATCH_ENABLED: ${OUTREACH_DISPATCH_ENABLED:-false}
+      OUTREACH_CANARY_MODE: ${OUTREACH_CANARY_MODE:-false}
     ports:
       - "8000:8000"
     depends_on:
@@ -59,8 +59,8 @@ services:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       API_AUTH_TOKEN: ${API_AUTH_TOKEN:-}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3001}
-      OUTREACH_DISPATCH_ENABLED: "false"
-      OUTREACH_CANARY_MODE: "false"
+      OUTREACH_DISPATCH_ENABLED: ${OUTREACH_DISPATCH_ENABLED:-false}
+      OUTREACH_CANARY_MODE: ${OUTREACH_CANARY_MODE:-false}
     command: ["python", "-m", "app.worker"]
     healthcheck:
       disable: true
