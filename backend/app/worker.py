@@ -19,7 +19,7 @@ async def run_all_workers() -> None:
     logger.info("Starting dual worker: lead processing runner + outbox dispatch worker")
     await asyncio.gather(
         run_retry_worker(poll_seconds=5.0),
-        run_outbox_worker(poll_interval=2.0),
+        run_outbox_worker(poll_interval_seconds=2.0),
     )
 
 
