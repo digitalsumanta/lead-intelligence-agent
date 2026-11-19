@@ -42,17 +42,22 @@ class GeminiProvider(StructuredHttpAIProvider, AIProvider):
         return self._url_for_model(self.model)
 
     def _payload(self, request: AIRequest) -> dict:
+        gen_config = {"temperature": request.temperature}
+        if request.max_output_tokens is not None:
+            gen_config["maxOutputTokens"] = max(request.max_output_tokens, 2048)
+        schema = self._schema_for(request)
+        if schema is not None:
+            gen_config.update({
+                "responseMimeType": "application/json",
+                "responseSchema": schema,
+                "thinkingConfig": {"thinkingBudget": 0},
+            })
         body = {
             "contents": [{"role": "user", "parts": [{"text": request.user_prompt}]}],
-            "generationConfig": {"temperature": request.temperature},
+            "generationConfig": gen_config,
         }
         if request.system_prompt:
             body["systemInstruction"] = {"parts": [{"text": request.system_prompt}]}
-        if request.max_output_tokens is not None:
-            body["generationConfig"]["maxOutputTokens"] = request.max_output_tokens
-        schema = self._schema_for(request)
-        if schema is not None:
-            body["generationConfig"].update({"responseMimeType": "application/json", "responseSchema": schema})
         return body
 
     def _validate_request_capability(self, request: AIRequest) -> None:
@@ -88,6 +93,8 @@ class GeminiProvider(StructuredHttpAIProvider, AIProvider):
             for key in ("type", "format", "description", "enum", "required"):
                 if key in node:
                     result[key] = node[key]
+            if "const" in node and "enum" not in result:
+                result["enum"] = [node["const"]]
             if isinstance(node.get("type"), list):
                 types = [item for item in node["type"] if item != "null"]
                 if len(types) != 1:

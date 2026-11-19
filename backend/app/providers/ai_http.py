@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import ipaddress
+import logging
 import re
 import time
 from datetime import date, datetime, time as time_value
@@ -32,6 +33,9 @@ from app.services.provider_execution import (
     ProviderExecutionService,
     RequestOutcome,
 )
+
+
+logger = logging.getLogger("lead_agent.ai_http")
 
 
 def response_schema(request: AIRequest) -> dict | None:
@@ -516,6 +520,7 @@ def parse_structured(content: str, request: AIRequest, provider: str = "ai_provi
         _validate_schema(parsed, request.response_schema)
         return parsed
     except (json.JSONDecodeError, ValidationError, ValueError, TypeError, RecursionError) as exc:
+        logger.error("Structured output validation failed for %s: %s | raw_json: %s", provider, exc, raw_json)
         raise AIProviderException(
             error=AIProviderError(
                 provider=provider,
