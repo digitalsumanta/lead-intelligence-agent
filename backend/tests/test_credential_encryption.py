@@ -107,3 +107,11 @@ def test_cli_generate_prints_valid_key(capsys):
     assert asyncio.run(cli._run(cli.build_parser().parse_args(["keys", "generate"]), session_factory=object())) == 0
     key = capsys.readouterr().out.strip()
     assert cc.decrypt(cc.encrypt("x", raw_keys=key), raw_keys=key) == "x"
+
+
+def test_database_errors_never_include_parameter_values():
+    """A failed INSERT must not echo the plaintext credential into logs/exception text."""
+    from app.database import engine as app_engine
+    assert app_engine.sync_engine.hide_parameters is True
+    env_py = open("backend/migrations/env.py", encoding="utf-8").read()
+    assert "hide_parameters=True" in env_py
