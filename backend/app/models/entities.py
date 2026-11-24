@@ -5,6 +5,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from sqlalchemy import CheckConstraint, Column, Date, DateTime, Enum, ForeignKey, ForeignKeyConstraint, Index, Integer, String, Text, JSON, Float, Boolean, Uuid, Table, text, Numeric, UniqueConstraint, event
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from app.services.credential_crypto import EncryptedText
 
 
 def now_utc():
@@ -423,7 +424,8 @@ class ApiKey(Base):
     __table_args__ = (Index("ix_api_keys_provider_operation_available", "provider", "operation_scope", "enabled", "status", "cooldown_until", "quota_exhausted_until", "lease_expires_at"),)
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     provider: Mapped[str] = mapped_column(String(40), nullable=False)
-    key: Mapped[str] = mapped_column(Text, nullable=False)
+    # Encrypted at rest (enc:v1:<fernet token>); decrypted transparently on read.
+    key: Mapped[str] = mapped_column(EncryptedText, nullable=False)
     status: Mapped[str] = mapped_column(String(30), default="ACTIVE")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"), nullable=False)
     operation_scope: Mapped[str | None] = mapped_column(String(120))

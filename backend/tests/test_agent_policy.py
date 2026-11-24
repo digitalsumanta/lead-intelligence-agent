@@ -210,7 +210,7 @@ def test_policy_contract_rejects_unsupported_actions_and_migration_is_registered
     migration = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(migration)
     assert (migration.revision, migration.down_revision) == ("0020_agent_policy_evaluations", "0019_ai_proposal_intelligence")
-    assert SCHEMA_REVISION == "0044_app_users_and_sessions"
+    assert SCHEMA_REVISION == "0045_encrypt_api_keys"
     from app.models import Base
     policy_table = Base.metadata.tables["agent_policy_evaluations"]
     assert {"lead_id", "action_type", "decision", "evidence_refs", "opportunity_refs", "service_refs", "policy_version", "autonomy_level", "source_fingerprint", "request_fingerprint", "requested_by", "rule_results", "created_at"}.issubset(policy_table.columns.keys())

@@ -124,6 +124,8 @@ class Settings(BaseSettings):
     )
     api_auth_token: str = ""
     api_auth_user_id: str = "local_api_user"
+    # Fernet key(s), comma-separated (first encrypts, all decrypt), for api_keys.key at rest.
+    credential_encryption_key: str = Field(default="", validation_alias=AliasChoices("CREDENTIAL_ENCRYPTION_KEY"))
     # --- Dashboard user sessions (cookie auth). API_AUTH_TOKEN remains for scripts/automation only. ---
     auth_session_ttl_hours: float = Field(default=12.0, gt=0, le=720, validation_alias=AliasChoices("AUTH_SESSION_TTL_HOURS"))
     auth_cookie_name: str = Field(default="lead_agent_session", validation_alias=AliasChoices("AUTH_COOKIE_NAME"))

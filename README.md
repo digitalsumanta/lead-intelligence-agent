@@ -74,6 +74,12 @@ People sign in to the dashboard with their own e-mail address and password. Acco
 - **Managing users.** There is no self-registration. From `backend/`: `python -m app.cli users create --email ... --role ...`, `users list`, `users set-role`, `users reset-password`, `users deactivate`, `users activate`, and `users sign-out`. Passwords are prompted for (minimum 12 characters) or read with `--password-stdin`.
 - **Automation.** `Authorization: Bearer <API_AUTH_TOKEN>` still works for scripts, with the identity `API_AUTH_USER_ID` and role `API_AUTH_ROLE`. Never give this token to a browser.
 
+## Stored credential encryption
+
+Provider API keys copied from the environment into `api_keys` are encrypted at rest with Fernet (AES-128-CBC with HMAC-SHA256, from `cryptography`) and stored as `enc:v1:<token>`; the application decrypts them only when leasing a key for a provider call. Set `CREDENTIAL_ENCRYPTION_KEY` (generate one with `cd backend; python -m app.cli keys generate`) and keep it outside the database, so database dumps and backups do not expose usable keys. The API refuses to store keys without it.
+
+Migration `0045` encrypts any existing plaintext rows and stops with an error if `CREDENTIAL_ENCRYPTION_KEY` is missing. `python -m app.cli keys status` reports how many stored keys are encrypted. To rotate, put a new key first in `CREDENTIAL_ENCRYPTION_KEY` with the old key after a comma, restart, run `python -m app.cli keys reencrypt`, then remove the old key. If the encryption key is lost, delete the `api_keys` rows and restart so they are re-created from the environment.
+
 ## Email compliance and the suppression list
 
 All three email send paths (the supervisor outbox with Resend/SendGrid, Phase 10E approved execution, and Phase 8F outreach operations) go through `backend/app/services/email_compliance.py`:
@@ -91,7 +97,7 @@ Deliverability itself (a dedicated sending domain or subdomain with SPF, DKIM an
 
 `AI_DEFAULT_PROVIDER` selects `ollama` (default), `gemini`, or `openai_compatible`. Ollama needs no subscription or API key; configure `OLLAMA_BASE_URL` and `OLLAMA_MODEL`. Gemini and OpenAI-compatible providers are disabled by default. Enable the chosen provider with `AI_GEMINI_ENABLED=true` or `AI_OPENAI_COMPATIBLE_ENABLED=true`, then configure its base URL, model, and timeout (`AI_GEMINI_*` or `AI_OPENAI_COMPATIBLE_*`). Gemini uses Google's `generateContent` HTTP API; OpenAI-compatible endpoints use `POST /v1/chat/completions`. The Gemini base URL defaults to Google's v1beta API; the compatible endpoint defaults to a local LM Studio style server.
 
-Credentials are supplied as `AI_GEMINI_API_KEY` / `AI_GEMINI_API_KEYS` or `AI_OPENAI_COMPATIBLE_API_KEY` / `AI_OPENAI_COMPATIBLE_API_KEYS`; multiple keys are comma-separated and leased through the existing provider key pool. Calls share its retry, cooldown, rate-limit, and usage telemetry behavior. Cloud credentials are only required if that cloud provider is enabled and selected. Provider tests use mocked HTTP and do not call cloud services. The credential-at-rest limitation described below still applies.
+Credentials are supplied as `AI_GEMINI_API_KEY` / `AI_GEMINI_API_KEYS` or `AI_OPENAI_COMPATIBLE_API_KEY` / `AI_OPENAI_COMPATIBLE_API_KEYS`; multiple keys are comma-separated and leased through the existing provider key pool. Calls share its retry, cooldown, rate-limit, and usage telemetry behavior. Cloud credentials are only required if that cloud provider is enabled and selected. Provider tests use mocked HTTP and do not call cloud services. Keys stored in the database are encrypted at rest (see **Stored credential encryption**).
 
 Structured output accepts Pydantic models or the locally enforced JSON Schema subset: local `$defs`/`definitions` references, primitive types, object/array constraints, enums/constants, string patterns, formats (`date-time`, `date`, `time`, `email`, `hostname`, `ipv4`, `ipv6`, `uri`, `uuid`), numeric bounds, nullable schemas, and `anyOf`/`oneOf`/`allOf`. Unsupported keywords, formats, dialects, or external references return an unsupported-capability error before a provider request. Gemini further rejects schema unions it cannot map to its API schema.
 
@@ -197,7 +203,7 @@ Migration `0017_ai_sales_copilot` adds append-only, lead-scoped interaction hist
 
 ## Current limitations
 
-Provider adapters currently support Ollama, Gemini, and generic OpenAI-compatible chat completions. Provider request controls support API-key leases and typed retries, but `api_keys.key` is still stored as plaintext in PostgreSQL; use only trusted credentials until encrypted storage or a secret-manager reference is implemented. Dashboard users sign in with individual accounts (see **Users and sign-in**); the bearer token is reserved for automation. Website requests resolve and pin a validated public destination per request, then repeat validation for redirects. Reports and settings pages are not implemented.
+Provider adapters currently support Ollama, Gemini, and generic OpenAI-compatible chat completions. Provider request controls support API-key leases and typed retries, and `api_keys.key` is encrypted at rest (see **Stored credential encryption**). Dashboard users sign in with individual accounts (see **Users and sign-in**); the bearer token is reserved for automation. Website requests resolve and pin a validated public destination per request, then repeat validation for redirects. Reports and settings pages are not implemented.
 ## Phase 10A: Agent Policy Engine
 
 The authenticated `POST /api/leads/{lead_id}/agent-policy/evaluate` endpoint evaluates a strict structured action request against the current deterministic Phase 9A context. It records an append-only decision; `GET /api/leads/{lead_id}/agent-policy/history` reads those audit records. Policy evaluation never creates tasks, sends outreach, changes sales stages, or invokes an AI provider.

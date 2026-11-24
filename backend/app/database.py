@@ -8,7 +8,7 @@ from app.models import WorkerHeartbeat
 from app.models.entities import now_utc
 
 # Alembic head this code requires. Update together with every new migration.
-SCHEMA_REVISION = "0044_app_users_and_sessions"
+SCHEMA_REVISION = "0045_encrypt_api_keys"
 
 engine = create_async_engine(settings.database_url, pool_pre_ping=True)
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)

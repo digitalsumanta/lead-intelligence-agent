@@ -82,7 +82,7 @@ def test_provider_status_migration_matches_model_and_is_reversible():
     assert (migration.revision, migration.down_revision) == (
         "0025_email_provider_status", "0024_ai_outreach_executions",
     )
-    assert SCHEMA_REVISION == "0044_app_users_and_sessions"
+    assert SCHEMA_REVISION == "0045_encrypt_api_keys"
     assert Base.metadata.tables["ai_outreach_executions"].c.provider_status.nullable
 
 

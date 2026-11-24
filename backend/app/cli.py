@@ -10,6 +10,10 @@ Run from the backend directory (or with PYTHONPATH=backend):
     python -m app.cli users activate --email rep@example.com
     python -m app.cli users sign-out --email rep@example.com
 
+    python -m app.cli keys generate     # print a new CREDENTIAL_ENCRYPTION_KEY
+    python -m app.cli keys status       # how many stored provider keys are encrypted
+    python -m app.cli keys reencrypt    # re-encrypt stored keys with the primary key (after rotation)
+
 Passwords are prompted for (not echoed) or read from stdin with --password-stdin.
 Roles: viewer (read-only), sales_rep, sales_manager (can approve outreach), admin.
 """
@@ -34,12 +38,41 @@ def _read_password(args) -> str:
     return first
 
 
+async def _run_keys(args, session_factory) -> int:
+    from sqlalchemy import text
+    from app.services import credential_crypto as cc
+
+    if args.action == "generate":
+        print(cc.generate_key())
+        return 0
+    async with session_factory() as db:
+        # Raw SQL: work with stored (ciphertext) values, not the decrypting ORM column.
+        rows = (await db.execute(text("SELECT id, key FROM api_keys"))).fetchall()
+        encrypted = sum(cc.is_encrypted(r.key) for r in rows)
+        if args.action == "status":
+            print(f"{len(rows)} stored provider key(s): {encrypted} encrypted, {len(rows) - encrypted} plaintext")
+            return 0
+        try:
+            updates = [{"id": r.id, "key": cc.rotate(r.key)} for r in rows]
+        except cc.CredentialEncryptionError as err:
+            print(f"Error: {err}", file=sys.stderr)
+            return 1
+        for item in updates:
+            await db.execute(text("UPDATE api_keys SET key = :key WHERE id = :id"), item)
+        await db.commit()
+        print(f"Re-encrypted {len(updates)} stored provider key(s) with the primary key")
+        return 0
+
+
 async def _run(args, session_factory=None) -> int:
     from app.services import auth
 
     if session_factory is None:
         from app.database import SessionLocal
         session_factory = SessionLocal
+
+    if args.group == "keys":
+        return await _run_keys(args, session_factory)
 
     async with session_factory() as db:
         if args.action == "list":
@@ -96,7 +129,7 @@ async def _run(args, session_factory=None) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="python -m app.cli", description="Manage dashboard users")
+    parser = argparse.ArgumentParser(prog="python -m app.cli", description="Administrative commands for users and stored credentials")
     sub = parser.add_subparsers(dest="group", required=True)
     users = sub.add_parser("users", help="Manage users")
     actions = users.add_subparsers(dest="action", required=True)
@@ -117,6 +150,12 @@ def build_parser() -> argparse.ArgumentParser:
             cmd.add_argument("--role", choices=USER_ROLES, required=True)
         if name == "reset-password":
             cmd.add_argument("--password-stdin", action="store_true")
+
+    keys = sub.add_parser("keys", help="Manage encryption of stored provider API keys")
+    key_actions = keys.add_subparsers(dest="action", required=True)
+    key_actions.add_parser("generate", help="Print a new Fernet key for CREDENTIAL_ENCRYPTION_KEY")
+    key_actions.add_parser("status", help="Count encrypted and plaintext stored keys")
+    key_actions.add_parser("reencrypt", help="Re-encrypt all stored keys with the primary encryption key")
     return parser
 
 

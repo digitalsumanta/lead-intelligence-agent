@@ -10,6 +10,8 @@ os.environ.setdefault("OUTREACH_UNSUBSCRIBE_SECRET", "test-unsubscribe-secret-01
 os.environ.setdefault("OUTREACH_UNSUBSCRIBE_BASE_URL", "https://leads.test.invalid")
 os.environ.setdefault("OUTREACH_SENDER_BUSINESS_NAME", "Test Sender Co")
 os.environ.setdefault("OUTREACH_SENDER_POSTAL_ADDRESS", "1 Test Street, Test City 000000")
+# Fixed Fernet key so stored provider credentials are encrypted in tests too.
+os.environ.setdefault("CREDENTIAL_ENCRYPTION_KEY", "dGVzdC1jcmVkZW50aWFsLWVuY3J5cHRpb24ta2V5MDE=")
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pytest
