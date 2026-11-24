@@ -1779,3 +1779,35 @@ class CanaryFlightAuthorization(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc)
 
 
+
+
+class EmailSuppressionReason(str, enum.Enum):
+    UNSUBSCRIBED = "UNSUBSCRIBED"
+    HARD_BOUNCE = "HARD_BOUNCE"
+    COMPLAINT = "COMPLAINT"
+    MANUAL = "MANUAL"
+
+
+class EmailSuppression(Base):
+    """Global do-not-email list. Checked before every outbound email on every send path.
+
+    Addresses are stored only as a SHA-256 hash of the normalized address (plus a masked
+    form for display), so the list honors opt-outs without retaining readable addresses.
+    """
+
+    __tablename__ = "email_suppressions"
+    __table_args__ = (
+        CheckConstraint(
+            "reason IN ('UNSUBSCRIBED', 'HARD_BOUNCE', 'COMPLAINT', 'MANUAL')",
+            name="ck_email_suppression_reason",
+        ),
+        UniqueConstraint("email_hash", name="uq_email_suppressions_email_hash"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    email_masked: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    reason: Mapped[str] = mapped_column(String(30), nullable=False)
+    source: Mapped[str] = mapped_column(String(60), nullable=False)
+    details: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)

@@ -13,6 +13,7 @@ from app.models import (
     OutreachStatus, SalesActivity, SalesActivityType,
 )
 from app.models.entities import now_utc
+from app.services.email_compliance import EmailComplianceError, RecipientSuppressedError, ensure_not_suppressed, prepare_compliant_email
 from app.providers.outreach import (
     OutreachMessage, OutreachProviderFailure, resolve_outreach_provider,
 )
@@ -159,11 +160,25 @@ def _activity_for_execution(execution: OutreachExecution, now) -> SalesActivity:
 
 async def _send_attempt(session: AsyncSession, execution: OutreachExecution, *, provider=None) -> OutreachExecution:
     await session.commit()
+    content = execution.content_snapshot["text"]
+    if execution.channel == "EMAIL":
+        try:
+            await ensure_not_suppressed(session, execution.recipient or "")
+            content = prepare_compliant_email(execution.recipient or "", content).body_text
+        except EmailComplianceError as error:
+            status_code = 409 if isinstance(error, RecipientSuppressedError) else 503
+            execution.status = "FAILED"
+            execution.error_code = error.code
+            execution.error_message = str(error)[:500]
+            execution.failed_at = now_utc()
+            execution.updated_at = now_utc()
+            await session.commit()
+            raise OutreachOperationError(error.code, str(error), status_code) from None
     try:
         adapter = provider or resolve_outreach_provider(execution.channel)
         message = OutreachMessage(
             channel=execution.channel, recipient=execution.recipient or "",
-            subject=execution.subject, content=execution.content_snapshot["text"], provider=execution.provider,
+            subject=execution.subject, content=content, provider=execution.provider,
             idempotency_key=execution.idempotency_key,
         )
         result = await adapter.send(message)

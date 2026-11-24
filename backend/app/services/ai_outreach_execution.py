@@ -25,6 +25,7 @@ from app.models import (
 from app.models.entities import now_utc
 from app.providers.outreach import OutreachProviderFailure
 from app.providers.email import EmailProviderResult, EmailSendRequest, resolve_email_provider
+from app.services.email_compliance import EmailComplianceError, ensure_not_suppressed, prepare_compliant_email
 from app.services.email_delivery_events import add_execution_delivery_event
 from app.schemas.agent_policy import PolicyChannel, PolicyDecision, PolicyEvaluationRequest
 from app.schemas.ai_outreach_execution import (
@@ -371,6 +372,14 @@ async def execute_approved_email(session: AsyncSession, approval_id: UUID, *, pr
     if duplicate is not None:
         return _execution_output(duplicate)
     try:
+        compliant = prepare_compliant_email(approval.recipient, preparation.body or "")
+        await ensure_not_suppressed(session, approval.recipient)
+    except EmailComplianceError as error:
+        return await _save_terminal_execution(
+            session, approval=approval, preparation=preparation, policy_id=policy.evaluation_id,
+            status="FAILED", code=error.code, reason=str(error),
+        )
+    try:
         adapter = provider or resolve_email_provider()
         provider_name = str(getattr(adapter, "name", "unknown"))[:80]
     except (OutreachProviderFailure, ValueError) as error:
@@ -401,7 +410,8 @@ async def execute_approved_email(session: AsyncSession, approval_id: UUID, *, pr
 
     message = EmailSendRequest(
         recipient=approval.recipient, subject=preparation.subject or "",
-        body=preparation.body or "", idempotency_key=execution.idempotency_key,
+        body=compliant.body_text, idempotency_key=execution.idempotency_key,
+        headers=compliant.headers,
         metadata={"execution_id": str(execution.id), "approval_id": str(approval.id)},
     )
     try:

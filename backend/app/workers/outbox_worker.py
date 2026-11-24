@@ -31,6 +31,8 @@ from app.domain.dispatch_errors import (
     DispatchDisabledError,
     DispatchFencingConflictError,
     DispatchRecipientNotAllowlistedError,
+    DispatchRecipientSuppressedError,
+    DispatchComplianceConfigError,
 )
 from app.models.entities import SupervisorApprovalDispatchStatus, now_utc
 from app.services.providers.factory import get_dispatch_provider
@@ -128,6 +130,24 @@ async def process_one_dispatch(
                         job.status = SupervisorApprovalDispatchStatus.ABORTED.value
                         job.error_code = "DISPATCH_DISABLED"
                         job.error_message = str(e)
+                        job.updated_at = eval_time
+        except Exception as exc:
+            logger.exception("Failed to update status to ABORTED: %s", exc)
+    except (DispatchRecipientSuppressedError, DispatchComplianceConfigError) as e:
+        logger.warning(
+            "Outbox worker '%s' dispatch '%s' blocked by email compliance guard: %s",
+            worker_id,
+            dispatch_id,
+            e,
+        )
+        try:
+            async with session_factory() as session:
+                async with session.begin():
+                    job = await service.repository.get_by_id(session, dispatch_id)
+                    if job:
+                        job.status = SupervisorApprovalDispatchStatus.ABORTED.value
+                        job.error_code = e.code
+                        job.error_message = str(e)[:500]
                         job.updated_at = eval_time
         except Exception as exc:
             logger.exception("Failed to update status to ABORTED: %s", exc)

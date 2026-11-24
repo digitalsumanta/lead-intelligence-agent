@@ -1,4 +1,5 @@
 """Environment-backed application settings."""
+import os
 from pathlib import Path
 from typing import Literal
 from pydantic import AliasChoices, Field
@@ -7,7 +8,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     """Runtime configuration; secrets are sourced only from the environment."""
-    model_config = SettingsConfigDict(env_file=Path(__file__).resolve().parents[2] / ".env", env_file_encoding="utf-8", extra="ignore")
+    # LEAD_AGENT_DISABLE_ENV_FILE=1 skips the repo-root .env (used by the test suite so local
+    # developer settings such as live dispatch or cloud providers never leak into tests).
+    model_config = SettingsConfigDict(
+        env_file=None if os.environ.get("LEAD_AGENT_DISABLE_ENV_FILE") else Path(__file__).resolve().parents[2] / ".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
     app_name: str = "Lead Intelligence Agent"
     database_url: str = "postgresql+asyncpg://lead_agent@localhost:5432/lead_agent"
     ai_provider: str = Field(default="ollama", validation_alias=AliasChoices("AI_DEFAULT_PROVIDER", "AI_PROVIDER"))
@@ -100,6 +107,17 @@ class Settings(BaseSettings):
         default=False,
         validation_alias=AliasChoices("outreach_canary_mode", "OUTREACH_CANARY_MODE", "CANARY_MODE"),
     )
+    # --- Email compliance (CAN-SPAM / Gmail-Yahoo bulk sender rules / RFC 8058 one-click) ---
+    # When enforced, every outbound email must carry a working unsubscribe mechanism and the
+    # sender's postal address; sends fail closed if this configuration is incomplete.
+    outreach_compliance_enforced: bool = Field(default=True, validation_alias=AliasChoices("OUTREACH_COMPLIANCE_ENFORCED"))
+    outreach_unsubscribe_secret: str = Field(default="", validation_alias=AliasChoices("OUTREACH_UNSUBSCRIBE_SECRET"))
+    # Public base URL of this backend (e.g. https://api.example.com); links go to {base}/unsubscribe/{token}.
+    outreach_unsubscribe_base_url: str = Field(default="", validation_alias=AliasChoices("OUTREACH_UNSUBSCRIBE_BASE_URL"))
+    # Optional mailbox for mailto: unsubscribe requests (e.g. unsubscribe@example.com).
+    outreach_unsubscribe_mailto: str = Field(default="", validation_alias=AliasChoices("OUTREACH_UNSUBSCRIBE_MAILTO"))
+    outreach_sender_business_name: str = Field(default="", validation_alias=AliasChoices("OUTREACH_SENDER_BUSINESS_NAME"))
+    outreach_sender_postal_address: str = Field(default="", validation_alias=AliasChoices("OUTREACH_SENDER_POSTAL_ADDRESS"))
     outreach_canary_allowed_domains: str = Field(
         default="internal-test.leadintel.example.com",
         validation_alias=AliasChoices("outreach_canary_allowed_domains", "OUTREACH_CANARY_ALLOWED_DOMAINS", "CANARY_ALLOWED_DOMAINS"),
@@ -110,7 +128,7 @@ class Settings(BaseSettings):
     app_env: str = Field(default="development", validation_alias=AliasChoices("APP_ENV", "ENVIRONMENT"))
     supervisor_strict_separation: bool = Field(default=True, validation_alias=AliasChoices("SUPERVISOR_STRICT_SEPARATION"))
     allow_dev_shared_approval: bool = Field(default=False, validation_alias=AliasChoices("SUPERVISOR_ALLOW_DEV_SHARED_APPROVAL", "ALLOW_DEV_SHARED_APPROVAL"))
-    allow_dev_role_override: bool = Field(default=True, validation_alias=AliasChoices("SUPERVISOR_ALLOW_DEV_ROLE_OVERRIDE", "ALLOW_DEV_ROLE_OVERRIDE"))
+    allow_dev_role_override: bool = Field(default=False, validation_alias=AliasChoices("SUPERVISOR_ALLOW_DEV_ROLE_OVERRIDE", "ALLOW_DEV_ROLE_OVERRIDE"))
     agent_contact_cooldown_minutes: int = Field(default=1440, ge=0, le=525600)
     supervisor_lease_duration_seconds: int = Field(default=300, ge=10, le=86400, validation_alias=AliasChoices("SUPERVISOR_LEASE_DURATION_SECONDS"))
     supervisor_heartbeat_timeout_seconds: int = Field(default=60, ge=5, le=3600, validation_alias=AliasChoices("SUPERVISOR_HEARTBEAT_TIMEOUT_SECONDS"))
@@ -122,16 +140,23 @@ class Settings(BaseSettings):
         return env_val in {"production", "prod", "staging", "stage"}
 
     @property
+    def is_unrestricted_live_dispatch(self) -> bool:
+        """True when real outreach can be sent without the canary recipient/flight restrictions."""
+        return bool(getattr(self, "outreach_dispatch_enabled", False)) and not bool(getattr(self, "outreach_canary_mode", False))
+
+    @property
     def effective_allow_dev_role_override(self) -> bool:
-        """In production or staging, client-controlled role overrides are strictly forbidden."""
-        if self.is_production:
+        """Client-controlled role overrides are forbidden in production/staging and whenever
+        unrestricted live dispatch is enabled, regardless of the configured flag."""
+        if self.is_production or self.is_unrestricted_live_dispatch:
             return False
         return bool(self.allow_dev_role_override)
 
     @property
     def effective_allow_dev_shared_approval(self) -> bool:
-        """In production or staging, shared development identity approvals are strictly forbidden."""
-        if self.is_production:
+        """Shared development identity approvals are forbidden in production/staging and whenever
+        unrestricted live dispatch is enabled, regardless of the configured flag."""
+        if self.is_production or self.is_unrestricted_live_dispatch:
             return False
         return bool(self.allow_dev_shared_approval)
 

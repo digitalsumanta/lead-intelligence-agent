@@ -2040,6 +2040,7 @@ from app.api.routes import (
     supervisor_delivery_webhooks,
     supervisor_canary,
     business_research,
+    email_compliance as email_compliance_routes,
 )
 
 app.include_router(contact_intelligence.router)
@@ -2054,6 +2055,8 @@ app.include_router(supervisor_dispatch.router)
 app.include_router(supervisor_delivery_webhooks.router)
 app.include_router(supervisor_canary.router)
 app.include_router(business_research.router)
+app.include_router(email_compliance_routes.public_router)
+app.include_router(email_compliance_routes.router)
 
 for _r in (
     contact_intelligence.router,

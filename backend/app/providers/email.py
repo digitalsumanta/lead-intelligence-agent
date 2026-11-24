@@ -12,6 +12,7 @@ from email.message import EmailMessage
 from typing import Literal, Protocol
 
 from app.config import settings
+from app.services.email_compliance import filter_compliance_headers
 from app.providers.outreach import (
     OutreachMessage,
     OutreachProviderFailure,
@@ -29,6 +30,8 @@ class EmailSendRequest:
     body: str
     idempotency_key: str
     metadata: dict[str, str] = field(default_factory=dict)
+    # Compliance headers (List-Unsubscribe / List-Unsubscribe-Post); filtered before use.
+    headers: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -89,6 +92,8 @@ class SMTPEmailProvider:
         message["From"] = self.sender
         message["To"] = request.recipient
         message["Subject"] = request.subject
+        for name, value in filter_compliance_headers(request.headers).items():
+            message[name] = value
         message.set_content(request.body)
         submitting = False
         client = None

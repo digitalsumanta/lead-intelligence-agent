@@ -37,6 +37,13 @@ from app.domain.dispatch_errors import (
     DispatchRedactedPayloadError,
 )
 from app.domain.recipient_allowlist import mask_recipient_pii, validate_canary_recipient
+from app.domain.dispatch_errors import DispatchComplianceConfigError, DispatchRecipientSuppressedError
+from app.services.email_compliance import (
+    ComplianceConfigurationError,
+    get_compliance_config,
+    is_suppressed,
+    prepare_compliant_email,
+)
 from app.services.canary_authorization_service import CanaryAuthorizationService
 from app.domain.dispatch_idempotency import (
     compute_canonical_idempotency_key,
@@ -186,6 +193,10 @@ class SupervisorApprovalDispatchService:
             raise DispatchInvalidTransitionError(
                 f"Lead '{lead.id}' has no valid coordinates for channel '{channel}'"
             )
+
+        # 5a. Email compliance: suppression list and unsubscribe/postal-address configuration
+        if channel == "EMAIL":
+            await self._enforce_email_compliance(session, canonical_recipient)
 
         # 5b. Canary Recipient Allowlist & Flight Authorization Enqueue Pre-Check (ACM-05, ACM-06, Finding D3.1-02)
         is_canary = (
@@ -372,6 +383,10 @@ class SupervisorApprovalDispatchService:
         if not settings.is_channel_enabled(job.channel):
             raise DispatchDisabledError(f"Channel '{job.channel}' was deactivated")
 
+        # Guard 3b: Email compliance (suppression list + unsubscribe configuration)
+        if job.channel == "EMAIL":
+            await self._enforce_email_compliance(session, job.recipient)
+
         # Guard 4: Fencing / Lease Generation Check
         if job.lease_generation != expected_lease_generation:
             raise DispatchFencingConflictError(
@@ -509,6 +524,18 @@ class SupervisorApprovalDispatchService:
         return job
 
     @staticmethod
+    async def _enforce_email_compliance(session: AsyncSession, recipient: str) -> None:
+        """Fail closed when the recipient is suppressed or compliance config is incomplete."""
+        try:
+            get_compliance_config()
+        except ComplianceConfigurationError as err:
+            raise DispatchComplianceConfigError(str(err)) from None
+        if await is_suppressed(session, recipient):
+            raise DispatchRecipientSuppressedError(
+                f"Recipient '{mask_recipient_pii(recipient)}' is on the email suppression list"
+            )
+
+    @staticmethod
     def is_canary_dispatch(job: SupervisorApprovalDispatch) -> bool:
         """Determines whether a dispatch job is part of a canary rollout."""
         if getattr(settings, "outreach_canary_mode", False):
@@ -570,6 +597,22 @@ class SupervisorApprovalDispatchService:
         meta = dict(effective_payload.get("metadata") or {})
         meta["dispatch_id"] = str(dispatch_id)
         effective_payload["metadata"] = meta
+        if channel == "EMAIL":
+            try:
+                compliant = prepare_compliant_email(
+                    recipient,
+                    effective_payload.get("body") or effective_payload.get("body_text") or "",
+                    effective_payload.get("html") or effective_payload.get("body_html"),
+                )
+            except ComplianceConfigurationError as err:
+                raise DispatchComplianceConfigError(str(err)) from None
+            effective_payload["body"] = compliant.body_text
+            effective_payload.pop("body_text", None)
+            if compliant.body_html is not None:
+                effective_payload["html"] = compliant.body_html
+                effective_payload.pop("body_html", None)
+            if compliant.headers:
+                effective_payload["headers"] = compliant.headers
 
         timeout_sec = getattr(settings, "outreach_dispatch_timeout_seconds", 10.0)
         try:

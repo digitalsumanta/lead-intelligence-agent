@@ -125,7 +125,10 @@ async def test_approval_is_authenticated_bound_to_exact_draft_and_execution_is_i
     assert len(mailer.calls) == 1
     assert mailer.calls[0].recipient == "prospect@example.test"
     assert mailer.calls[0].subject == draft.subject
-    assert mailer.calls[0].body == draft.body
+    # Approved body is sent verbatim, followed by the compliance footer and unsubscribe headers.
+    assert mailer.calls[0].body.startswith(draft.body.rstrip())
+    assert "/unsubscribe/" in mailer.calls[0].body and "1 Test Street" in mailer.calls[0].body
+    assert mailer.calls[0].headers["List-Unsubscribe-Post"] == "List-Unsubscribe=One-Click"
     assert mailer.calls[0].idempotency_key == execution["idempotency_key"]
     async with session_factory() as session:
         activity = await session.scalar(select(SalesActivity).where(

@@ -1,5 +1,15 @@
 """Shared in-memory database fixtures."""
+import os
 import sys
+
+# Keep the developer's local .env (live dispatch, cloud AI providers, API keys) out of tests.
+# Must be set before anything imports app.config.
+os.environ["LEAD_AGENT_DISABLE_ENV_FILE"] = "1"
+# Deterministic email-compliance configuration (unsubscribe links + postal address) for tests.
+os.environ.setdefault("OUTREACH_UNSUBSCRIBE_SECRET", "test-unsubscribe-secret-0123456789abcdef")
+os.environ.setdefault("OUTREACH_UNSUBSCRIBE_BASE_URL", "https://leads.test.invalid")
+os.environ.setdefault("OUTREACH_SENDER_BUSINESS_NAME", "Test Sender Co")
+os.environ.setdefault("OUTREACH_SENDER_POSTAL_ADDRESS", "1 Test Street, Test City 000000")
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pytest

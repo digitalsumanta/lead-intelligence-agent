@@ -64,6 +64,19 @@ CSV requires `company_name`; optional columns are website, phone, email, address
 
 The website analyzer only accepts HTTP(S), rejects localhost and non-public addresses, checks DNS destinations, manually follows a bounded number of redirects while revalidating them, applies a timeout, and caps response size. It does not crawl subpages.
 
+## Email compliance and the suppression list
+
+All three email send paths (the supervisor outbox with Resend/SendGrid, Phase 10E approved execution, and Phase 8F outreach operations) go through `backend/app/services/email_compliance.py`:
+
+- **Suppression list.** `email_suppressions` (migration `0043`) is a global do-not-email list keyed by a SHA-256 hash of the normalized address; only a masked form is kept for display. Suppressed recipients are refused at enqueue time and again in the pre-flight guard immediately before the provider call; supervisor dispatches end `ABORTED` with `RECIPIENT_SUPPRESSED`.
+- **Automatic suppression.** Delivery webhooks add the correlated recipient on a permanent bounce (`HARD_BOUNCE`), a spam complaint (`COMPLAINT`), or a provider unsubscribe event (`UNSUBSCRIBED`).
+- **Unsubscribe links and headers.** Every email gets a footer with an unsubscribe link (or mailto instruction) plus the sender name and postal address, and `List-Unsubscribe` headers; with an HTTPS link it also gets `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 8058). The HTTP-gateway (`http_json`) path can only carry the footer, not headers.
+- **Public unsubscribe page.** `GET /unsubscribe/{token}` shows a confirmation page and never changes state (mail scanners prefetch links); `POST /unsubscribe/{token}` records the opt-out and also serves mailbox providers' one-click requests. These routes sit outside `/api` and need no bearer token; tokens are HMAC-signed and contain no readable address. The backend must be reachable at `OUTREACH_UNSUBSCRIBE_BASE_URL` for links to work.
+- **Manual management.** `GET/POST /api/email-suppressions` and `DELETE /api/email-suppressions/{id}` (bearer auth) list, add (for example when someone replies "unsubscribe"), and remove entries.
+- **Fail closed.** With `OUTREACH_COMPLIANCE_ENFORCED=true` (default), email sends are blocked (`EMAIL_COMPLIANCE_NOT_CONFIGURED`) until `OUTREACH_UNSUBSCRIBE_SECRET`, `OUTREACH_SENDER_POSTAL_ADDRESS` and `OUTREACH_UNSUBSCRIBE_BASE_URL` and/or `OUTREACH_UNSUBSCRIBE_MAILTO` are set. See `.env.example`.
+
+Deliverability itself (a dedicated sending domain or subdomain with SPF, DKIM and DMARC, and gradual warm-up) is configured at your DNS and email provider, not in this application.
+
 ## AI providers
 
 `AI_DEFAULT_PROVIDER` selects `ollama` (default), `gemini`, or `openai_compatible`. Ollama needs no subscription or API key; configure `OLLAMA_BASE_URL` and `OLLAMA_MODEL`. Gemini and OpenAI-compatible providers are disabled by default. Enable the chosen provider with `AI_GEMINI_ENABLED=true` or `AI_OPENAI_COMPATIBLE_ENABLED=true`, then configure its base URL, model, and timeout (`AI_GEMINI_*` or `AI_OPENAI_COMPATIBLE_*`). Gemini uses Google's `generateContent` HTTP API; OpenAI-compatible endpoints use `POST /v1/chat/completions`. The Gemini base URL defaults to Google's v1beta API; the compatible endpoint defaults to a local LM Studio style server.

@@ -106,3 +106,13 @@ class CanaryMessageCapExceededError(CanaryAuthorizationError):
     """Raised when the cumulative message cap for a canary flight has been exhausted."""
     code = "CANARY_MESSAGE_CAP_EXHAUSTED"
 
+
+
+class DispatchRecipientSuppressedError(DispatchAbortedError):
+    """Recipient is on the global email suppression list (unsubscribed, bounced, complained)."""
+    code = "RECIPIENT_SUPPRESSED"
+
+
+class DispatchComplianceConfigError(DispatchAbortedError):
+    """Required email compliance configuration (unsubscribe, postal address) is missing."""
+    code = "EMAIL_COMPLIANCE_NOT_CONFIGURED"

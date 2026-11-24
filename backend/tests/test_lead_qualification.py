@@ -407,7 +407,8 @@ async def test_final_01_and_rq_04_rq_05_service_invariants(session_factory):
 
 
 @pytest.mark.asyncio
-async def test_lead_qualification_api_endpoints(session_factory):
+async def test_lead_qualification_api_endpoints(session_factory, monkeypatch):
+    monkeypatch.setattr(settings, "api_auth_token", "qualification-test-token")
     """
     Test GET /api/leads/{id}/qualification and POST /api/leads/{id}/qualify.
     """
@@ -456,7 +457,8 @@ async def test_lead_qualification_api_endpoints(session_factory):
 
 
 @pytest.mark.asyncio
-async def test_list_leads_filtering_and_sorting_by_qualification(session_factory):
+async def test_list_leads_filtering_and_sorting_by_qualification(session_factory, monkeypatch):
+    monkeypatch.setattr(settings, "api_auth_token", "qualification-test-token")
     """
     Test GET /api/leads with qualification_class filtering and qualification_score sorting.
     """

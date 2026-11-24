@@ -37,6 +37,9 @@ from app.services.webhooks.signature_verifier import (
     WebhookTimestampExpiredError,
 )
 
+from app.models.entities import EmailSuppressionReason
+from app.services.email_compliance import add_suppression
+
 logger = logging.getLogger("lead_agent.api.delivery_webhooks")
 
 router = APIRouter(prefix="/api/sales-supervisor/webhooks/delivery", tags=["Sales Supervisor Delivery Webhooks"])
@@ -79,6 +82,38 @@ async def _correlate_dispatch(
         return dispatch.id, dispatch.id, dispatch.lead_reference_id
 
     return None, None, None
+
+
+_UNSUBSCRIBE_RAW_TYPES = frozenset({"unsubscribe", "group_unsubscribe"})
+
+
+def _suppression_reason(event: NormalizedDeliveryEvent) -> EmailSuppressionReason | None:
+    if event.event_type == "COMPLAINT":
+        return EmailSuppressionReason.COMPLAINT
+    if event.event_type == "BOUNCED" and event.bounce_type == "PERMANENT":
+        return EmailSuppressionReason.HARD_BOUNCE
+    if (event.raw_event_type or "").strip().lower() in _UNSUBSCRIBE_RAW_TYPES:
+        return EmailSuppressionReason.UNSUBSCRIBED
+    return None
+
+
+async def _auto_suppress(session: AsyncSession, event: NormalizedDeliveryEvent, dispatch_id: uuid.UUID | None) -> None:
+    """Suppress the correlated dispatch's recipient. Webhook payloads carry only masked
+    recipients, so suppression relies on correlating the event to our own dispatch record."""
+    reason = _suppression_reason(event)
+    if reason is None or dispatch_id is None:
+        return
+    dispatch = await session.get(SupervisorApprovalDispatch, dispatch_id)
+    if dispatch is None or dispatch.channel != "EMAIL" or not dispatch.recipient:
+        return
+    try:
+        await add_suppression(
+            session, email=dispatch.recipient, reason=reason,
+            source=f"webhook_{event.provider_name.lower()}"[:60],
+            details=(event.bounce_reason or event.raw_event_type or None),
+        )
+    except ValueError:
+        logger.warning("Could not suppress recipient for dispatch '%s': invalid address", dispatch_id)
 
 
 @router.post(
@@ -221,6 +256,9 @@ async def ingest_delivery_webhook(
                 duplicate_count += 1
             else:
                 persisted_count += 1
+
+            # Email compliance: stop mailing addresses that hard-bounce, complain or unsubscribe.
+            await _auto_suppress(db, event, dispatch_id)
 
         await db.commit()
     except Exception as exc:

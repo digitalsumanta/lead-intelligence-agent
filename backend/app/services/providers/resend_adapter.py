@@ -19,6 +19,7 @@ import httpx
 from app.domain.dispatch_errors import DispatchConfigurationError
 from app.domain.recipient_allowlist import normalize_email_address
 from app.services.dispatch_provider import DispatchProviderResult
+from app.services.email_compliance import filter_compliance_headers
 from app.services.providers.base_adapter import (
     BaseDispatchProviderAdapter,
     NormalizedDispatchRequest,
@@ -143,6 +144,9 @@ class ResendEmailAdapter:
         }
         if req.body_html:
             body_data["html"] = req.body_html
+        email_headers = filter_compliance_headers(payload_json.get("headers"))
+        if email_headers:
+            body_data["headers"] = email_headers
 
         # Decision DC3-03: Provider correlation tags
         tags = []

@@ -192,6 +192,7 @@ async def test_pre_flight_guard_allows_valid_canary_recipient(monkeypatch):
 
     service = SupervisorApprovalDispatchService()
     session = AsyncMock()
+    session.scalar = AsyncMock(return_value=None)  # recipient not on suppression list
     session.flush = AsyncMock()
     service.repository = MagicMock()
     service.repository.get_by_id = AsyncMock(return_value=job)
@@ -241,6 +242,7 @@ async def test_pre_flight_guard_aborts_unallowlisted_canary_recipient(monkeypatc
 
     service = SupervisorApprovalDispatchService()
     session = AsyncMock()
+    session.scalar = AsyncMock(return_value=None)  # recipient not on suppression list
     session.flush = AsyncMock()
     service.repository = MagicMock()
     service.repository.get_by_id = AsyncMock(return_value=job)
@@ -291,6 +293,7 @@ async def test_non_canary_dispatch_bypasses_canary_allowlist_when_canary_mode_di
 
     service = SupervisorApprovalDispatchService()
     session = AsyncMock()
+    session.scalar = AsyncMock(return_value=None)  # recipient not on suppression list
     session.flush = AsyncMock()
     service.repository = MagicMock()
     service.repository.get_by_id = AsyncMock(return_value=job)
