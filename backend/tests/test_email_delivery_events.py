@@ -9,6 +9,7 @@ from pydantic import ValidationError
 from sqlalchemy import func, select
 
 from app import main as main_module
+from app.api.routes import ai_agents as ai_agents_routes
 from app.config import settings
 from app.database import get_db
 from app.models import (
@@ -63,7 +64,7 @@ async def sent_execution(session_factory):
     _, draft = await prepared_email(session_factory)
     approval = await approve(session_factory, draft)
     async with session_factory() as session:
-        execution = await main_module.execute_approved_email(
+        execution = await ai_agents_routes.execute_approved_email(
             session, approval.id, provider=FakeEmailProvider(),
         )
     assert execution.status == "SENT"

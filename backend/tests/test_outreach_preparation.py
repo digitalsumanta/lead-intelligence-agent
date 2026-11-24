@@ -108,7 +108,7 @@ async def generate_via_api(client, session_factory, lead_id, monkeypatch, payloa
     async with session_factory() as session:
         intelligence = await read_lead_intelligence(session, lead_id)
     provider = StubProvider(payload if payload is not None else valid_payload(intelligence))
-    monkeypatch.setattr("app.main.get_provider", lambda **kwargs: provider)
+    monkeypatch.setattr("app.api.routes.outreach.get_provider", lambda **kwargs: provider)
     return await client.post(
         f"/api/leads/{lead_id}/outreach/generate",
         headers={"Authorization": "Bearer outreach-test-token"},
@@ -171,7 +171,7 @@ async def _intelligence(session_factory, lead_id):
 async def test_terminal_sales_status_cannot_generate(outreach_client, session_factory, monkeypatch, status):
     lead_id, _ = await make_outreach_lead(session_factory, status=status)
     provider = StubProvider({})
-    monkeypatch.setattr("app.main.get_provider", lambda **kwargs: provider)
+    monkeypatch.setattr("app.api.routes.outreach.get_provider", lambda **kwargs: provider)
     async with outreach_client as client:
         response = await client.post(f"/api/leads/{lead_id}/outreach/generate", headers={"Authorization": "Bearer outreach-test-token"})
     assert response.status_code == 409 and response.json()["error"]["code"] == "OUTREACH_NOT_ALLOWED"
@@ -194,7 +194,7 @@ async def test_approval_rejection_edit_restrictions_and_cross_lead_isolation(out
     assert approved.status_code == 200 and approved.json()["status"] == "APPROVED"
     assert edit_approved.status_code == 422
     assert rejected.status_code == 200
-    assert any(route.path == "/api/outreach/{artifact_id}/send" for route in app.routes)
+    assert "/api/outreach/{artifact_id}/send" in app.openapi()["paths"]
 
 
 @pytest.mark.asyncio

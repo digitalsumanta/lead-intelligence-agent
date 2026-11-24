@@ -1,270 +1,121 @@
 # Lead Intelligence Agent
 
-Local-first lead ingestion and enrichment. The backend uses FastAPI, SQLAlchemy 2 async, PostgreSQL, Alembic, and a separate durable-job worker. The frontend is Next.js. Ollama is the default AI provider; optional Gemini and generic OpenAI-compatible adapters use the shared provider execution/key-pool service. Google Places and PageSpeed collect source evidence through resumable enrichment stages.
+Lead research, qualification and outreach for a sales team, with every AI output grounded in collected evidence and every outbound message approved by a person.
+
+- **Collect and enrich leads:** CSV import or business research, then website, Google Places and PageSpeed evidence gathered in resumable background jobs.
+- **Deterministic intelligence:** opportunities, service recommendations, scores and lead qualification derived from stored evidence, never invented.
+- **Evidence-grounded AI:** sales intelligence, copilot answers, action plans, proposals and outreach drafts. Each factual claim must cite stored evidence, and invalid output is rejected rather than saved.
+- **Sales workflow:** pipeline stages, activities, tasks, collections and revenue reporting.
+- **Human-controlled outreach:** drafts, review, supervisor approval, canary flights, a transactional outbox, delivery webhooks and an e-mail suppression list.
+
+The backend is FastAPI with async SQLAlchemy 2, PostgreSQL 16 and Alembic, plus separate worker processes. The dashboard is Next.js 15. Ollama is the default AI provider; Gemini and OpenAI-compatible endpoints are optional.
+
+## Quick start (Windows / PowerShell)
+
+Requires Python 3.12+, Node 20+, PostgreSQL 16 and, for local AI, [Ollama](https://ollama.com) with `ollama pull qwen2.5-coder:latest`.
+
+1. **Configure.** Copy `.env.example` to `.env` and set at least:
+   - `POSTGRES_PASSWORD` and `DATABASE_URL`
+   - `API_AUTH_TOKEN`: a long random value, used only by scripts
+   - `CORS_ORIGINS`: the dashboard URL
+   - `CREDENTIAL_ENCRYPTION_KEY`: generate it after step 2 with `cd backend; python -m app.cli keys generate`
+2. **Install.**
+   ```powershell
+   python -m pip install -r backend/requirements-dev.txt
+   cd frontend; npm install; cd ..
+   ```
+3. **Migrate.** The app never creates tables itself and refuses to start unless the database is at the latest migration.
+   ```powershell
+   $env:PYTHONPATH = "backend"; python -m alembic -c backend\alembic.ini upgrade head
+   ```
+4. **Create the first account.** There is no self-registration.
+   ```powershell
+   cd backend; python -m app.cli users create --email you@example.com --role admin --name "Your Name"; cd ..
+   ```
+5. **Run.** `./scripts/start-dev.ps1` starts the API on port 8000, the lead-processing worker, and the dashboard on port 3000. To also run the outreach outbox worker, start both workers with `cd backend; python -m app.worker` instead. Alternatively, `docker compose up --build` runs everything, applies migrations automatically, and serves the dashboard on port 3001.
+
+Then open the dashboard and sign in. `GET /health` is a liveness check; `GET /ready` also checks the database, the AI provider and the worker heartbeat.
 
 ## Architecture
 
-- `backend/app/main.py` exposes REST endpoints. It validates requests, authenticates `/api/*`, and queues work; it does not run long lead analyses inline.
-- `backend/app/models/entities.py` defines leads, import records, batches, processing jobs, events, provider usage, keys, and agent runs.
-- `backend/app/services/` contains CSV validation, job state transitions, website inspection, scoring, and key-pool utilities.
-- `backend/app/services/enrichment_pipeline.py` collects website, Google Places, and PageSpeed evidence in durable resumable stages. `backend/app/services/intelligence.py` deterministically derives opportunities, ranked service recommendations, and versioned scores from persisted evidence.
-- `backend/app/workers/runner.py` polls durable jobs. PostgreSQL workers claim rows with `FOR UPDATE SKIP LOCKED`; a conditional unique index prevents more than one active job per lead. A separate heartbeat task supports worker readiness checks while a long AI request is running.
-- `backend/migrations/` contains explicit Alembic schema revisions. Alembic is the sole schema authority. API and worker startup require an already migrated database and never create tables.
-- The dashboard queues work and polls job status; it does not process leads itself.
-- The Lead Intelligence review dashboard is available at `/leads`, with detail pages at `/leads/{lead_id}`. It calls the API at `NEXT_PUBLIC_API_URL` (default `http://localhost:8000`) and signs users in with an HttpOnly session cookie (see **Users and sign-in**); no API token is bundled into browser code. Run the frontend with `cd frontend; npm run dev`.
-
-## Local development
-
-Use Python 3.12+, Node 20+, PostgreSQL 16, and Ollama. Copy `.env.example` to `.env`, set a strong URL-safe PostgreSQL password and a long random `API_AUTH_TOKEN` (used only by scripts and automation), and make sure `CORS_ORIGINS` lists the dashboard origin. After migrating, create the first dashboard account with `cd backend; python -m app.cli users create --email you@example.com --role admin`.
-
-Install backend requirements with `python -m pip install -r backend/requirements-dev.txt` (runtime packages plus pytest and ruff; the Docker image installs only `backend/requirements.txt`) and frontend dependencies with `cd frontend; npm install`. Start PostgreSQL and Ollama, then run `./scripts/start-dev.ps1` from the repository root (or `docker compose up --build` after setting `.env`). Ollama defaults to `qwen2.5-coder:latest`; install that model with `ollama pull qwen2.5-coder:latest`. The default AI request timeout is 300 seconds. In Docker Compose the Ollama address defaults to `host.docker.internal`.
-
-## Database migrations
-
-The application never creates or upgrades schema at startup. From the repository root, with PostgreSQL reachable and `DATABASE_URL` configured:
-
-```powershell
-$env:PYTHONPATH = "backend"
-python -m alembic -c backend\alembic.ini upgrade head
+```
+Browser (Next.js dashboard)  --cookie session-->  FastAPI API  --->  PostgreSQL
+                                                     |   ^
+                              queue jobs / outbox    v   |  claim with FOR UPDATE SKIP LOCKED
+                                                  Workers: lead processing + outreach outbox
+                                                     |
+                     AI providers (Ollama/Gemini/OpenAI-compatible), Google Places, PageSpeed, Resend/SendGrid
 ```
 
-Then start the API and worker. Docker Compose runs `alembic upgrade head` in the backend container before starting Uvicorn; the worker waits for the API health check. Migration `0001_initial` explicitly defines the schema; `0002_active_job_guard` adds the partial unique index for active jobs; `0003_worker_heartbeat` adds worker liveness tracking. UUID, named PostgreSQL enums, JSON, timezone-aware timestamps, foreign keys, and indexes are declared explicitly. Unit tests use SQLite for service behavior and do **not** verify PostgreSQL migration compatibility.
-
-For an older database created by the previous runtime `create_all()` startup path and lacking `alembic_version`, inspect and back up that database first. If its schema matches the original `0001_initial` model schema, baseline it with `python -m alembic -c backend\alembic.ini stamp 0001_initial`, then run `upgrade head`. Do not stamp a database whose schema has not been checked; a normal `upgrade head` against unversioned pre-existing tables will attempt to create them again.
-
-## Job lifecycle and recovery
-
-API processing requests persist `QUEUED` jobs and return job IDs. The worker claims queued or due retry jobs atomically, runs bounded concurrent work, and records `AgentRun`, `LeadEvent`, and provider usage history. Job attempts are limited by `max_attempts` (four by default) with 5, 15, and 60 second retry delays. A stale processing lease is moved to retrying only while attempts remain; exhausted jobs become failed. Batch state is updated to `QUEUED`, `PROCESSING`, `COMPLETED`, `PARTIALLY_FAILED`, or `FAILED` as jobs progress.
-
-Checkpoints advance monotonically through validation, website analysis, AI analysis, scoring, result save, and completion. A known saved result is reused after interruption. External model execution has at-least-once semantics: a process crash after the provider returns but before the result transaction commits can require that AI request to run again. Unknown checkpoints fail the job in a controlled manner.
-
-## API and CSV
-
-`/health` is unauthenticated process liveness. `/ready` checks database schema, configured provider health, and whether a worker heartbeat is recent (30 second window). All `/api/*` routes require either a signed-in dashboard session cookie or, for scripts and automation, `Authorization: Bearer <API_AUTH_TOKEN>`. Endpoints include lead listing/details/import, single and batch job creation, job listing/details/retry, dashboard statistics, and provider status. `GET /api/leads/{lead_id}/intelligence` returns the versioned `lead-intelligence-v1` projection of the newest completed enrichment run with a persisted score and valid run-owned deterministic intelligence. It includes run metadata, score breakdown, deterministic opportunities and recommendations, run-scoped evidence, validated personalization and claims when available, and processing metadata. GET is read-only and never invokes an AI provider. A missing lead returns `LEAD_NOT_FOUND` (404); a lead without a valid completed intelligence run returns `INTELLIGENCE_NOT_AVAILABLE` (409). Invalid UUIDs and query parameters use the standard validation error envelope (422); unexpected errors return a generic `INTERNAL_ERROR` (500).
-
-`GET /api/leads` keeps its existing array response and page-based pagination (`page` starts at 1; `page_size` defaults to 25 and is capped at 100). Results are ordered by `created_at` descending then ID descending for stable pages. Lead rows now include compact intelligence status, score, opportunity/recommendation counts, personalization availability, and latest enrichment time, without evidence or personalization bodies. Optional filters are `min_score`/`max_score` (0–100), `intelligence_status` (`available` or `unavailable`), `personalization_available`, and `opportunity_present`. `/api/leads/{lead_id}` retains its existing fields and adds the same compact summary. Neither summary nor detail responses combine data across enrichment runs.
-
-### Outreach preparation and human review
-
-Outreach artifacts are tied to one lead and one enrichment run. Their lifecycle is `DRAFT` (generation failed or not reviewable), `READY_FOR_REVIEW` (validated and awaiting review), `APPROVED`, `REJECTED`, or `STALE`; there is no `SENT` state. Content is stored as structured email, WhatsApp, call-script, follow-up, and claim sections. Each factual claim must exactly match a claim from current validated evidence, deterministic opportunities, or validated personalization, with its evidence/opportunity references retained. Services can only come from current deterministic recommendations. The generator receives external evidence as explicitly untrusted data and has no tools. This strict claim-catalog approach prevents unsupported generated factual prose without adding semantic entailment checks.
-
-Generation is available only for `NEW`, `QUALIFIED`, `CONTACTED`, `ENGAGED`, `PROPOSAL`, and `NEGOTIATION` sales stages; `WON` and `LOST` leads cannot generate active outreach. Sales stage controls the permitted subject, discovery questions, and follow-up actions. `GET /api/leads/{lead_id}/outreach` reads the latest persisted artifact and current context and never regenerates. `POST /api/leads/{lead_id}/outreach/generate` invokes the configured provider through the existing provider execution layer. `PATCH /api/leads/{lead_id}/outreach` accepts content edits only and revalidates every claim. `POST /api/leads/{lead_id}/outreach/approve` approves only a current validated review draft; `POST /api/leads/{lead_id}/outreach/reject` requires a reason. All routes use the existing bearer auth. Sending is a separate explicit Phase 8F operation; preparation and review never send or schedule messages.
-
-The source fingerprint includes the enrichment run, score, evidence values and IDs, deterministic opportunities and recommendations, personalization content and version, core lead context, and sales-stage context version. A successful new enrichment run or sales-stage change marks prior artifacts stale. Reads also compare the stored fingerprint with the current validated source and report `STALE` if source data changed outside those update paths. Stale content cannot be edited, approved, or rejected; a new explicit generation is required.
-
-### Sales follow-up and action management
-
-`SalesTask` records a human-owned action linked to one lead, with an optional same-lead sales activity and/or outreach artifact. Task types are `FOLLOW_UP`, `CALL`, `EMAIL`, `WHATSAPP`, `MEETING`, `PROPOSAL`, `REVIEW_OUTREACH`, and `OTHER`; statuses are `OPEN`, `IN_PROGRESS`, `COMPLETED`, and `CANCELLED`. Completed and cancelled tasks are terminal. Due and overdue flags are calculated from the timezone-aware `due_at` value and current time, not persisted. The global daily execution view is `/leads/tasks`; the lead detail page also shows next action, open/upcoming/overdue/completed tasks, and task controls.
-
-Authenticated APIs are `GET/POST /api/leads/{lead_id}/tasks`, `GET /api/tasks` (filters: status, task type, priority, assignee, due, overdue, and lead), `PATCH /api/tasks/{task_id}`, and `POST /api/tasks/{task_id}/complete` or `/cancel`. `GET /api/tasks/summary` groups actionable items into due today, overdue, and the next seven days. Existing activity create/read APIs accept and return an optional structured outcome. Outcome rules can suggest a task type (for example, `MEETING_BOOKED` → `MEETING`); task creation still requires an explicit user action. Task state, priority, due dates, outcome rules, and daily summaries are deterministic and never call an AI provider.
-
-The task summary also powers the Sales Action Center at `/leads/tasks`. Task rows include the lead's current sales status, manually assigned priority, next follow-up, currency, and the commercial value field for the current stage. `outcome_suggestions` lists structured outcomes that map to an existing suggested task type and do not yet have a task linked through `related_activity_id`; completed or cancelled linked tasks count as handled. Suggestions are not tasks. A user reviews the outcome and explicitly submits a task form to create one. Suggestion records omit activity notes and contact details. This view does not calculate a new lead score, label leads stale, or infer buyer engagement.
-
-CSV requires `company_name`; optional columns are website, phone, email, address, city, state, country, and industry. Upload size defaults to 5 MB.
-
-The website analyzer only accepts HTTP(S), rejects localhost and non-public addresses, checks DNS destinations, manually follows a bounded number of redirects while revalidating them, applies a timeout, and caps response size. It does not crawl subpages.
-
-## CI and monitoring
-
-**Continuous integration.** `.github/workflows/ci.yml` runs on pushes to `main`/`master` and on pull requests:
-
-- *Backend:* `ruff check backend` (rules in `ruff.toml`: syntax errors, undefined names and redefinitions), the full pytest suite against a PostgreSQL 16 service (including the migration tests), then a fresh `alembic upgrade head` and the PostgreSQL integration tests (`-m postgres_integration`).
-- *Frontend:* `npm ci`, `tsc --noEmit`, and `next build`.
-- *Dependency audit:* `pip-audit -r backend/requirements.txt` and `npm audit --omit=dev --audit-level=high`.
-
-Run the same checks locally with `ruff check backend` and `python -m pytest backend/tests`.
-
-**Request IDs.** Every response carries `X-Request-ID` (a safe client-supplied value of 8–64 characters `[A-Za-z0-9._-]` is reused; otherwise one is generated). The ID appears as `request_id` in every JSON log line written while the request is handled and in the `details` of `INTERNAL_ERROR` responses, so a reported error can be found in the logs.
-
-**Metrics.** Set `METRICS_TOKEN` to enable `GET /metrics` (Prometheus text format; scrape with `Authorization: Bearer <METRICS_TOKEN>`). Without it the endpoint returns 404. Metrics include HTTP request counts and latency by route template, unhandled errors, lead processing jobs and outreach dispatches by status, seconds since the last worker heartbeat (`-1` when none), provider request outcomes over the last 15 minutes, and suppression-list size by reason. Useful alerts: worker heartbeat age above 120 s, any growth in `lead_agent_http_unhandled_errors_total`, dispatches stuck in `OUTCOME_UNKNOWN`, and a rising provider failure share.
-
-**Error tracking.** Set `SENTRY_DSN` to send unhandled exceptions from the API and both workers to Sentry (optional: `SENTRY_RELEASE`, `SENTRY_TRACES_SAMPLE_RATE`, default `0`). `send_default_pii` is off and request bodies are never attached.
-
-## Users and sign-in
-
-People sign in to the dashboard with their own e-mail address and password. Accounts live in `app_users` (migration `0044`); passwords are stored only as scrypt hashes. A successful `POST /api/auth/login` sets an HttpOnly, `SameSite=Lax` session cookie (Secure in production/staging), and `auth_sessions` stores only a SHA-256 hash of the session token. `POST /api/auth/logout` ends the session and `GET /api/auth/me` returns the signed-in user. Sessions expire after `AUTH_SESSION_TTL_HOURS` (12 by default) and are invalidated when the password changes or the account is deactivated.
-
-- **Roles.** `viewer`, `sales_rep`, `sales_manager`, and `admin`. The role comes from the account (never from request headers) and feeds the existing supervisor checks; `sales_manager` and `admin` can approve outreach.
-- **CSRF protection.** Cookie-authenticated requests that change state must send `X-Requested-With: lead-agent` and, when the browser sends an `Origin`, it must be listed in `CORS_ORIGINS`.
-- **Brute-force protection.** An account locks for `AUTH_LOCKOUT_MINUTES` after `AUTH_MAX_FAILED_LOGINS` consecutive failures, and each client IP is limited to 20 sign-in attempts per 10 minutes. Unknown e-mail addresses and wrong passwords return the same error.
-- **Managing users.** There is no self-registration. From `backend/`: `python -m app.cli users create --email ... --role ...`, `users list`, `users set-role`, `users reset-password`, `users deactivate`, `users activate`, and `users sign-out`. Passwords are prompted for (minimum 12 characters) or read with `--password-stdin`.
-- **Automation.** `Authorization: Bearer <API_AUTH_TOKEN>` still works for scripts, with the identity `API_AUTH_USER_ID` and role `API_AUTH_ROLE`. Never give this token to a browser.
-
-## Stored credential encryption
-
-Provider API keys copied from the environment into `api_keys` are encrypted at rest with Fernet (AES-128-CBC with HMAC-SHA256, from `cryptography`) and stored as `enc:v1:<token>`; the application decrypts them only when leasing a key for a provider call. Set `CREDENTIAL_ENCRYPTION_KEY` (generate one with `cd backend; python -m app.cli keys generate`) and keep it outside the database, so database dumps and backups do not expose usable keys. The API refuses to store keys without it.
-
-Migration `0045` encrypts any existing plaintext rows and stops with an error if `CREDENTIAL_ENCRYPTION_KEY` is missing. `python -m app.cli keys status` reports how many stored keys are encrypted. To rotate, put a new key first in `CREDENTIAL_ENCRYPTION_KEY` with the old key after a comma, restart, run `python -m app.cli keys reencrypt`, then remove the old key. If the encryption key is lost, delete the `api_keys` rows and restart so they are re-created from the environment.
-
-## Email compliance and the suppression list
-
-All three email send paths (the supervisor outbox with Resend/SendGrid, Phase 10E approved execution, and Phase 8F outreach operations) go through `backend/app/services/email_compliance.py`:
-
-- **Suppression list.** `email_suppressions` (migration `0043`) is a global do-not-email list keyed by a SHA-256 hash of the normalized address; only a masked form is kept for display. Suppressed recipients are refused at enqueue time and again in the pre-flight guard immediately before the provider call; supervisor dispatches end `ABORTED` with `RECIPIENT_SUPPRESSED`.
-- **Automatic suppression.** Delivery webhooks add the correlated recipient on a permanent bounce (`HARD_BOUNCE`), a spam complaint (`COMPLAINT`), or a provider unsubscribe event (`UNSUBSCRIBED`).
-- **Unsubscribe links and headers.** Every email gets a footer with an unsubscribe link (or mailto instruction) plus the sender name and postal address, and `List-Unsubscribe` headers; with an HTTPS link it also gets `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 8058). The HTTP-gateway (`http_json`) path can only carry the footer, not headers.
-- **Public unsubscribe page.** `GET /unsubscribe/{token}` shows a confirmation page and never changes state (mail scanners prefetch links); `POST /unsubscribe/{token}` records the opt-out and also serves mailbox providers' one-click requests. These routes sit outside `/api` and need no bearer token; tokens are HMAC-signed and contain no readable address. The backend must be reachable at `OUTREACH_UNSUBSCRIBE_BASE_URL` for links to work.
-- **Manual management.** `GET/POST /api/email-suppressions` and `DELETE /api/email-suppressions/{id}` (bearer auth) list, add (for example when someone replies "unsubscribe"), and remove entries.
-- **Fail closed.** With `OUTREACH_COMPLIANCE_ENFORCED=true` (default), email sends are blocked (`EMAIL_COMPLIANCE_NOT_CONFIGURED`) until `OUTREACH_UNSUBSCRIBE_SECRET`, `OUTREACH_SENDER_POSTAL_ADDRESS` and `OUTREACH_UNSUBSCRIBE_BASE_URL` and/or `OUTREACH_UNSUBSCRIBE_MAILTO` are set. See `.env.example`.
-
-Deliverability itself (a dedicated sending domain or subdomain with SPF, DKIM and DMARC, and gradual warm-up) is configured at your DNS and email provider, not in this application.
-
-## AI providers
-
-`AI_DEFAULT_PROVIDER` selects `ollama` (default), `gemini`, or `openai_compatible`. Ollama needs no subscription or API key; configure `OLLAMA_BASE_URL` and `OLLAMA_MODEL`. Gemini and OpenAI-compatible providers are disabled by default. Enable the chosen provider with `AI_GEMINI_ENABLED=true` or `AI_OPENAI_COMPATIBLE_ENABLED=true`, then configure its base URL, model, and timeout (`AI_GEMINI_*` or `AI_OPENAI_COMPATIBLE_*`). Gemini uses Google's `generateContent` HTTP API; OpenAI-compatible endpoints use `POST /v1/chat/completions`. The Gemini base URL defaults to Google's v1beta API; the compatible endpoint defaults to a local LM Studio style server.
-
-Credentials are supplied as `AI_GEMINI_API_KEY` / `AI_GEMINI_API_KEYS` or `AI_OPENAI_COMPATIBLE_API_KEY` / `AI_OPENAI_COMPATIBLE_API_KEYS`; multiple keys are comma-separated and leased through the existing provider key pool. Calls share its retry, cooldown, rate-limit, and usage telemetry behavior. Cloud credentials are only required if that cloud provider is enabled and selected. Provider tests use mocked HTTP and do not call cloud services. Keys stored in the database are encrypted at rest (see **Stored credential encryption**).
-
-Structured output accepts Pydantic models or the locally enforced JSON Schema subset: local `$defs`/`definitions` references, primitive types, object/array constraints, enums/constants, string patterns, formats (`date-time`, `date`, `time`, `email`, `hostname`, `ipv4`, `ipv6`, `uri`, `uuid`), numeric bounds, nullable schemas, and `anyOf`/`oneOf`/`allOf`. Unsupported keywords, formats, dialects, or external references return an unsupported-capability error before a provider request. Gemini further rejects schema unions it cannot map to its API schema.
-
-`OPENAI_API_KEY` and `OPENAI_API_KEYS` are legacy key-pool settings and are not used by the `openai_compatible` adapter; configure the `AI_OPENAI_COMPATIBLE_*` variables instead. `ProviderUsage` contains operation-scoped request-attempt rows from the execution service and operation-null job summary rows; count request traffic using rows with an operation set.
-
-Google Places collection is an optional enrichment adapter and is disabled by default. Set `GOOGLE_PLACES_ENABLED=true` and configure `GOOGLE_PLACES_API_KEY`; the application registers the key with the provider key pool. The Google Cloud project must enable Places API (New) and have billing configured. The adapter uses Text Search (New) with a restricted field mask and mocked HTTP in normal tests; live Google access is optional. See Google's [Text Search (New) documentation](https://developers.google.com/maps/documentation/places/web-service/text-search) and [usage and billing documentation](https://developers.google.com/maps/documentation/places/web-service/usage-and-billing).
-
-PageSpeed Insights collection is optional and disabled by default. Set `PAGESPEED_ENABLED=true` to opt in; `PAGESPEED_API_KEY` is recommended for automated collection and is leased through the provider key pool when supplied. Configure `PAGESPEED_STRATEGY` as `mobile` or `desktop`, along with timeout, operation, and categories as needed. The adapter validates public HTTP(S) website URLs before requesting Google analysis, and normal tests use mocked responses. Each strategy run is an external Lighthouse analysis request and consumes the API project's quota; see the [PageSpeed Insights API method](https://developers.google.com/speed/docs/insights/rest/v5/pagespeedapi/runpagespeed) for current request parameters.
-
-## Deterministic intelligence
-
-Opportunities and service recommendations are derived from persisted WebsiteAnalyzer, Google Places, and PageSpeed evidence. Current rule thresholds are versioned in `backend/app/services/intelligence.py`; unsupported signals do not create opportunities, and unknown lead fit or buying intent remains unavailable. The service catalog is persisted and can be configured by activating, deactivating, or revising catalog entries. `leads.lead_score` remains the current denormalized score for API compatibility; its meaning is now an evidence-backed digital opportunity score. `leads.score_factors` includes the score version and evidence-linked components, while historical versions are stored per enrichment run. Existing AI-generated copy fields remain separate and do not drive deterministic scoring or recommendations.
-
-## Evidence-grounded personalization
-
-AI personalization runs against only the current enrichment run's persisted evidence, deterministic opportunities, ranked service recommendations, and current versioned score. The versioned contracts are `personalization-v2` and `evidence-grounded-prompt-v2`. Claims are categorized as `verified_fact`, `supported_inference`, or `suggested_language`; verified facts must exactly match a canonical rendering of one cited persisted observation, and supported inferences must exactly match a cautious rendering of one cited deterministic opportunity and its evidence. Suggested language is restricted to approved non-factual phrases. Opportunity and evidence IDs are checked against lead/run ownership before use. Package claims carry service IDs, and their ordered set must exactly equal the deterministic recommendation set. This conservative contract trades free-form factual copy for validation that can be enforced without semantic model judging.
-
-Externally collected evidence is passed as untrusted data. The system prompt directs providers not to follow instructions embedded in website or business content, and no tools are exposed to personalization generation. Validated personalization is persisted per enrichment run with contract/prompt versions and normalized evidence links in `personalizations` and `personalization_evidence_links`; a composite foreign key prevents pairing a lead with another lead's run. Existing lead/API response fields remain present and project the validated summary/script/opening/package plus deterministic services/opportunities. This changes `website_problems`, `seo_opportunities`, `digital_marketing_opportunities`, and `pain_points` to deterministic opportunity projections; `recommended_services` mirrors deterministic recommendations. Legacy AI-only keyword and competitor suggestions are empty, and `decision_maker` is cleared because the new flow does not regenerate it. Ollama, Gemini, and OpenAI-compatible adapters use the shared provider registry, structured request contract, execution controls, and telemetry.
-
-## Sales workflow
-
-Each lead has a separate controlled `sales_status` lifecycle: `NEW`, `QUALIFIED`, `CONTACTED`, `ENGAGED`, `PROPOSAL`, `NEGOTIATION`, `WON`, or `LOST`. Priority is one of `LOW`, `MEDIUM`, `HIGH`, or `URGENT`; new leads default to `NEW` and `MEDIUM`. `assigned_to`, `next_follow_up_at`, and `lost_reason` are optional. Follow-up timestamps must include a timezone. A lost reason is required when entering `LOST` and is cleared when leaving that state.
-
-Allowed status transitions are: `NEW` → `QUALIFIED`, `CONTACTED`, or `LOST`; `QUALIFIED` → `CONTACTED` or `LOST`; `CONTACTED` → `ENGAGED`, `QUALIFIED`, or `LOST`; `ENGAGED` → `PROPOSAL`, `CONTACTED`, or `LOST`; `PROPOSAL` → `NEGOTIATION`, `ENGAGED`, `WON`, or `LOST`; `NEGOTIATION` → `WON`, `PROPOSAL`, or `LOST`; `WON` has no outgoing transition; `LOST` → `NEW` or `QUALIFIED`. Invalid transitions return a validation error. This lifecycle is independent of enrichment `status`, intelligence score, opportunities, recommendations, evidence, and personalization.
-
-Authenticated sales endpoints are `GET` and `PATCH /api/leads/{lead_id}/sales`, plus `GET` and `POST /api/leads/{lead_id}/activities`. The sales GET includes current sales fields and at most 50 newest activities. PATCH accepts only sales fields and records one system-generated `STATUS_CHANGE` activity when status actually changes. Activity types are `NOTE`, `CALL`, `EMAIL`, `WHATSAPP`, `MEETING`, `STATUS_CHANGE`, `FOLLOW_UP`, `PROPOSAL`, and `OTHER`; outcomes are optional structured values and may expose a deterministic suggested task type. Clients cannot create `STATUS_CHANGE` records or set activity timestamps. Activity notes are required. The activity GET is newest-first with a bounded `limit` (1–200). Lead list responses include sales fields without loading activity histories; filters include `sales_status`, `priority`, and `follow_up_due` (`true` means at or before current UTC time; `false` means no follow-up or a future follow-up). `assigned_to` is a display label because this application does not yet have user identities or authorization roles.
-
-## Revenue and conversion intelligence
-
-Revenue calculations are deterministic and use `NUMERIC(18,2)`/Python `Decimal`; no provider or model is used for financial totals. Each lead can store `estimated_value` (potential opportunity value), `proposal_value` (current formal proposal), `negotiation_value` (current value under negotiation), `won_value` (won deal value), and `expected_collection` (expected receivable). These are separate user-maintained views and are never copied automatically when a sales status changes. Currency defaults to INR and is selected from the supported currency codes. Once a lead has commercial values or collections, its currency is locked to avoid combining unlike units.
-
-`SalesCollection` stores positive partial or full payments. Actual collected is the sum of those rows; outstanding collection is the nonnegative expected collection, falling back to won value, minus recorded collections for WON leads. The revenue summary's actual-collected total is lifetime; target progress sums collections whose timestamps fall within the active target's date period. Pipeline value uses exactly one current-stage field per lead: estimated value for NEW through ENGAGED, proposal value for PROPOSAL, and negotiation value for NEGOTIATION. Proposal, negotiation, and won totals are separate stage-specific measures.
-
-Authenticated endpoints include `GET/PATCH /api/leads/{lead_id}/commercial`, `GET/POST /api/leads/{lead_id}/collections`, `PATCH/DELETE /api/collections/{collection_id}`, `GET /api/revenue/summary`, `/pipeline`, `/conversion`, `/sources`, and `/collections`, plus `GET/POST /api/revenue/targets` and `PATCH /api/revenue/targets/{target_id}`. Target progress uses actual collections inside the active target period; a zero target has no achievement percentage. Only one active target per currency is allowed.
-
-Structured sales status transitions are recorded starting with migration `0012_revenue_conversion`; conversion funnels use that auditable history and do not infer older transitions from current status or free-text notes. Source attribution is reported unavailable because leads do not currently hold a reliable acquisition source. The lead detail includes commercial values and collection management, and `/revenue` provides target progress, stage pipeline, conversion history, source-data availability, and recent collections.
-
-## Outreach operations
-
-Prepared outreach remains separate from execution. A send request is authenticated and is accepted only for an `APPROVED`, current artifact whose stored content still passes the current grounded-outreach validation. No enrichment, scoring, approval, task, or retry operation sends automatically. Every external attempt requires a human click and a confirmation showing channel, recipient, subject, and message preview. The API derives recipient addresses from the lead record and does not accept provider credentials from clients.
-
-The initial channels are `EMAIL`, `WHATSAPP`, and `MANUAL`. Email uses the lead email field; WhatsApp requires an international E.164 phone number. Manual preparation does not call a provider. A second explicit confirmation is required to mark a queued manual execution as sent, at which point a linked `SalesActivity` is recorded. Failed external sends keep their failure history; retry is explicit, rechecks current approval, and creates a linked attempt. Application and provider requests carry idempotency keys. One artifact can have at most one queued, sending, sent, or delivered execution; a newly approved artifact represents a deliberate new outreach.
-
-Migration `0013_outreach_operations` adds the execution audit ledger with an immutable content snapshot, status timestamps, recipient, safe error metadata, and provider message ID. Successful sends create a linked email/WhatsApp activity. The system records `SENT` when a configured gateway accepts the request; `DELIVERED` is shown only when a trusted provider integration reports a normalized delivery event. A normalized event model/service is present for future signed webhook adapters, but this phase does not expose a webhook endpoint or accept client-supplied delivery state.
-
-### Outreach outcome capture
-
-`POST /api/outreach/executions/{execution_id}/outcomes` records a human-entered sales activity against a `SENT` or `DELIVERED` execution, including a confirmed manual send. It reuses `SalesActivity` and the existing activity outcome enum; every request includes an execution-scoped idempotency key. Repeating a key returns the same activity, while a new key records a separate activity. The lead is derived from the execution and enforced by the existing composite execution/lead foreign key. Outcomes appear in the lead activity timeline and retain the existing suggested-task behavior; tasks still require explicit user action. These records describe human-observed activity only and do not establish that a message caused a response, conversion, or revenue. Migration `0014_outreach_outcomes` replaces the one-activity-per-execution index with execution-scoped idempotency. Its downgrade refuses to restore the old unique index if multiple activities are linked to an execution, preserving those records for explicit resolution.
-
-External provider credentials are optional for local development; sending remains disabled by default. The vendor-neutral `http_json` adapter can call a trusted HTTPS gateway when explicitly enabled. Configure the `OUTREACH_EMAIL_*` or `OUTREACH_WHATSAPP_*` variables in the server environment (see `.env.example`), including `*_ENABLED=true`, `*_PROVIDER=http_json`, API URL, API key, and channel sender/phone-number ID. Phase 10E additionally requires explicit `EMAIL_PROVIDER=http_json` selection for its approved email path. The gateway receives a bearer authorization header and `Idempotency-Key`; email JSON is `{ "from", "to", "subject", "text" }`, WhatsApp JSON is `{ "phone_number_id", "to", "text" }`, and an optional response `message_id` is retained. Provider-specific adapters can implement the same server-side interface. Do not commit real credentials; keys, headers, and raw provider error bodies are never persisted or returned to the browser. Automated tests inject mocked providers and do not send real messages.
-
-### Outreach performance analytics
-
-The authenticated, read-only `GET /api/outreach/analytics` endpoint and `/outreach` dashboard summarize sent executions and Phase 8G.1 human-recorded outcomes. Optional `from` and `to` filters use inclusive UTC calendar dates against execution `sent_at` (`from` midnight inclusive, `to` midnight of the following day exclusive); either bound can be supplied. Optional `channel` is `EMAIL`, `WHATSAPP`, or `MANUAL`. The cohort includes only executions with `sent_at`; retries count as separate executions. An outcome joins this cohort through its execution and remains included even if its activity `occurred_at` is later than the selected dates. Only linked activities with a structured outcome and Phase 8G.1 idempotency key qualify. Empty cohorts return zero-filled categories. Status counts show each execution's current persisted status, not historical status. Outcome coverage distinguishes executions without a recorded outcome from the explicit `NO_RESPONSE` outcome. These metrics describe recorded executions and human-entered outcomes only; they do not establish causal attribution and must not be interpreted as response, conversion, success, or ROI rates. Aggregate output contains no lead contact details, notes, or message content. No database migration is required.
-
-## Tests
-
-Run the default unit suite (SQLite, no PostgreSQL required):
+- **The API does not run long work inline.** It validates requests, authenticates them and queues durable jobs, which the worker claims atomically. A unique index allows at most one active job per lead, and jobs retry with backoff.
+- **Outreach is sent only by the outbox worker**, after human approval. A send must pass pre-flight guards immediately before the provider call: kill switch, lease fencing, canary allow-list and flight, and suppression list.
+- **AI output is validated before it is stored.** Each claim must reference evidence or opportunities from the lead's current data, and raw provider responses and credentials are never persisted.
+- **Alembic owns the schema.** Startup checks that the database is at `app.database.SCHEMA_REVISION`, and a test fails if that constant falls behind the latest migration.
+
+### Code map
+
+| Path | Contents |
+| --- | --- |
+| `backend/app/main.py` | App setup: auth/CSRF middleware, request IDs and metrics, error envelope, `/health`, `/ready`, `/metrics`, router registration |
+| `backend/app/api/routes/` | Endpoints by area: `leads`, `jobs`, `sales_crm`, `outreach`, `ai_agents`, `seo`, `company_intelligence`, `business_research`, `contact_*`, `sales_execution`, `sales_feedback`, `intelligence_orchestrator`, `supervisor_*` (approvals, dispatch, delivery webhooks, canary), `email_compliance`, `auth` |
+| `backend/app/services/` | Business logic: enrichment pipeline, deterministic intelligence, AI services, outreach, supervisor dispatch, e-mail compliance, auth, credential encryption |
+| `backend/app/domain/`, `schemas/`, `models/` | Pure rules, Pydantic contracts, SQLAlchemy models |
+| `backend/app/providers/` | AI, Places, PageSpeed and e-mail provider adapters |
+| `backend/app/workers/` | Lead-processing worker (`runner.py`) and outreach outbox worker (`outbox_worker.py`); `app/worker.py` runs both |
+| `backend/app/cli.py` | Admin commands for users and stored-credential encryption |
+| `backend/migrations/` | Alembic revisions `0001`–`0045` |
+| `frontend/` | Next.js dashboard (`app/`), API client (`lib/api.ts`) |
+
+## Configuration
+
+`.env.example` documents every setting. The most important:
+
+| Setting | Purpose |
+| --- | --- |
+| `DATABASE_URL` | PostgreSQL connection (`postgresql+asyncpg://…`) |
+| `APP_ENV` | `production`/`staging` disables development-only approval shortcuts and makes cookies Secure |
+| `API_AUTH_TOKEN` | Bearer token for scripts and automation, never for browsers |
+| `AI_DEFAULT_PROVIDER`, `OLLAMA_*`, `AI_GEMINI_*`, `AI_OPENAI_COMPATIBLE_*` | AI provider selection and credentials |
+| `GOOGLE_PLACES_*`, `PAGESPEED_*` | Optional enrichment sources (off by default) |
+| `CREDENTIAL_ENCRYPTION_KEY` | Encrypts provider keys stored in the database (required when any are configured) |
+| `OUTREACH_DISPATCH_ENABLED`, `OUTREACH_CANARY_MODE`, `OUTREACH_CANARY_ALLOWED_DOMAINS` | Master send switch and canary restrictions; sending is off by default |
+| `OUTREACH_UNSUBSCRIBE_*`, `OUTREACH_SENDER_*` | Unsubscribe links and the postal address required on every e-mail; sends are blocked until set |
+| `METRICS_TOKEN`, `SENTRY_DSN` | Prometheus metrics and Sentry error tracking (both optional) |
+
+## Security model
+
+- **Users:** individual accounts with scrypt password hashes, HttpOnly session cookies, roles (`viewer`, `sales_rep`, `sales_manager`, `admin`), CSRF protection, account lockout and login rate limiting.
+- **Outreach:** human approval with role checks, a canary mode, a kill switch, a global suppression list, and unsubscribe links plus one-click headers on every e-mail.
+- **Secrets:** provider keys are encrypted at rest; tokens, keys and raw provider errors are never logged or returned to the browser.
+- **Outbound fetches:** website requests reject private and local addresses and re-check every redirect.
+
+Details: [docs/OPERATIONS.md](docs/OPERATIONS.md).
+
+## Development
 
 ```powershell
-$env:PYTHONPATH = "backend"
-python -m pytest
+ruff check backend                          # lint gate (rules in ruff.toml)
+$env:PYTHONPATH = "backend"; python -m pytest backend/tests
+cd frontend; npx tsc --noEmit; npm run build
 ```
 
-An opt-in PostgreSQL integration check is excluded from the default suite. Provision and migrate a dedicated PostgreSQL test database first, then set `TEST_POSTGRES_URL` to its `postgresql+asyncpg://` URL and run:
+- The default test suite uses in-memory SQLite. The migration tests (`test_migration_00xx`) also need a local PostgreSQL at `postgres:postgres@localhost:5432`; each creates and drops its own temporary database.
+- Tests never read your `.env`; `backend/tests/conftest.py` supplies safe settings.
+- For the PostgreSQL integration tests, migrate a dedicated database to head, then run with `TEST_POSTGRES_URL=postgresql+asyncpg://…` and `-m postgres_integration`.
+- `.github/workflows/ci.yml` runs all of the above, plus `pip-audit` and `npm audit`, on every push and pull request.
 
-```powershell
-$env:PYTHONPATH = "backend"
-python -m pytest -m postgres_integration
-```
+When adding a migration, bump `SCHEMA_REVISION` in `backend/app/database.py`; `test_schema_revision.py` enforces this.
 
-That check requires the database to already be migrated to head. It inspects the real PostgreSQL `alembic_version` and table catalog; SQLite is not used as a PostgreSQL substitute. PostgreSQL integration is not claimed as verified until this opt-in check has run successfully against PostgreSQL.
+## Further documentation
 
-## SEO & Website Intelligence (Phase 8I)
-
-SEO audits are an independent, deterministic lifecycle. A user starts an audit from the lead detail page; the authenticated request queues a durable `SeoAuditRun` (`seo-audit-v1`) processed by the existing worker. Runs, normalized observations, and findings are retained as history and are not attached to enrichment evidence or mixed across runs. Migration `0015_seo_intelligence` adds `seo_audit_runs`, `seo_observations`, and `seo_findings` with run-scoped foreign keys.
-
-The API is `POST /api/leads/{lead_id}/seo/runs`, `GET /api/leads/{lead_id}/seo` (latest completed run only), `GET /api/leads/{lead_id}/seo/runs` (paged history), and `GET /api/seo/runs/{run_id}` (one run's details). Starting another audit while one is queued/running returns a conflict. Audits are asynchronous; the UI does not poll automatically.
-
-The crawler uses the hardened `WebsiteAnalyzer` DNS validation, pinned-address transport, redirect revalidation, proxy isolation, and response limits. Page discovery stays on the root origin; same-host HTTP-to-HTTPS redirects are allowed for the technical redirect check. It is bounded to 25 page fetch attempts, depth 2, 500 discovered URLs, five sitemap documents (one nested sitemap-index level), a 256 KB robots file, 512 KB per sitemap, and a 180-second crawl deadline. Only normalized page signals are persisted; HTML and full PageSpeed payloads are discarded. Deterministic finding categories are `TECHNICAL`, `ON_PAGE`, `CRAWLABILITY`, `INDEXABILITY`, `PERFORMANCE`, `STRUCTURED_DATA`, `LINKS`, and `IMAGES`; severity is `INFO`, `LOW`, `MEDIUM`, or `HIGH`. There is no aggregate SEO score or SEO-to-sales behavior.
-
-PageSpeed uses the existing PageSpeed adapter and provider execution/key-pool path, at most once per audit. Normalized observations and selected failed-audit details may be retained; unavailable PageSpeed does not fail a successful crawl. The integration makes a separate request to Google's PageSpeed service and consumes its configured quota. SEO tests mock all website and PageSpeed network calls. To validate migration persistence against PostgreSQL, configure `TEST_POSTGRES_URL` for the repository's opt-in PostgreSQL integration workflow; SQLite and offline Alembic checks do not verify a live PostgreSQL upgrade.
-
-## SEO opportunity to sales integration (Phase 8J)
-
-`GET /api/leads/{lead_id}/seo/opportunities` derives up to 10 grouped, deterministic opportunities from that lead's latest completed `seo-audit-v1` run. `/api/tasks/summary` additively exposes the current opportunities in the Sales Action Center (bounded to 200 across the returned leads). Findings are grouped by actionable technical, on-page, indexability, performance, link, image, and crawlability types; each output carries its source run, finding IDs, affected pages, severity, and current sales/task context. Repeated reads return stable IDs and ordering. A newer completed run replaces the old current opportunity view, while failed/running runs do not.
-
-Service IDs are selected only from the existing active catalog and existing deterministic service mappings; no catalog entries are added. SEO opportunities use the existing `OTHER` sales task type. A person must review and submit the Sales Action Center form before a task is created through the existing lead task API. The task links through `SalesTask.related_activity_id` to a note recorded for that explicit action; subsequent views recognize open, in-progress, completed, and cancelled tasks as handled. This phase makes no AI/provider calls, sends no outreach, and changes no sales-stage or revenue logic. No migration is required.
-
-## Evidence-grounded AI Sales Intelligence (Phase 9A)
-
-AI Sales Intelligence is a separately versioned interpretation artifact (`ai-sales-intelligence-v1`, prompt `ai-sales-intelligence-prompt-v1`, context `ai-sales-context-v1`). It is generated only by an explicit authenticated `POST /api/leads/{lead_id}/ai-sales-intelligence`; `GET` reads the current or newest historical artifact without invoking a provider. The authenticated history endpoints are `GET /api/leads/{lead_id}/ai-sales-intelligence/history` and `GET /api/leads/{lead_id}/ai-sales-intelligence/history/{artifact_id}`. Migration `0016_ai_sales_intelligence` adds append-only, lead-linked generations. A SHA-256 fingerprint covers the bounded current lead, valid completed enrichment, latest supported completed SEO run and opportunities, sales activities/tasks, outreach history, and commercial/collection context. Old generations remain available and are marked stale when the source fingerprint changes.
-
-The context builder separates verified facts, deterministic opportunities, historical events, commercial data, SEO data, and explicit missing information. Stable evidence/source IDs are stored with each artifact and checked against the exact lead and current enrichment/SEO run before persistence. Verified facts are rendered from server-owned evidence, and model-authored inference/uncertainty wording is restricted to a small non-factual phrase set because reference validation alone cannot prove the meaning of free-form prose. Suggested language is separately labeled and allowlisted. Source titles and service IDs must select supplied deterministic records/catalog entries. Provider execution uses the Phase 8A abstraction; supported configured providers remain Ollama, Gemini, and OpenAI-compatible. Provider failures and malformed output create content-free failure artifacts with bounded error metadata; raw provider responses and credentials are not persisted.
-
-The lead detail page displays the interpretation and inspectable evidence references. It never generates on page load. A person may explicitly create a task from an action that has a compatible existing task type, using the existing lead task API. The artifact itself does not create tasks, change lead priority or sales status, modify revenue, prepare or send outreach, or change SEO/enrichment state. API authentication remains the application's shared bearer-token gate rather than per-user authorization.
-
-## AI Sales Copilot (Phase 9B)
-
-The Copilot is bounded decision support, not a general chat interface. `POST /api/leads/{lead_id}/ai-copilot` accepts a question; the server classifies only the seven supported exact question forms. Unsupported questions, including a supported phrase with appended instructions, return a structured unsupported response without invoking a provider. Provider output selects only current Phase 9A fact, opportunity, missing-information, and review-action IDs. The server validates those references against the current lead and enrichment/SEO runs. Answer wording is generated from fixed server templates, and displayed factual detail comes from the persisted Phase 9A evidence catalog rather than free-form model prose.
-
-Migration `0017_ai_sales_copilot` adds append-only, lead-scoped interaction history. Each record stores the bounded question, intent, contract/prompt/context versions, provider/model, source fingerprint, validated response, evidence catalog, safe usage metadata, and sanitized error fields. `GET /api/leads/{lead_id}/ai-copilot/history` returns only that lead's records and marks responses stale when the Phase 9A deterministic context fingerprint changes. The lead detail page exposes the question menu and explicit Ask Copilot button; it does not ask automatically on page load. Review links navigate to existing lead sections. The Copilot cannot create tasks/outreach or change lead, sales, SEO, or revenue state.
+- [docs/OPERATIONS.md](docs/OPERATIONS.md): users and sign-in, credential encryption, e-mail compliance and the suppression list, CI, request IDs, metrics and Sentry.
+- [docs/FEATURES.md](docs/FEATURES.md): the detailed reference for each feature area and its API contract (jobs, CSV, outreach preparation and review, sales workflow, revenue, SEO, AI sales intelligence, copilot, agent policy, supervisor, autonomous tasks, approved e-mail execution, delivery events).
+- `reports/`: Phase 12 reliability audits and closure reports.
 
 ## Current limitations
 
-Provider adapters currently support Ollama, Gemini, and generic OpenAI-compatible chat completions. Provider request controls support API-key leases and typed retries, and `api_keys.key` is encrypted at rest (see **Stored credential encryption**). Dashboard users sign in with individual accounts (see **Users and sign-in**); the bearer token is reserved for automation. Website requests resolve and pin a validated public destination per request, then repeat validation for redirects. Reports and settings pages are not implemented.
-## Phase 10A: Agent Policy Engine
-
-The authenticated `POST /api/leads/{lead_id}/agent-policy/evaluate` endpoint evaluates a strict structured action request against the current deterministic Phase 9A context. It records an append-only decision; `GET /api/leads/{lead_id}/agent-policy/history` reads those audit records. Policy evaluation never creates tasks, sends outreach, changes sales stages, or invokes an AI provider.
-
-Policy version `agent-policy-v1` returns `ALLOW`, `DENY`, or `REQUIRE_HUMAN_APPROVAL`. Review actions can be allowed when their current evidence references validate. Follow-up and call actions are always `HUMAN_ONLY` and require explicit human approval; opt-outs, terminal sales states, duplicate active tasks, and recent-contact cooldowns deny the request. The cooldown is server-side and configurable with `AGENT_CONTACT_COOLDOWN_MINUTES` (default: 1440). Channel opt-out booleans (`email_opted_out`, `whatsapp_opted_out`, `phone_opted_out`) default to false and are administrative state; evaluation requests cannot set or override them.
-
-Migration `0020_agent_policy_evaluations` adds the policy audit table and those opt-out fields. The lead detail page displays the latest recorded decision read-only; it has no evaluation or execution control.
-
-## Phase 10B: AI Sales Supervisor
-
-The authenticated pipeline endpoints are `POST /api/sales-supervisor/run`, `GET /api/sales-supervisor/current`, `GET /api/sales-supervisor/history`, and `GET /api/sales-supervisor/history/{run_id}`. Runs use immutable artifact and prompt versions `ai-sales-supervisor-v1` and `ai-sales-supervisor-prompt-v1`, and reuse Phase 9A context version `ai-sales-context-v1`. Migration `0021_ai_sales_supervisor` adds append-only run records with context fingerprints, evidence references, provider usage, and bounded scope metadata.
-
-The service deterministically summarizes the pipeline and selects at most ten prioritized leads for bounded AI interpretation; counts distinguish the full pipeline from the reviewed sample. Provider output is limited to strict attention, urgency, action, and current reference selections. The server checks each selection against the lead's current Phase 9A context, evidence catalog, and deterministic urgency limits. Every recommended action is evaluated by the existing Phase 10A Agent Policy Engine. `DENY` removes the action recommendation; `REQUIRE_HUMAN_APPROVAL` is recorded as a review requirement. Policy evaluation and the Supervisor do not execute actions.
-
-The `/sales/supervisor` page shows freshness, deterministic counts, findings, evidence references, policy decisions, and append-only run history. Recommendations never send communications, create tasks, approve actions, or change lead, sales, commercial, outreach, SEO, or enrichment records. No score or probability is produced. Run focused checks with `python -m pytest backend/tests/test_ai_sales_supervisor.py -q`; migration and PostgreSQL checks follow the repository's Alembic and opt-in PostgreSQL instructions above.
-
-## Phase 10C: Autonomous Task Agent
-
-Phase 10C allows controlled autonomous creation of **internal SalesTask records only**. Authenticated endpoints are `POST /api/agent/tasks/execute`, `GET /api/agent/tasks/executions`, `GET /api/agent/tasks/executions/{execution_id}`, `POST /api/sales-supervisor/tasks/execute`, and lead-scoped task execution history under `/api/leads/{lead_id}/agent/tasks/executions`. Each request must identify a persisted Phase 9C action plan or Phase 10B Supervisor run and one action within it. The service reloads current Phase 9A context, validates the source and evidence references, and reevaluates the action through the Phase 10A Policy Engine. Client policy decisions, task fields, provenance flags, and `requested_by` are ignored.
-
-Only `ALLOW` can create a task. `DENY`, `REQUIRE_HUMAN_APPROVAL`, invalid references, ineligible leads, or stale context never create one. Follow-up and call actions continue to require human approval under the existing Phase 10A rules. Task type, canonical title, due date, priority, open status, and provenance are set by deterministic application rules. No email, WhatsApp, phone, external CRM, or other prospect contact is performed.
-
-Migration `0022_autonomous_task_executions` adds source provenance to agent-created SalesTasks and an append-only execution audit linked to the lead, task, and policy evaluation. Retries write another audit row, while a source-action key and a partial unique database index prevent duplicate task creation; equivalent active manual tasks are returned as `ALREADY_EXISTS`. The Supervisor page's “Run approved internal tasks” control reports created, existing, denied, approval-required, stale, and failed outcomes. Verify with `python -m pytest backend/tests/test_autonomous_task_agent.py -q`, affected action-planner/policy/Supervisor tests, Alembic offline upgrade/downgrade/re-upgrade, and the opt-in PostgreSQL integration command above.
-### Phase 10D — Autonomous Outreach Preparation
-
-Phase 10D prepares internal EMAIL, WHATSAPP, and CALL_SCRIPT drafts from a current Phase 9A context and a lead-scoped Phase 9C action or Phase 10B Supervisor finding. Every request revalidates source ownership, current evidence, context fingerprint, contact/opt-out state, and Phase 10A policy. The provider can return only selected current reference IDs and server-approved wording tokens; the application renders the draft with fixed language and records provider/model, policy, source, context, and validation metadata.
-
-Preparation records are append-only in `ai_outreach_preparations` (migration `0023_ai_outreach_preparations`). Successful identical requests return the existing preparation by a deterministic key. Outcomes requiring human approval remain labeled for review. Unsupported structured output is rejected and audited. The Task Agent does not send email, WhatsApp, or SMS, place calls, change sales or commercial state, or expose an execution endpoint. The Sales Supervisor page labels every result “Draft only — no message has been sent.”
-
-### Phase 10E — Human-approved email execution
-
-Only a persisted Phase 10D `EMAIL` preparation can be approved and sent. `POST /api/agent/outreach/preparations/{preparation_id}/approve` records an immutable approval using the server-configured authenticated principal (`API_AUTH_USER_ID`); the request cannot select a recipient, approver, policy result, or content. Approval revalidates source provenance, evidence, current Phase 9A context, recipient, compliance, and Phase 10A policy. Sending is a separate explicit action at `POST /api/agent/outreach/approvals/{approval_id}/execute`; it repeats those checks and sends the exact persisted subject/body to the lead's current email address only when it still matches the approved recipient and content hash.
-
-Migration `0024_ai_outreach_executions` adds approval and append-only execution audit tables; migration `0025_email_provider_status` adds the normalized provider response status. A single execution slot per approval plus a deterministic idempotency key prevents a repeated request from sending again. Provider timeouts and unknown outcomes become `UNCERTAIN`; there is no automatic retry or retry endpoint. Phase 11A routes the approved message through the server-configured `EMAIL_PROVIDER` (`smtp` or the existing `http_json` adapter), records its safe outcome/status, and continues to require `OUTREACH_EMAIL_ENABLED=true`. SMTP requires `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, and `SMTP_FROM_EMAIL`; optional `SMTP_USE_TLS`, `SMTP_USE_SSL`, and `SMTP_TIMEOUT_SECONDS` control transport security and timeout. Keep credentials only in the server environment/secret store; never expose them to the frontend. Phase 10E does not execute WhatsApp, SMS, or calls and does not invoke an AI provider during sending. The Sales Supervisor requires separate **Approve Email** and **Send Email** actions.
-
-API: `POST /api/agent/outreach/prepare`, `GET /api/agent/outreach/preparations/{lead_id}/current`, `GET /api/agent/outreach/preparations/{lead_id}/history`, and `GET /api/agent/outreach/preparations/{lead_id}/history/{preparation_id}`. These routes use the existing bearer authentication and lead-scoped reads.
-
-### Phase 11B — Email delivery event history
-
-Migration `0026_email_delivery_events` adds append-only, execution-linked delivery facts for `SENT`, `DELIVERED`, `BOUNCED`, `FAILED`, `COMPLAINED`, and `UNSUBSCRIBED`. A successful or definitively failed Phase 11A provider result records its corresponding event in the same database transaction that finalizes the execution. `UNCERTAIN` executions do not imply an event. Additional events can be recorded by an authenticated internal/provider-neutral process with `POST /api/email-delivery-events`; the execution's recipient and known provider message ID are authoritative. Repeated non-empty provider event IDs are idempotent within the execution/source boundary. `GET /api/outreach-executions/{execution_id}/delivery-events` returns chronological history.
-
-Delivery events are observational audit records, separate from the current execution status. Recording an event does not create tasks, change lead or commercial state, invoke AI, or cause communication. This phase does not include provider webhooks, polling, bounce/complaint processing, unsubscribe automation, or live delivery tracking unless a future provider integration supplies lifecycle events.
-
-### Phase 11C — Provider-neutral delivery event ingestion
-
-`POST /api/email-delivery-events/ingest` accepts a provider lifecycle observation under the existing bearer authentication. It resolves an execution only by the persisted provider and provider message ID, validates any supplied recipient against the execution, normalizes a fixed set of lifecycle aliases, and records the observation through the append-only event service. A provider/event ID pair is globally unique; identical replays return `DUPLICATE`, while conflicting reuse is rejected. Migration `0027_delivery_provider_identity` stores the bounded provider identifier and enforces this uniqueness. Migration `0028_delivery_reconcile` records provider timestamp provenance without changing historical event times. The read-only `GET /api/outreach-executions/{execution_id}/delivery-status` reconciles the append-only events deterministically. Events without provider timestamps do not participate in chronology checks; unknown aliases are explicitly rejected as unsupported. Reconciliation never retries, sends, or changes sales records.
-
-The ingestion boundary accepts normalized facts only: there is no provider webhook, signature verification, polling, raw payload storage, automatic retry, AI invocation, task creation, or lead/commercial state mutation. It does not resolve an event by recipient alone. The Sales Supervisor timeline remains read-only and shows provider identity when available.
+- **Settings and reporting:** there are no settings or report pages in the dashboard yet; configuration is through `.env`.
+- **Leads list:** it has no full-text search or total counts.
+- **Provider support:** AI providers are limited to Ollama, Gemini and OpenAI-compatible chat completions; e-mail providers to Resend and SendGrid (supervisor outbox), plus SMTP and an HTTP gateway (older send paths).
+- **Unsubscribe links:** recipients must be able to reach this backend at `OUTREACH_UNSUBSCRIBE_BASE_URL`. Alternatively, use the mailto option and record opt-outs through `/api/email-suppressions`.
+- **Sending domain:** the domain itself (SPF, DKIM, DMARC, warm-up) is configured with your DNS and e-mail provider.

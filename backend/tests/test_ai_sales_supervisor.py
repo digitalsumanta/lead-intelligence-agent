@@ -12,6 +12,7 @@ from pydantic import ValidationError
 from sqlalchemy import func, select
 
 from app import main as main_module
+from app.api.routes import ai_agents as ai_agents_routes
 from app.config import settings
 from app.database import SCHEMA_REVISION, get_db
 from app.domain.ai import AIUsage
@@ -294,13 +295,13 @@ async def test_authenticated_pipeline_api_current_history_and_detail(session_fac
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             assert (await client.get("/api/sales-supervisor/current")).status_code == 401
             headers = {"Authorization": "Bearer supervisor-test-token"}
-            original_run = main_module.run_supervisor
+            original_run = ai_agents_routes.run_supervisor
             async def unexpected_provider_run(*_args, **_kwargs):
                 raise AssertionError("invalid scope must be rejected before provider execution")
-            monkeypatch.setattr(main_module, "run_supervisor", unexpected_provider_run)
+            monkeypatch.setattr(ai_agents_routes, "run_supervisor", unexpected_provider_run)
             invalid = await client.post("/api/sales-supervisor/run", headers=headers, json={"scope": "LEAD"})
             assert invalid.status_code == 422
-            monkeypatch.setattr(main_module, "run_supervisor", original_run)
+            monkeypatch.setattr(ai_agents_routes, "run_supervisor", original_run)
             assert (await client.get("/api/sales-supervisor/current", headers=headers)).json() is None
             created = await client.post("/api/sales-supervisor/run", headers=headers, json={"scope": "PIPELINE"})
             assert created.status_code == 201
@@ -316,11 +317,11 @@ async def test_authenticated_pipeline_api_current_history_and_detail(session_fac
             assert detail.json()["id"] == body["id"]
             assert (await client.get("/api/sales-supervisor/history/00000000-0000-0000-0000-000000000001", headers=headers)).status_code == 404
 
-            original_builder = main_module.build_pipeline_context
+            original_builder = ai_agents_routes.build_pipeline_context
             async def changed_context(session):
                 prompt, data, fingerprint = await original_builder(session)
                 return prompt, data, "f" * 64 if fingerprint != "f" * 64 else "e" * 64
-            monkeypatch.setattr(main_module, "build_pipeline_context", changed_context)
+            monkeypatch.setattr(ai_agents_routes, "build_pipeline_context", changed_context)
             changed = await client.post("/api/sales-supervisor/run", headers=headers, json={"scope": "PIPELINE"})
             assert changed.status_code == 201
             assert changed.json()["is_stale"] is True and changed.json()["is_current"] is False

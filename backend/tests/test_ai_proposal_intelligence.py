@@ -14,6 +14,7 @@ from app.domain.ai import AIUsage
 from app.domain.ai_proposal_intelligence import ProposalBrief, ProposalSelection
 from app.domain.ai_sales_intelligence import AIValidationError, ContextEvidence, ContextItem
 from app import main as main_module
+from app.api.routes import ai_agents as ai_agents_routes
 from app.main import app
 from app.models import AiProposalIntelligence, Lead, OutreachArtifact, OutreachExecution, SalesActivity, SalesCollection, SalesTask, SeoFinding
 from app.services.ai_proposal_intelligence import (
@@ -229,7 +230,7 @@ async def test_auth_history_lead_isolation_and_explicit_proposal_task(session_fa
             assert created.status_code == 201 and created.json()["proposal_brief"]["lead_id"] == str(ids["lead_id"])
             assert created.json()["is_current"] is True and created.json()["is_stale"] is False
 
-            original_history = main_module.proposal_history
+            original_history = ai_agents_routes.proposal_history
             async def changed_context_history(session, lead_id, limit=50):
                 async with session_factory() as changed_session:
                     lead = await changed_session.get(Lead, lead_id)
@@ -237,13 +238,13 @@ async def test_auth_history_lead_isolation_and_explicit_proposal_task(session_fa
                     await changed_session.commit()
                 session.expire_all()
                 return await original_history(session, lead_id, limit)
-            monkeypatch.setattr("app.main.proposal_history", changed_context_history)
+            monkeypatch.setattr("app.api.routes.ai_agents.proposal_history", changed_context_history)
             raced = await client.post(f"/api/leads/{ids['lead_id']}/ai-proposal", headers=headers)
             assert raced.status_code == 201
             raced_payload = raced.json()
             assert raced_payload["source_fingerprint"] == created.json()["source_fingerprint"]
             assert raced_payload["is_stale"] is True and raced_payload["is_current"] is False
-            monkeypatch.setattr("app.main.proposal_history", original_history)
+            monkeypatch.setattr("app.api.routes.ai_agents.proposal_history", original_history)
 
             async with session_factory() as session:
                 assert await session.scalar(select(func.count()).select_from(SalesTask).where(SalesTask.lead_id == ids["lead_id"])) == tasks_before

@@ -199,7 +199,7 @@ async def test_api_analytics_endpoints(session_factory, analytics_test_data, mon
                 failed_count=0, complained_count=0, unsubscribed_count=0
             )
         ]
-    monkeypatch.setattr("app.main.get_timeseries_analytics", mock_timeseries)
+    monkeypatch.setattr("app.api.routes.outreach.get_timeseries_analytics", mock_timeseries)
 
     try:
         async with AsyncClient(transport=ASGITransport(app=main_module.app), base_url="http://test") as client:
