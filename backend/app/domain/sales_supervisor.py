@@ -8,6 +8,7 @@ scoring weights, input validation, and deterministic prioritization calculations
 from __future__ import annotations
 
 import enum
+from typing import Optional
 import hashlib
 import json
 import math

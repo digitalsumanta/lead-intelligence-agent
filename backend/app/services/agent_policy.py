@@ -223,7 +223,7 @@ async def evaluate_policy(
     )
 
 
-async def policy_history(session: AsyncSession, lead_id: UUID, limit: int = 50) -> list[AgentPolicyEvaluationOut]:
+async def policy_history(session: AsyncSession, lead_id: UUID, limit: int = 50) -> list[PolicyEvaluationOut]:
     if await session.get(Lead, lead_id) is None:
         raise LookupError("Lead not found")
     rows = (await session.scalars(select(AgentPolicyEvaluation).where(

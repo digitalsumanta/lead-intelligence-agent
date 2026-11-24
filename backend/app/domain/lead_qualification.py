@@ -33,7 +33,6 @@ from app.domain.digital_marketing_intelligence import (
     RESEARCHED,
     SEO,
     SOCIAL_MEDIA,
-    UNAVAILABLE,
     WEBSITE_PERFORMANCE,
 )
 from app.models.entities import (

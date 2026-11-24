@@ -124,6 +124,11 @@ class Settings(BaseSettings):
     )
     api_auth_token: str = ""
     api_auth_user_id: str = "local_api_user"
+    # --- Observability ---
+    metrics_token: str = Field(default="", validation_alias=AliasChoices("METRICS_TOKEN"))
+    sentry_dsn: str = Field(default="", validation_alias=AliasChoices("SENTRY_DSN"))
+    sentry_release: str = Field(default="", validation_alias=AliasChoices("SENTRY_RELEASE"))
+    sentry_traces_sample_rate: float = Field(default=0.0, ge=0.0, le=1.0, validation_alias=AliasChoices("SENTRY_TRACES_SAMPLE_RATE"))
     # Fernet key(s), comma-separated (first encrypts, all decrypt), for api_keys.key at rest.
     credential_encryption_key: str = Field(default="", validation_alias=AliasChoices("CREDENTIAL_ENCRYPTION_KEY"))
     # --- Dashboard user sessions (cookie auth). API_AUTH_TOKEN remains for scripts/automation only. ---

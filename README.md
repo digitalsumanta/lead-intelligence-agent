@@ -17,7 +17,7 @@ Local-first lead ingestion and enrichment. The backend uses FastAPI, SQLAlchemy 
 
 Use Python 3.12+, Node 20+, PostgreSQL 16, and Ollama. Copy `.env.example` to `.env`, set a strong URL-safe PostgreSQL password and a long random `API_AUTH_TOKEN` (used only by scripts and automation), and make sure `CORS_ORIGINS` lists the dashboard origin. After migrating, create the first dashboard account with `cd backend; python -m app.cli users create --email you@example.com --role admin`.
 
-Install backend requirements with `python -m pip install -r backend/requirements.txt` and frontend dependencies with `cd frontend; npm install`. Start PostgreSQL and Ollama, then run `./scripts/start-dev.ps1` from the repository root (or `docker compose up --build` after setting `.env`). The script passes the local bearer token to the API and Next.js dashboard. Ollama defaults to `qwen2.5-coder:latest`; install that model with `ollama pull qwen2.5-coder:latest`. The default AI request timeout is 300 seconds. In Docker Compose the Ollama address defaults to `host.docker.internal`.
+Install backend requirements with `python -m pip install -r backend/requirements-dev.txt` (runtime packages plus pytest and ruff; the Docker image installs only `backend/requirements.txt`) and frontend dependencies with `cd frontend; npm install`. Start PostgreSQL and Ollama, then run `./scripts/start-dev.ps1` from the repository root (or `docker compose up --build` after setting `.env`). Ollama defaults to `qwen2.5-coder:latest`; install that model with `ollama pull qwen2.5-coder:latest`. The default AI request timeout is 300 seconds. In Docker Compose the Ollama address defaults to `host.docker.internal`.
 
 ## Database migrations
 
@@ -63,6 +63,22 @@ The task summary also powers the Sales Action Center at `/leads/tasks`. Task row
 CSV requires `company_name`; optional columns are website, phone, email, address, city, state, country, and industry. Upload size defaults to 5 MB.
 
 The website analyzer only accepts HTTP(S), rejects localhost and non-public addresses, checks DNS destinations, manually follows a bounded number of redirects while revalidating them, applies a timeout, and caps response size. It does not crawl subpages.
+
+## CI and monitoring
+
+**Continuous integration.** `.github/workflows/ci.yml` runs on pushes to `main`/`master` and on pull requests:
+
+- *Backend:* `ruff check backend` (rules in `ruff.toml`: syntax errors, undefined names and redefinitions), the full pytest suite against a PostgreSQL 16 service (including the migration tests), then a fresh `alembic upgrade head` and the PostgreSQL integration tests (`-m postgres_integration`).
+- *Frontend:* `npm ci`, `tsc --noEmit`, and `next build`.
+- *Dependency audit:* `pip-audit -r backend/requirements.txt` and `npm audit --omit=dev --audit-level=high`.
+
+Run the same checks locally with `ruff check backend` and `python -m pytest backend/tests`.
+
+**Request IDs.** Every response carries `X-Request-ID` (a safe client-supplied value of 8–64 characters `[A-Za-z0-9._-]` is reused; otherwise one is generated). The ID appears as `request_id` in every JSON log line written while the request is handled and in the `details` of `INTERNAL_ERROR` responses, so a reported error can be found in the logs.
+
+**Metrics.** Set `METRICS_TOKEN` to enable `GET /metrics` (Prometheus text format; scrape with `Authorization: Bearer <METRICS_TOKEN>`). Without it the endpoint returns 404. Metrics include HTTP request counts and latency by route template, unhandled errors, lead processing jobs and outreach dispatches by status, seconds since the last worker heartbeat (`-1` when none), provider request outcomes over the last 15 minutes, and suppression-list size by reason. Useful alerts: worker heartbeat age above 120 s, any growth in `lead_agent_http_unhandled_errors_total`, dispatches stuck in `OUTCOME_UNKNOWN`, and a rising provider failure share.
+
+**Error tracking.** Set `SENTRY_DSN` to send unhandled exceptions from the API and both workers to Sentry (optional: `SENTRY_RELEASE`, `SENTRY_TRACES_SAMPLE_RATE`, default `0`). `send_default_pii` is off and request bodies are never attached.
 
 ## Users and sign-in
 

@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 from uuid import uuid4
 
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.database import SessionLocal
 from app.models import Lead

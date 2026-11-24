@@ -231,14 +231,52 @@ async def local_api_auth(request: Request, call_next):
             request.state.auth_method = "session"
     return await call_next(request)
 
-app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origin_list, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origin_list, allow_credentials=True, allow_methods=["*"], allow_headers=["*"], expose_headers=["X-Request-ID"])
+
+
+@app.middleware("http")
+async def request_context(request: Request, call_next):
+    """Outermost middleware: request ID for log correlation, plus HTTP metrics."""
+    from app import observability as obs
+    request_id = obs.resolve_request_id(request.headers.get("x-request-id"))
+    request.state.request_id = request_id
+    token = obs.request_id_var.set(request_id)
+    started = obs.monotonic()
+    try:
+        response = await call_next(request)
+    except Exception:
+        route = obs.route_label(request.scope)
+        obs.HTTP_UNHANDLED_ERRORS.labels(route).inc()
+        obs.observe_request(request.method, route, 500, obs.monotonic() - started)
+        raise
+    finally:
+        obs.request_id_var.reset(token)
+    obs.observe_request(request.method, obs.route_label(request.scope), response.status_code, obs.monotonic() - started)
+    response.headers["X-Request-ID"] = request_id
+    return response
+
+
+@app.get("/metrics", include_in_schema=False)
+async def metrics(request: Request, db: AsyncSession = Depends(get_db)):
+    """Prometheus metrics. Disabled (404) unless METRICS_TOKEN is set; scrapers send it as a bearer token."""
+    from app import observability as obs
+    if not (settings.metrics_token or "").strip():
+        return JSONResponse(status_code=404, content={"success": False, "error": {"code": "NOT_FOUND", "message": "Not found", "details": {}}})
+    if not obs.metrics_authorized(request.headers.get("authorization")):
+        return JSONResponse(status_code=401, content={"success": False, "error": {"code": "UNAUTHORIZED", "message": "Valid metrics token required", "details": {}}})
+    await obs.collect_database_metrics(db)
+    body, content_type = obs.render_metrics()
+    return Response(content=body, media_type=content_type)
 
 @app.exception_handler(Exception)
 async def global_error_handler(request, exc):
     """Return a stable JSON error envelope."""
-    logging.getLogger("lead_agent").exception("request failed")
+    request_id = getattr(request.state, "request_id", None)
+    logging.getLogger("lead_agent").exception("request failed", extra={"request_id": request_id})
     from fastapi.responses import JSONResponse
-    return JSONResponse(status_code=500, content={"success": False, "error": {"code": "INTERNAL_ERROR", "message": "An unexpected error occurred", "details": {}}})
+    details = {"request_id": request_id} if request_id else {}
+    headers = {"X-Request-ID": request_id} if request_id else None
+    return JSONResponse(status_code=500, headers=headers, content={"success": False, "error": {"code": "INTERNAL_ERROR", "message": "An unexpected error occurred", "details": details}})
 
 @app.exception_handler(HTTPException)
 async def http_error_handler(request, exc: HTTPException):
@@ -1839,7 +1877,6 @@ async def endpoint_outreach_execution_delivery_analytics(
     return result
 
 
-from app.services.lead_intelligence import get_lead_intelligence, refresh_lead_intelligence
 
 
 

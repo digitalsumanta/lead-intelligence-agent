@@ -20,6 +20,37 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from sqlalchemy.pool import StaticPool
 from app.models import Base
 
+class _TrackingSessionFactory:
+    """async_sessionmaker wrapper that keeps every session alive until test teardown.
+
+    Many tests override get_db with ``lambda: session_factory()`` and never close the session.
+    If such a session is garbage-collected mid-test, SQLAlchemy terminates its connection -
+    with StaticPool that is the one connection holding the in-memory database, which then
+    vanishes ("no such table"). Holding strong references prevents that timing-dependent
+    failure; all sessions are closed when the test ends.
+    """
+
+    def __init__(self, maker: async_sessionmaker) -> None:
+        self._maker = maker
+        self.sessions: list = []
+
+    def __call__(self, *args, **kwargs):
+        session = self._maker(*args, **kwargs)
+        self.sessions.append(session)
+        return session
+
+    def __getattr__(self, name):
+        return getattr(self._maker, name)
+
+    async def close_all(self) -> None:
+        for session in self.sessions:
+            try:
+                await session.close()
+            except Exception:
+                pass
+        self.sessions.clear()
+
+
 @pytest_asyncio.fixture
 async def session_factory():
     """Create an isolated SQLite database per test."""
@@ -29,8 +60,9 @@ async def session_factory():
         poolclass=StaticPool,
     )
     async with engine.begin() as conn: await conn.run_sync(Base.metadata.create_all)
-    factory = async_sessionmaker(engine, expire_on_commit=False)
+    factory = _TrackingSessionFactory(async_sessionmaker(engine, expire_on_commit=False))
     yield factory
+    await factory.close_all()
     await engine.dispose()
 
 

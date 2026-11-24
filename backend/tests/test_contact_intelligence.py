@@ -47,7 +47,7 @@ async def test_refresh_contact_intelligence_unknown_contact(session_factory):
         profile = await refresh_contact_intelligence(session, uuid.uuid4())
         assert profile is None
 
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport
 from app.main import app
 
 @pytest.mark.asyncio
@@ -65,7 +65,7 @@ async def test_get_contact_intelligence_api(session_factory, monkeypatch):
         session.add(lead)
         await session.commit()
 
-    from app.main import get_db, app
+    from app.main import get_db
     app.dependency_overrides[get_db] = lambda: session_factory()
     headers = {"Authorization": "Bearer api-test-token"}
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -87,7 +87,7 @@ async def test_api_unknown_contact(session_factory, monkeypatch):
     from app.config import settings
     monkeypatch.setattr(settings, "api_auth_token", "api-test-token")
     
-    from app.main import get_db, app
+    from app.main import get_db
     app.dependency_overrides[get_db] = lambda: session_factory()
 
     headers = {"Authorization": "Bearer api-test-token"}
