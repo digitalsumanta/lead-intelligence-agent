@@ -99,23 +99,37 @@ $env:PYTHONPATH = "backend"; python -m pytest backend/tests
 cd frontend; npx tsc --noEmit; npm run build
 ```
 
-- The default test suite uses in-memory SQLite. The migration tests (`test_migration_00xx`) also need a local PostgreSQL at `postgres:postgres@localhost:5432`; each creates and drops its own temporary database.
+- The default test suite uses in-memory SQLite. The migration tests (`test_migration_00xx`) also need a PostgreSQL server at `postgres:postgres@localhost:5432`; each creates and drops its own temporary `test_mig_*` database. Point them at a disposable development server, not one holding data you care about.
 - Tests never read your `.env`; `backend/tests/conftest.py` supplies safe settings.
 - For the PostgreSQL integration tests, migrate a dedicated database to head, then run with `TEST_POSTGRES_URL=postgresql+asyncpg://…` and `-m postgres_integration`.
 - `.github/workflows/ci.yml` runs all of the above, plus `pip-audit` and `npm audit`, on every push and pull request.
 
 When adding a migration, bump `SCHEMA_REVISION` in `backend/app/database.py`; `test_schema_revision.py` enforces this.
 
+## Backups
+
+`scripts/backup-db.ps1` dumps the Docker database to `backups/lead_agent_<timestamp>.dump` (PostgreSQL custom format), checks that the archive is readable, keeps 14 days (never fewer than the 3 newest), and logs to `backups/backup.log`. `backups/` is excluded from git.
+
+Register it as a nightly Windows task (02:00; runs later if the PC was off, retries while Docker starts):
+
+```powershell
+$a = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$PWD\scripts\backup-db.ps1`""
+Register-ScheduledTask -TaskName "Lead Intelligence - nightly database backup" -Action $a -Trigger (New-ScheduledTaskTrigger -Daily -At 2:00am) -Settings (New-ScheduledTaskSettingsSet -StartWhenAvailable -RestartCount 4 -RestartInterval (New-TimeSpan -Minutes 15)) -Force
+```
+
+Restore instructions are in the script header. Keep `CREDENTIAL_ENCRYPTION_KEY` somewhere other than the backups, and copy `backups/` off this machine regularly (another disk or a cloud drive).
+
 ## Further documentation
 
+- [docs/SENDING_DOMAIN.md](docs/SENDING_DOMAIN.md): setting up a sending domain (SPF, DKIM, DMARC) and warming it up.
 - [docs/OPERATIONS.md](docs/OPERATIONS.md): users and sign-in, credential encryption, e-mail compliance and the suppression list, CI, request IDs, metrics and Sentry.
 - [docs/FEATURES.md](docs/FEATURES.md): the detailed reference for each feature area and its API contract (jobs, CSV, outreach preparation and review, sales workflow, revenue, SEO, AI sales intelligence, copilot, agent policy, supervisor, autonomous tasks, approved e-mail execution, delivery events).
 - `reports/`: Phase 12 reliability audits and closure reports.
 
 ## Current limitations
 
-- **Settings and reporting:** there are no settings or report pages in the dashboard yet; configuration is through `.env`.
-- **Leads list:** it has no full-text search or total counts.
+- **Configuration:** the Settings page manages users and the suppression list and shows system status, but configuration values still live in `.env`. There are no report pages yet.
+- **Leads search:** a case-insensitive substring match, not full-text or fuzzy search.
 - **Provider support:** AI providers are limited to Ollama, Gemini and OpenAI-compatible chat completions; e-mail providers to Resend and SendGrid (supervisor outbox), plus SMTP and an HTTP gateway (older send paths).
 - **Unsubscribe links:** recipients must be able to reach this backend at `OUTREACH_UNSUBSCRIBE_BASE_URL`. Alternatively, use the mailto option and record opt-outs through `/api/email-suppressions`.
 - **Sending domain:** the domain itself (SPF, DKIM, DMARC, warm-up) is configured with your DNS and e-mail provider.

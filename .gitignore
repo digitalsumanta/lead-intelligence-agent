@@ -12,3 +12,5 @@ frontend/next-env.d.ts
 .pytest-temp/
 scratch/
 *.tsbuildinfo
+
+backups/
