@@ -2,9 +2,7 @@ FROM node:22-alpine
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 ARG NEXT_PUBLIC_API_URL=http://localhost:8000
-ARG NEXT_PUBLIC_API_TOKEN=
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
-    NEXT_PUBLIC_API_TOKEN=$NEXT_PUBLIC_API_TOKEN \
     NODE_ENV=production \
     PORT=3000 \
     HOSTNAME="0.0.0.0"

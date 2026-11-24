@@ -1811,3 +1811,50 @@ class EmailSuppression(Base):
     source: Mapped[str] = mapped_column(String(60), nullable=False)
     details: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+
+
+USER_ROLES = ("viewer", "sales_rep", "sales_manager", "admin")
+
+
+class AppUser(Base):
+    """A person who signs in to the dashboard. Passwords are stored only as scrypt hashes."""
+
+    __tablename__ = "app_users"
+    __table_args__ = (
+        UniqueConstraint("email", name="uq_app_users_email"),
+        CheckConstraint("role IN ('viewer', 'sales_rep', 'sales_manager', 'admin')", name="ck_app_users_role"),
+        CheckConstraint("email = lower(email)", name="ck_app_users_email_lower"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email: Mapped[str] = mapped_column(String(320), nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    role: Mapped[str] = mapped_column(String(30), nullable=False, default="viewer")
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    failed_login_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    password_changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+
+
+class AuthSession(Base):
+    """Server-side login session. Only a SHA-256 hash of the session token is stored."""
+
+    __tablename__ = "auth_sessions"
+    __table_args__ = (
+        UniqueConstraint("token_hash", name="uq_auth_sessions_token_hash"),
+        Index("ix_auth_sessions_user", "user_id"),
+        Index("ix_auth_sessions_expires", "expires_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("app_users.id", ondelete="CASCADE"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    ip_address: Mapped[str | None] = mapped_column(String(64), nullable=True)

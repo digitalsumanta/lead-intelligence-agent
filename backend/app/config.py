@@ -124,6 +124,13 @@ class Settings(BaseSettings):
     )
     api_auth_token: str = ""
     api_auth_user_id: str = "local_api_user"
+    # --- Dashboard user sessions (cookie auth). API_AUTH_TOKEN remains for scripts/automation only. ---
+    auth_session_ttl_hours: float = Field(default=12.0, gt=0, le=720, validation_alias=AliasChoices("AUTH_SESSION_TTL_HOURS"))
+    auth_cookie_name: str = Field(default="lead_agent_session", validation_alias=AliasChoices("AUTH_COOKIE_NAME"))
+    # None = automatic: Secure cookies in production/staging (browsers accept them on http://localhost too).
+    auth_cookie_secure: bool | None = Field(default=None, validation_alias=AliasChoices("AUTH_COOKIE_SECURE"))
+    auth_max_failed_logins: int = Field(default=5, ge=1, le=100, validation_alias=AliasChoices("AUTH_MAX_FAILED_LOGINS"))
+    auth_lockout_minutes: int = Field(default=15, ge=1, le=1440, validation_alias=AliasChoices("AUTH_LOCKOUT_MINUTES"))
     api_auth_role: str = Field(default="viewer", validation_alias=AliasChoices("API_AUTH_ROLE"))
     app_env: str = Field(default="development", validation_alias=AliasChoices("APP_ENV", "ENVIRONMENT"))
     supervisor_strict_separation: bool = Field(default=True, validation_alias=AliasChoices("SUPERVISOR_STRICT_SEPARATION"))
@@ -138,6 +145,10 @@ class Settings(BaseSettings):
         """Determines whether the application is running in a production or staging environment."""
         env_val = (self.app_env or "").strip().lower()
         return env_val in {"production", "prod", "staging", "stage"}
+
+    @property
+    def effective_auth_cookie_secure(self) -> bool:
+        return self.is_production if self.auth_cookie_secure is None else bool(self.auth_cookie_secure)
 
     @property
     def is_unrestricted_live_dispatch(self) -> bool:

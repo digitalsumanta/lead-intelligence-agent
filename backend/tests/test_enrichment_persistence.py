@@ -220,4 +220,4 @@ def test_enrichment_migration_is_the_single_head_after_worker_heartbeat():
         actual.append((module.revision, module.down_revision))
 
     assert actual == expected
-    assert SCHEMA_REVISION == "0028_delivery_reconcile"
+    assert SCHEMA_REVISION == "0044_app_users_and_sessions"

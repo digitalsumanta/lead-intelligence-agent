@@ -159,21 +159,76 @@ async def evaluate_provider_readiness(provider, session_factory=SessionLocal) ->
     status["serviceable"] = ready
     return status, ready
 
+_SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+# Session-management endpoints that handle authentication themselves.
+_SELF_AUTHENTICATING_API_PATHS = frozenset({"/api/auth/login", "/api/auth/logout"})
+
+
+def _unauthorized() -> JSONResponse:
+    return JSONResponse(status_code=401, content={"success": False, "error": {"code": "UNAUTHORIZED", "message": "Sign in required", "details": {}}})
+
+
+def csrf_check_passes(request: Request) -> bool:
+    """Cookie-authenticated state changes must come from our own dashboard.
+
+    The custom header cannot be sent cross-origin without a CORS preflight, which only the
+    configured origins pass; the Origin/Sec-Fetch-Site checks add defense in depth.
+    """
+    if request.headers.get("x-requested-with", "").strip().lower() != "lead-agent":
+        return False
+    origin = request.headers.get("origin")
+    if origin and origin.rstrip("/") not in {o.rstrip("/") for o in settings.cors_origin_list}:
+        return False
+    if request.headers.get("sec-fetch-site", "").lower() == "cross-site" and not origin:
+        return False
+    return True
+
+
+async def _resolve_cookie_principal(request: Request, token: str):
+    """Look up a session cookie. Uses the get_db dependency (honouring test overrides)."""
+    from app.services.auth import resolve_session
+    provider = request.app.dependency_overrides.get(get_db, get_db)
+    generator = provider()
+    db = await generator.__anext__()
+    try:
+        resolved = await resolve_session(db, token)
+        if resolved is None:
+            return None
+        return {"user_id": resolved.user.email, "role": resolved.user.role, "account_id": str(resolved.user.id)}
+    finally:
+        await generator.aclose()
+
+
 @app.middleware("http")
 async def local_api_auth(request: Request, call_next):
-    """Require the configured bearer token for application data and mutation routes."""
+    """Authenticate /api/* with either a dashboard session cookie or the automation bearer token."""
     if request.method == "OPTIONS":
         return await call_next(request)
-    if request.url.path.startswith("/api/sales-supervisor/webhooks/delivery"):
+    path = request.url.path
+    if path.startswith("/api/sales-supervisor/webhooks/delivery") or path in _SELF_AUTHENTICATING_API_PATHS:
         return await call_next(request)
-    if request.url.path.startswith("/api/"):
-        token = settings.api_auth_token
-        supplied = request.headers.get("authorization", "")
-        supplied = supplied[7:].strip() if supplied.lower().startswith("bearer ") else ""
-        if not token or not supplied or not hmac.compare_digest(token, supplied):
-            return JSONResponse(status_code=401, content={"success": False, "error": {"code": "UNAUTHORIZED", "message": "Valid API bearer token required", "details": {}}})
-        request.state.authenticated_user_id = settings.api_auth_user_id.strip() or None
-        request.state.authenticated_role = settings.api_auth_role.strip() or "viewer"
+    if path.startswith("/api/"):
+        authorization = request.headers.get("authorization", "")
+        if authorization.lower().startswith("bearer "):
+            # Service token for scripts and automation (never shipped to browsers).
+            token = settings.api_auth_token
+            supplied = authorization[7:].strip()
+            if not token or not supplied or not hmac.compare_digest(token, supplied):
+                return JSONResponse(status_code=401, content={"success": False, "error": {"code": "UNAUTHORIZED", "message": "Valid API bearer token required", "details": {}}})
+            request.state.authenticated_user_id = settings.api_auth_user_id.strip() or None
+            request.state.authenticated_role = settings.api_auth_role.strip() or "viewer"
+            request.state.auth_method = "service_token"
+        else:
+            cookie = request.cookies.get(settings.auth_cookie_name, "")
+            principal = await _resolve_cookie_principal(request, cookie) if cookie else None
+            if principal is None:
+                return _unauthorized()
+            if request.method not in _SAFE_METHODS and not csrf_check_passes(request):
+                return JSONResponse(status_code=403, content={"success": False, "error": {"code": "CSRF_CHECK_FAILED", "message": "Request origin could not be verified", "details": {}}})
+            request.state.authenticated_user_id = principal["user_id"]
+            request.state.authenticated_role = principal["role"]
+            request.state.authenticated_account_id = principal["account_id"]
+            request.state.auth_method = "session"
     return await call_next(request)
 
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origin_list, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
@@ -2041,6 +2096,7 @@ from app.api.routes import (
     supervisor_canary,
     business_research,
     email_compliance as email_compliance_routes,
+    auth as auth_routes,
 )
 
 app.include_router(contact_intelligence.router)
@@ -2057,6 +2113,7 @@ app.include_router(supervisor_canary.router)
 app.include_router(business_research.router)
 app.include_router(email_compliance_routes.public_router)
 app.include_router(email_compliance_routes.router)
+app.include_router(auth_routes.router)
 
 for _r in (
     contact_intelligence.router,

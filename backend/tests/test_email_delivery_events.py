@@ -54,7 +54,7 @@ def test_delivery_event_migration_and_model_are_current():
     assert (migration_28.revision, migration_28.down_revision) == (
         "0028_delivery_reconcile", "0027_delivery_provider_identity",
     )
-    assert SCHEMA_REVISION == migration_28.revision
+    assert SCHEMA_REVISION == "0044_app_users_and_sessions"
     table = Base.metadata.tables["email_delivery_events"]
     assert {"execution_id", "provider", "provider_event_id", "recipient_email", "event_type", "occurred_at", "provider_occurred_at", "recorded_at"}.issubset(table.c.keys())
 

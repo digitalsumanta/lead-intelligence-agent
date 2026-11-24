@@ -336,6 +336,6 @@ def test_migration_model_and_schema_registration():
     from app.models import Base
     table = Base.metadata.tables["ai_sales_supervisor_runs"]
     assert (module.revision, module.down_revision) == ("0021_ai_sales_supervisor", "0020_agent_policy_evaluations")
-    assert SCHEMA_REVISION == "0028_delivery_reconcile"
+    assert SCHEMA_REVISION == "0044_app_users_and_sessions"
     assert {"context_fingerprint", "result_json", "evidence_refs", "usage_json", "created_at"}.issubset(table.columns.keys())
     assert "ck_ai_sales_supervisor_scope_lead" in {item.name for item in table.constraints}

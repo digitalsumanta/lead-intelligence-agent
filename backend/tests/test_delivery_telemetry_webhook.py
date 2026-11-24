@@ -684,7 +684,7 @@ async def test_webhook_routes_exempt_from_local_api_bearer_auth(session_factory,
         # 1. Normal API route without bearer token is rejected with 401 UNAUTHORIZED (bearer required)
         api_res = await client.get("/api/leads")
         assert api_res.status_code == 401
-        assert "Valid API bearer token required" in api_res.json()["error"]["message"]
+        assert api_res.json()["error"]["code"] == "UNAUTHORIZED"
 
         # 2. Webhook route without bearer token reaches webhook handler and checks signature (not bearer)
         # Without signature headers -> fails with SIGNATURE_MISSING, NOT bearer token required!
@@ -698,4 +698,4 @@ async def test_webhook_routes_exempt_from_local_api_bearer_auth(session_factory,
         error_code = data.get("error", {}).get("code") or data.get("detail", {}).get("code")
         assert error_code == "SIGNATURE_MISSING"
         # Crucially, this was NOT blocked by local_api_auth middleware
-        assert "Valid API bearer token required" not in str(data)
+        assert "Sign in required" not in str(data) and "Valid API bearer token required" not in str(data)

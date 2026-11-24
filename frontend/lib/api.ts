@@ -1,30 +1,12 @@
 export const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-export function getApiToken(): string {
-  if (typeof window !== "undefined") {
-    try {
-      const stored = window.localStorage.getItem("lead_agent_api_token") || window.sessionStorage.getItem("lead_agent_api_token");
-      if (stored) return stored.trim();
-    } catch {
-      // Storage access may be restricted
-    }
-  }
-  return (process.env.NEXT_PUBLIC_API_TOKEN || "").trim();
-}
-
-export function setApiToken(token: string): void {
-  if (typeof window !== "undefined") {
-    try {
-      if (token) {
-        window.localStorage.setItem("lead_agent_api_token", token.trim());
-      } else {
-        window.localStorage.removeItem("lead_agent_api_token");
-      }
-    } catch {
-      // Storage access may be restricted
-    }
-  }
-}
+/**
+ * Authentication: the dashboard signs in with an HttpOnly session cookie set by the API
+ * (POST /api/auth/login). No API token is ever stored in, or bundled into, browser code.
+ * State-changing requests carry X-Requested-With so the API can reject cross-site forgeries.
+ */
+const CSRF_HEADER = "X-Requested-With";
+const CSRF_VALUE = "lead-agent";
 
 export class ApiError extends Error {
   constructor(
@@ -37,11 +19,49 @@ export class ApiError extends Error {
   }
 }
 
-export async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const headers = new Headers(init?.headers);
-  const token = getApiToken();
-  if (token) headers.set("Authorization", `Bearer ${token}`);
+export type CurrentUser = {
+  user_id: string;
+  email: string | null;
+  display_name: string | null;
+  role: string;
+  auth_method: "session" | "service_token";
+};
 
+function redirectToLogin(): void {
+  if (typeof window === "undefined") return;
+  if (window.location.pathname.startsWith("/login")) return;
+  const next = `${window.location.pathname}${window.location.search}`;
+  window.location.assign(`/login?next=${encodeURIComponent(next)}`);
+}
+
+/** Low-level fetch to the API with session cookie + CSRF header. Redirects to /login on 401. */
+export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  const headers = new Headers(init?.headers);
+  headers.set(CSRF_HEADER, CSRF_VALUE);
+  const response = await fetch(`${API}${path}`, {
+    ...init,
+    headers,
+    credentials: "include",
+    cache: "no-store",
+  });
+  if (response.status === 401 && !path.startsWith("/api/auth/")) redirectToLogin();
+  return response;
+}
+
+async function errorFrom(response: Response): Promise<ApiError> {
+  let message = `Request failed (${response.status})`;
+  let code: string | undefined;
+  try {
+    const body = await response.json();
+    code = body?.error?.code ?? body?.detail?.code;
+    message = body?.error?.message || body?.detail?.message || message;
+  } catch {
+    // Keep a generic error when the server response is not the API envelope.
+  }
+  return new ApiError(message, response.status, code);
+}
+
+export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const defaultSignal =
     typeof AbortSignal !== "undefined" && "timeout" in AbortSignal
       ? AbortSignal.timeout(480_000)
@@ -49,12 +69,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
 
   let response: Response;
   try {
-    response = await fetch(`${API}${path}`, {
-      ...init,
-      headers,
-      cache: "no-store",
-      signal: init?.signal ?? defaultSignal,
-    });
+    response = await apiFetch(path, { ...init, signal: init?.signal ?? defaultSignal });
   } catch (cause: unknown) {
     const errorName = cause && typeof cause === "object" && "name" in cause ? String((cause as { name: unknown }).name) : "";
     if (errorName === "TimeoutError" || errorName === "AbortError") {
@@ -67,19 +82,31 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     throw cause;
   }
 
-  if (!response.ok) {
-    let message = `Request failed (${response.status})`;
-    let code: string | undefined;
-    try {
-      const body = await response.json();
-      code = body?.error?.code;
-      message = body?.error?.message || message;
-    } catch {
-      // Keep a generic error when the server response is not the API envelope.
-    }
-    throw new ApiError(message, response.status, code);
-  }
+  if (!response.ok) throw await errorFrom(response);
+  if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
+}
+
+export async function login(email: string, password: string): Promise<CurrentUser> {
+  const response = await apiFetch("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!response.ok) throw await errorFrom(response);
+  return response.json();
+}
+
+export async function logout(): Promise<void> {
+  await apiFetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
+}
+
+/** Returns the signed-in user, or null when not signed in (does not redirect). */
+export async function getCurrentUser(): Promise<CurrentUser | null> {
+  const response = await apiFetch("/api/auth/me");
+  if (response.status === 401) return null;
+  if (!response.ok) throw await errorFrom(response);
+  return response.json();
 }
 
 export type DashboardStats = {
@@ -1253,12 +1280,7 @@ export async function saveResearchedLeads(request: SaveLeadsRequest): Promise<Sa
 }
 
 export async function downloadResearchCsv(jobId: string): Promise<Blob> {
-  const token = getApiToken();
-  const headers = new Headers();
-  if (token) headers.set("Authorization", `Bearer ${token}`);
-  const response = await fetch(`${API}/api/research/export/${encodeURIComponent(jobId)}`, {
-    headers,
-  });
+  const response = await apiFetch(`/api/research/export/${encodeURIComponent(jobId)}`);
   if (!response.ok) {
     throw new ApiError(`Failed to download CSV (${response.status})`, response.status);
   }
