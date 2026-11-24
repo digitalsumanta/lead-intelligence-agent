@@ -17,7 +17,7 @@ from datetime import datetime
 from html import escape
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
@@ -156,8 +156,12 @@ async def create_suppression(body: SuppressionCreate, db: AsyncSession = Depends
 
 
 @router.delete("/{suppression_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_suppression(suppression_id: uuid.UUID, db: AsyncSession = Depends(get_db)) -> None:
-    """Remove an entry, e.g. when a contact explicitly opts back in. Use with care."""
+async def delete_suppression(suppression_id: uuid.UUID, request: Request, db: AsyncSession = Depends(get_db)) -> None:
+    """Remove an entry, e.g. when a contact explicitly opts back in. Managers and admins only:
+    removing the wrong entry would e-mail someone who opted out."""
+    role = (getattr(request.state, "authenticated_role", None) or "viewer").lower()
+    if role not in {"sales_manager", "admin"}:
+        raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Only managers and admins can remove suppression entries"})
     row = await db.get(EmailSuppression, suppression_id)
     if row is None:
         raise HTTPException(status_code=404, detail={"code": "SUPPRESSION_NOT_FOUND", "message": "Suppression entry not found"})

@@ -195,7 +195,8 @@ async def test_unsubscribe_rejects_forged_token(client_factory, session_factory)
 
 
 @pytest.mark.asyncio
-async def test_suppression_api_requires_auth_and_supports_crud(client_factory):
+async def test_suppression_api_requires_auth_and_supports_crud(client_factory, monkeypatch):
+    monkeypatch.setattr(settings, "api_auth_role", "admin")
     auth = {"Authorization": "Bearer compliance-test-token"}
     async with client_factory() as client:
         assert (await client.get("/api/email-suppressions")).status_code == 401
@@ -205,6 +206,9 @@ async def test_suppression_api_requires_auth_and_supports_crud(client_factory):
         listing = (await client.get("/api/email-suppressions", headers=auth)).json()
         assert listing["total"] == 1 and listing["items"][0]["email_masked"] == "p***n@example.com"
         sid = created.json()["id"]
+        monkeypatch.setattr(settings, "api_auth_role", "viewer")  # viewers cannot remove entries
+        assert (await client.delete(f"/api/email-suppressions/{sid}", headers=auth)).status_code == 403
+        monkeypatch.setattr(settings, "api_auth_role", "admin")
         assert (await client.delete(f"/api/email-suppressions/{sid}", headers=auth)).status_code == 204
         assert (await client.delete(f"/api/email-suppressions/{sid}", headers=auth)).status_code == 404
 

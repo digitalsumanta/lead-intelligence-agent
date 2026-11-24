@@ -107,3 +107,31 @@ async def me(request: Request, db: AsyncSession = Depends(get_db)) -> CurrentUse
         display_name = user.display_name if user else None
     return CurrentUser(user_id=user_id, email=user_id if method == "session" else None,
                        display_name=display_name, role=role, auth_method=method)
+
+
+class PasswordChange(BaseModel):
+    current_password: str = Field(min_length=1, max_length=256)
+    new_password: str = Field(min_length=1, max_length=256)
+
+
+@router.post("/change-password", response_model=CurrentUser)
+async def change_password(body: PasswordChange, request: Request, db: AsyncSession = Depends(get_db)):
+    """Change your own password. Ends every other session; this browser gets a fresh one."""
+    from app.services.auth import get_user_by_email, set_password, verify_password
+    if getattr(request.state, "auth_method", None) != "session":
+        return _error(400, "SESSION_REQUIRED", "Only signed-in users can change their password")
+    user = await get_user_by_email(db, request.state.authenticated_user_id)
+    if user is None or not verify_password(body.current_password, user.password_hash):
+        return _error(400, "INVALID_CURRENT_PASSWORD", "Your current password is incorrect")
+    if body.new_password == body.current_password:
+        return _error(400, "PASSWORD_UNCHANGED", "Choose a password different from your current one")
+    try:
+        await set_password(db, user, body.new_password)
+    except ValueError as err:
+        return _error(400, "WEAK_PASSWORD", str(err))
+    token, _ = await create_session(db, user, user_agent=request.headers.get("user-agent"), ip_address=_client_ip(request))
+    await db.commit()
+    response = JSONResponse(CurrentUser(user_id=user.email, email=user.email, display_name=user.display_name,
+                                        role=user.role, auth_method="session").model_dump())
+    _set_cookie(response, token)
+    return response

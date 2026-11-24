@@ -1333,3 +1333,83 @@ export async function qualifyLead(leadId: string): Promise<LeadQualificationResu
     method: "POST",
   });
 }
+
+// ---------------------------------------------------------------------------
+// Settings: account, users (admin), suppression list, system status
+// ---------------------------------------------------------------------------
+
+export type UserRole = "viewer" | "sales_rep" | "sales_manager" | "admin";
+export const USER_ROLES: UserRole[] = ["viewer", "sales_rep", "sales_manager", "admin"];
+export const ROLE_LABELS: Record<UserRole, string> = {
+  viewer: "Viewer (read-only)",
+  sales_rep: "Sales rep",
+  sales_manager: "Sales manager (approves outreach)",
+  admin: "Admin",
+};
+
+export type AdminUser = {
+  id: string;
+  email: string;
+  display_name: string | null;
+  role: UserRole;
+  is_active: boolean;
+  locked: boolean;
+  last_login_at: string | null;
+  created_at: string;
+  active_sessions: number;
+};
+
+const jsonInit = (method: string, body?: unknown): RequestInit => ({
+  method,
+  headers: { "Content-Type": "application/json" },
+  body: body === undefined ? undefined : JSON.stringify(body),
+});
+
+export const changeOwnPassword = (current_password: string, new_password: string) =>
+  api<CurrentUser>("/api/auth/change-password", jsonInit("POST", { current_password, new_password }));
+
+export const listUsers = () => api<AdminUser[]>("/api/admin/users");
+export const createUser = (body: { email: string; display_name?: string; role: UserRole; password: string }) =>
+  api<AdminUser>("/api/admin/users", jsonInit("POST", body));
+export const updateUser = (id: string, body: { display_name?: string; role?: UserRole; is_active?: boolean }) =>
+  api<AdminUser>(`/api/admin/users/${encodeURIComponent(id)}`, jsonInit("PATCH", body));
+export const resetUserPassword = (id: string, password: string) =>
+  api<AdminUser>(`/api/admin/users/${encodeURIComponent(id)}/reset-password`, jsonInit("POST", { password }));
+export const signOutUser = (id: string) =>
+  api<AdminUser>(`/api/admin/users/${encodeURIComponent(id)}/sign-out`, jsonInit("POST"));
+
+export type SuppressionReason = "UNSUBSCRIBED" | "HARD_BOUNCE" | "COMPLAINT" | "MANUAL";
+export type Suppression = {
+  id: string;
+  email_masked: string | null;
+  reason: SuppressionReason;
+  source: string;
+  details: string | null;
+  created_at: string;
+};
+export type SuppressionPage = { items: Suppression[]; total: number; page: number; page_size: number };
+
+export const listSuppressions = (page = 1, reason?: SuppressionReason) =>
+  api<SuppressionPage>(`/api/email-suppressions?page=${page}&page_size=50${reason ? `&reason=${reason}` : ""}`);
+export const addSuppression = (email: string, details?: string) =>
+  api<Suppression>("/api/email-suppressions", jsonInit("POST", { email, reason: "MANUAL", details: details || undefined }));
+export const removeSuppression = (id: string) =>
+  api<void>(`/api/email-suppressions/${encodeURIComponent(id)}`, jsonInit("DELETE"));
+
+export type SystemStatus = {
+  environment: string;
+  database: { schema_revision: string | null; required_revision: string; up_to_date: boolean };
+  ai: { default_provider: string; ollama_model: string; gemini_enabled: boolean; gemini_model: string; openai_compatible_enabled: boolean };
+  enrichment: { google_places_enabled: boolean; pagespeed_enabled: boolean };
+  outreach: {
+    dispatch_enabled: boolean; email_enabled: boolean; email_provider: string | null; canary_mode: boolean;
+    canary_allowed_domains: string[]; unrestricted_live_sending: boolean;
+  };
+  compliance: { enforced: boolean; configured: boolean; problems: string[]; unsubscribe_link: boolean; unsubscribe_mailto: boolean };
+  credentials: { encryption_key_configured: boolean; stored_keys: number; encrypted_keys: number };
+  workers: { last_heartbeat_seconds_ago: number | null; healthy: boolean };
+  monitoring: { metrics_enabled: boolean; sentry_enabled: boolean };
+  suppressions: Record<string, number>;
+  users: { total: number; active: number; active_admins: number };
+};
+export const getSystemStatus = () => api<SystemStatus>("/api/admin/system-status");

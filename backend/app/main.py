@@ -223,6 +223,7 @@ async def readiness():
 # Router registration. Order matters: routes are matched in registration order.
 # ---------------------------------------------------------------------------
 from app.api.routes import (  # noqa: E402  (routers import app-level helpers defined above)
+    admin,
     ai_agents,
     auth,
     business_research,
@@ -269,6 +270,7 @@ for _router in (
 app.include_router(email_compliance.public_router)
 app.include_router(email_compliance.router)
 app.include_router(auth.router)
+app.include_router(admin.router)
 
 # Legacy: also expose these routers' APIRoute objects directly on app.routes (some callers and
 # tests inspect app.routes for them). FastAPI matches the included copies first, so this does not

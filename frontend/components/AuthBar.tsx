@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { CurrentUser, getCurrentUser, logout } from "@/lib/api";
@@ -41,6 +42,9 @@ export default function AuthBar() {
         {user.display_name || user.email || user.user_id}
         <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">{user.role.replace("_", " ")}</span>
       </span>
+      <Link href="/settings" className="rounded-md border border-slate-300 px-2.5 py-1 hover:bg-slate-50">
+        Settings
+      </Link>
       <button type="button" onClick={signOut} className="rounded-md border border-slate-300 px-2.5 py-1 hover:bg-slate-50">
         Sign out
       </button>
