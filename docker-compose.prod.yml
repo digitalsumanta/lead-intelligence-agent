@@ -1,0 +1,120 @@
+# Production stack for a single Linux server.
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d
+# Use scripts/deploy.sh for routine deploys. See docs/DEPLOYMENT.md.
+#
+# Only Caddy publishes ports (80/443). The database, backend, worker and dashboard are reachable
+# only on the internal Docker network.
+
+# Fixed project name: keeps production containers and volumes separate from the local
+# development stack (docker-compose.yml), even when both run from the same folder.
+name: lead-intelligence-prod
+
+x-app-env: &app-env
+  env_file:
+    - path: .env.production
+      required: true
+  environment:
+    DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB}
+    APP_ENV: production
+    CORS_ORIGINS: ${PUBLIC_URL}
+    OUTREACH_UNSUBSCRIBE_BASE_URL: ${PUBLIC_URL}
+
+services:
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+      - "${HTTPS_PORT:-443}:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env.production}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env.production}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+
+  database:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # One-off schema migration; the app starts only after it succeeds.
+  migrate:
+    <<: *app-env
+    image: lead-intelligence-backend:latest
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    depends_on:
+      database:
+        condition: service_healthy
+
+  backend:
+    <<: *app-env
+    image: lead-intelligence-backend:latest
+    build:
+      context: ./backend
+    restart: unless-stopped
+    # Trust X-Forwarded-For from Caddy (the backend is not reachable from outside), so login
+    # rate limiting and logs see real client addresses.
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    <<: *app-env
+    image: lead-intelligence-backend:latest
+    restart: unless-stopped
+    command: ["python", "-m", "app.worker"]
+    healthcheck:
+      disable: true
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  frontend:
+    image: lead-intelligence-frontend:latest
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${PUBLIC_URL:?set PUBLIC_URL in .env.production}
+    restart: unless-stopped
+
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    entrypoint: ["sh", "/backup-loop.sh"]
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      BACKUP_TIME: ${BACKUP_TIME:-02:00}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+    volumes:
+      - ./deploy/backup-loop.sh:/backup-loop.sh:ro
+      - ./backups:/backups
+    depends_on:
+      database:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:

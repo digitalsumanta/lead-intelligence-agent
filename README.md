@@ -34,6 +34,8 @@ Requires Python 3.12+, Node 20+, PostgreSQL 16 and, for local AI, [Ollama](https
    ```
 5. **Run.** `./scripts/start-dev.ps1` starts the API on port 8000, the lead-processing worker, and the dashboard on port 3000. To also run the outreach outbox worker, start both workers with `cd backend; python -m app.worker` instead. Alternatively, `docker compose up --build` runs everything, applies migrations automatically, and serves the dashboard on port 3001.
 
+For a production server with HTTPS, see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
 Then open the dashboard and sign in. `GET /health` is a liveness check; `GET /ready` also checks the database, the AI provider and the worker heartbeat.
 
 ## Architecture
@@ -121,6 +123,7 @@ Restore instructions are in the script header. Keep `CREDENTIAL_ENCRYPTION_KEY` 
 
 ## Further documentation
 
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): running in production on a Linux server (Caddy HTTPS, `docker-compose.prod.yml`, `scripts/deploy.sh`, data migration, backups, rollback).
 - [docs/SENDING_DOMAIN.md](docs/SENDING_DOMAIN.md): setting up a sending domain (SPF, DKIM, DMARC) and warming it up.
 - [docs/OPERATIONS.md](docs/OPERATIONS.md): users and sign-in, credential encryption, e-mail compliance and the suppression list, CI, request IDs, metrics and Sentry.
 - [docs/FEATURES.md](docs/FEATURES.md): the detailed reference for each feature area and its API contract (jobs, CSV, outreach preparation and review, sales workflow, revenue, SEO, AI sales intelligence, copilot, agent policy, supervisor, autonomous tasks, approved e-mail execution, delivery events).

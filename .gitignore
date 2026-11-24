@@ -14,3 +14,4 @@ scratch/
 *.tsbuildinfo
 
 backups/
+.env.production

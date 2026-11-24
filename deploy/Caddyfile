@@ -1,0 +1,41 @@
+# Public entry point. Caddy obtains and renews HTTPS certificates automatically.
+# API, unsubscribe and health routes go to the backend; everything else to the dashboard.
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+
+	# Prometheus metrics are for internal scraping only (http://backend:8000/metrics on the
+	# Docker network); never expose them publicly.
+	handle /metrics {
+		respond 404
+	}
+
+	@backend path /api/* /unsubscribe/* /health /ready
+	handle @backend {
+		request_body {
+			max_size 10MB
+		}
+		reverse_proxy backend:8000
+	}
+
+	handle {
+		reverse_proxy frontend:3000
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}
