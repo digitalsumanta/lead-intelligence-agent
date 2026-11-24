@@ -87,6 +87,15 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+/** Like api(), but also returns the X-Total-Count header (total matching rows across all pages). */
+export async function apiWithTotal<T>(path: string, init?: RequestInit): Promise<{ data: T; total: number | null }> {
+  const response = await apiFetch(path, init);
+  if (!response.ok) throw await errorFrom(response);
+  const header = response.headers.get("X-Total-Count");
+  const total = header !== null && /^\d+$/.test(header) ? Number(header) : null;
+  return { data: (await response.json()) as T, total };
+}
+
 export async function login(email: string, password: string): Promise<CurrentUser> {
   const response = await apiFetch("/api/auth/login", {
     method: "POST",

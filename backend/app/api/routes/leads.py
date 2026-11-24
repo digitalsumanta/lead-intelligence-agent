@@ -31,6 +31,8 @@ from app.services.lead_intelligence_api import (
     read_intelligence_summary,
     read_lead_intelligence,
 )
+from typing import Literal
+
 from fastapi import (
     APIRouter,
     Depends,
@@ -40,9 +42,14 @@ from fastapi import (
     Response,
     UploadFile,
 )
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+
+LeadSort = Literal[
+    "newest", "oldest", "company_asc", "company_desc", "score_desc", "score_asc",
+    "qualification_score_desc", "qualification_score_asc", "follow_up_soonest", "recently_updated",
+]
 
 router = APIRouter()
 
@@ -60,10 +67,16 @@ async def list_leads(
     priority: SalesPriority | None = None,
     follow_up_due: bool | None = None,
     qualification_class: str | None = Query(None, pattern="^(HOT|WARM|NURTURE|LOW_PRIORITY)$"),
-    sort_by: str | None = Query(None),
+    sort_by: LeadSort | None = Query(None),
+    q: str | None = Query(None, max_length=100, description="Case-insensitive search across company, website, e-mail, phone, city, industry and contact name"),
+    response: Response = None,
     db: AsyncSession = Depends(get_db),
 ):
-    """List leads newest first, with stable created_at/id ordering and one-based pages."""
+    """List leads (newest first by default) with stable ordering and one-based pages.
+
+    The body stays a JSON array for compatibility; the total number of matching leads is
+    returned in the ``X-Total-Count`` header.
+    """
     latest_run = select(EnrichmentRun.id).where(
         EnrichmentRun.lead_id == Lead.id,
         func.lower(EnrichmentRun.status) == "completed",
@@ -123,11 +136,31 @@ async def list_leads(
         raise HTTPException(422, detail={"code": "VALIDATION_ERROR", "message": "min_score cannot exceed max_score"})
     if qualification_class is not None:
         query = query.where(Lead.score_factors['qualification']['classification'].as_string() == qualification_class)
-    order_clauses = [Lead.created_at.desc(), Lead.id.desc()]
-    if sort_by == "qualification_score_desc":
-        order_clauses = [Lead.score_factors['qualification']['qualification_score'].as_integer().desc(), Lead.id.desc()]
-    elif sort_by == "qualification_score_asc":
-        order_clauses = [Lead.score_factors['qualification']['qualification_score'].as_integer().asc(), Lead.id.desc()]
+    term = (q or "").strip()
+    if term:
+        # Escape LIKE wildcards so user input is matched literally.
+        escaped = term.lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
+        query = query.where(or_(*(func.lower(column).like(pattern, escape="\\") for column in (
+            Lead.company_name, Lead.website, Lead.email, Lead.phone, Lead.city, Lead.industry, Lead.decision_maker,
+        ))))
+    if response is not None:
+        total = await db.scalar(select(func.count()).select_from(query.subquery()))
+        response.headers["X-Total-Count"] = str(int(total or 0))
+    qualification_score = Lead.score_factors['qualification']['qualification_score'].as_integer()
+    order_clauses = {
+        None: [Lead.created_at.desc(), Lead.id.desc()],
+        "newest": [Lead.created_at.desc(), Lead.id.desc()],
+        "oldest": [Lead.created_at.asc(), Lead.id.asc()],
+        "company_asc": [func.lower(Lead.company_name).asc(), Lead.id.asc()],
+        "company_desc": [func.lower(Lead.company_name).desc(), Lead.id.desc()],
+        "score_desc": [score_value.desc().nulls_last(), Lead.id.desc()],
+        "score_asc": [score_value.asc().nulls_last(), Lead.id.desc()],
+        "qualification_score_desc": [qualification_score.desc(), Lead.id.desc()],
+        "qualification_score_asc": [qualification_score.asc(), Lead.id.desc()],
+        "follow_up_soonest": [Lead.next_follow_up_at.asc().nulls_last(), Lead.id.desc()],
+        "recently_updated": [Lead.updated_at.desc(), Lead.id.desc()],
+    }[sort_by]
     rows = (await db.execute(query.order_by(*order_clauses)
         .offset((page - 1) * page_size).limit(page_size))).all()
     results = []

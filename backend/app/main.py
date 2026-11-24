@@ -129,7 +129,7 @@ async def local_api_auth(request: Request, call_next):
             request.state.auth_method = "session"
     return await call_next(request)
 
-app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origin_list, allow_credentials=True, allow_methods=["*"], allow_headers=["*"], expose_headers=["X-Request-ID"])
+app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origin_list, allow_credentials=True, allow_methods=["*"], allow_headers=["*"], expose_headers=["X-Request-ID", "X-Total-Count"])
 
 
 @app.middleware("http")

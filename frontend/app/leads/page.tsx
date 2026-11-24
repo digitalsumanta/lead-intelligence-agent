@@ -2,9 +2,22 @@
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { api, ApiError, DashboardStats, LeadListItem } from "@/lib/api";
+import { api, apiWithTotal, ApiError, DashboardStats, LeadListItem } from "@/lib/api";
 
 const PAGE_SIZES = [10, 25, 50, 100];
+
+const SORT_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "Newest first" },
+  { value: "oldest", label: "Oldest first" },
+  { value: "recently_updated", label: "Recently updated" },
+  { value: "company_asc", label: "Company name (A–Z)" },
+  { value: "company_desc", label: "Company name (Z–A)" },
+  { value: "score_desc", label: "Intelligence score (High to Low)" },
+  { value: "score_asc", label: "Intelligence score (Low to High)" },
+  { value: "qualification_score_desc", label: "Qualification score (High to Low)" },
+  { value: "qualification_score_asc", label: "Qualification score (Low to High)" },
+  { value: "follow_up_soonest", label: "Next follow-up (soonest)" },
+];
 
 function displayDate(value: string | null) {
   if (!value) return "—";
@@ -44,6 +57,20 @@ export default function LeadsDashboard() {
   const [qualificationClass, setQualificationClass] = useState("");
   const [sortBy, setSortBy] = useState("");
   const [appliedFilters, setAppliedFilters] = useState("");
+  const [search, setSearch] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
+  const [total, setTotal] = useState<number | null>(null);
+
+  // Apply the search 350 ms after the user stops typing.
+  useEffect(() => {
+    const next = search.trim();
+    if (next === appliedSearch) return;
+    const handle = window.setTimeout(() => {
+      setAppliedSearch(next);
+      setPage(1);
+    }, 350);
+    return () => window.clearTimeout(handle);
+  }, [search, appliedSearch]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -51,19 +78,22 @@ export default function LeadsDashboard() {
     const query = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
     const filterParams = new URLSearchParams(appliedFilters);
     filterParams.forEach((value, key) => query.set(key, value));
+    if (sortBy) query.set("sort_by", sortBy);
+    if (appliedSearch) query.set("q", appliedSearch);
     try {
       const [summary, rows] = await Promise.all([
         api<DashboardStats>("/api/dashboard/stats"),
-        api<LeadListItem[]>(`/api/leads?${query.toString()}`),
+        apiWithTotal<LeadListItem[]>(`/api/leads?${query.toString()}`),
       ]);
       setStats(summary);
-      setLeads(rows);
+      setLeads(rows.data);
+      setTotal(rows.total);
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : "Unable to load leads. Check the API connection and try again.");
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, appliedFilters]);
+  }, [page, pageSize, appliedFilters, sortBy, appliedSearch]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -83,7 +113,6 @@ export default function LeadsDashboard() {
     if (priority) params.set("priority", priority);
     if (followUpDue) params.set("follow_up_due", followUpDue);
     if (qualificationClass) params.set("qualification_class", qualificationClass);
-    if (sortBy) params.set("sort_by", sortBy);
     setPage(1);
     setAppliedFilters(params.toString());
   }
@@ -92,8 +121,13 @@ export default function LeadsDashboard() {
     setMinScore(""); setMaxScore(""); setIntelligenceStatus("");
     setPersonalization(""); setHasOpportunity(""); setPage(1); setAppliedFilters("");
     setSalesStatus(""); setPriority(""); setFollowUpDue("");
-    setQualificationClass(""); setSortBy("");
+    setQualificationClass(""); setSortBy(""); setSearch(""); setAppliedSearch("");
   }
+
+  const totalPages = total === null ? null : Math.max(1, Math.ceil(total / pageSize));
+  const firstShown = leads.length ? (page - 1) * pageSize + 1 : 0;
+  const lastShown = (page - 1) * pageSize + leads.length;
+  const hasNextPage = totalPages === null ? leads.length === pageSize : page < totalPages;
 
   const withIntelligence = leads.filter((lead) => lead.intelligence_status === "available").length;
   const withOpportunities = leads.filter((lead) => lead.opportunity_count > 0).length;
@@ -137,8 +171,20 @@ export default function LeadsDashboard() {
 
       <section className="mt-7 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-5 py-4">
-          <h2 className="font-bold text-ink">Filter leads</h2>
-          <p className="mt-1 text-sm text-slate-500">Filters are applied by the API to the current page query.</p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <label className="flex-1 text-xs font-semibold text-slate-600">Search leads
+              <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} maxLength={100}
+                placeholder="Company, website, e-mail, phone, city, industry or contact name"
+                className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+            </label>
+            <label className="text-xs font-semibold text-slate-600 sm:w-72">Sort by
+              <select value={sortBy} onChange={(event) => { setSortBy(event.target.value); setPage(1); }} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
+                {SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </label>
+          </div>
+          <h2 className="mt-5 font-bold text-ink">Filter leads</h2>
+          <p className="mt-1 text-sm text-slate-500">Choose filters, then Apply. Search and sorting apply immediately.</p>
           <form onSubmit={applyFilters} className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
             <label className="text-xs font-semibold text-slate-600">Minimum score
               <input type="number" min="0" max="100" value={minScore} onChange={(event) => setMinScore(event.target.value)} className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="0" />
@@ -179,13 +225,6 @@ export default function LeadsDashboard() {
                 <option value="LOW_PRIORITY">LOW PRIORITY (0-39)</option>
               </select>
             </label>
-            <label className="text-xs font-semibold text-slate-600">Sort by
-              <select value={sortBy} onChange={(event) => setSortBy(event.target.value)} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
-                <option value="">Newest first</option>
-                <option value="qualification_score_desc">Qualification score (High to Low)</option>
-                <option value="qualification_score_asc">Qualification score (Low to High)</option>
-              </select>
-            </label>
             <div className="flex items-end gap-2">
               <button type="submit" className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700">Apply</button>
               <button type="button" onClick={clearFilters} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Clear</button>
@@ -198,7 +237,7 @@ export default function LeadsDashboard() {
           <div className="p-12 text-center text-sm text-slate-500" aria-live="polite">Loading leads…</div>
         ) : leads.length === 0 ? (
           <div className="p-12 text-center">
-            <h3 className="font-semibold text-ink">{error ? "Leads could not be loaded" : appliedFilters ? "No leads match these filters" : "No leads yet"}</h3>
+            <h3 className="font-semibold text-ink">{error ? "Leads could not be loaded" : appliedSearch ? `No leads match “${appliedSearch}”` : appliedFilters ? "No leads match these filters" : "No leads yet"}</h3>
             <p className="mt-1 text-sm text-slate-500">{error ? "Refresh after checking the API connection." : "Import leads through the existing dashboard to begin enrichment."}</p>
           </div>
         ) : (
@@ -252,7 +291,11 @@ export default function LeadsDashboard() {
         )}
 
         <footer className="flex flex-col gap-3 border-t border-slate-200 px-5 py-4 text-sm sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-slate-500">Page {page} · {leads.length} shown{leads.length === pageSize ? "+" : ""} · API order: newest leads first</div>
+          <div className="text-slate-500" aria-live="polite">
+            {total === null
+              ? <>Page {page} · {leads.length} shown</>
+              : total === 0 ? <>No matching leads</> : <>Showing {firstShown}–{lastShown} of {total} lead{total === 1 ? "" : "s"} · Page {page} of {totalPages}</>}
+          </div>
           <div className="flex items-center gap-3">
             <label className="text-slate-500">Rows
               <select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1); }} className="ml-2 rounded-md border border-slate-300 bg-white px-2 py-1 text-ink">
@@ -260,12 +303,11 @@ export default function LeadsDashboard() {
               </select>
             </label>
             <button onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page === 1 || loading} className="rounded-md border border-slate-300 px-3 py-1.5 font-medium disabled:cursor-not-allowed disabled:opacity-40">Previous</button>
-            <button onClick={() => setPage((current) => current + 1)} disabled={loading || leads.length < pageSize} className="rounded-md border border-slate-300 px-3 py-1.5 font-medium disabled:cursor-not-allowed disabled:opacity-40">Next</button>
+            <button onClick={() => setPage((current) => current + 1)} disabled={loading || !hasNextPage} className="rounded-md border border-slate-300 px-3 py-1.5 font-medium disabled:cursor-not-allowed disabled:opacity-40">Next</button>
           </div>
         </footer>
       </section>
 
-      <p className="mt-4 text-xs text-slate-400">Search, custom sorting, and total matching-result counts are not currently provided by the API. List filters and pagination are applied server-side.</p>
     </main>
   );
 }
