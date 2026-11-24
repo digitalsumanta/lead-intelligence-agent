@@ -110,13 +110,13 @@ When adding a migration, bump `SCHEMA_REVISION` in `backend/app/database.py`; `t
 
 ## Backups
 
-`scripts/backup-db.ps1` dumps the Docker database to `backups/lead_agent_<timestamp>.dump` (PostgreSQL custom format), checks that the archive is readable, keeps 14 days (never fewer than the 3 newest), and logs to `backups/backup.log`. `backups/` is excluded from git.
+`scripts/backup-db.ps1` dumps the Docker database to `backups/lead_agent_<timestamp>.dump` (PostgreSQL custom format), checks that the archive is readable, keeps 14 days (never fewer than the 3 newest), and logs to `backups/backup.log`. `backups/` is excluded from git. When Google Drive for desktop is running, each dump is also copied to `My Drive\LeadIntelligenceBackups` (same retention); otherwise the log records `WARN … off-site copy skipped`. Use `-CopyTo <folder>` for another location or `-CopyTo none` to disable.
 
-Register it as a nightly Windows task (02:00; runs later if the PC was off, retries while Docker starts):
+Register it as a daily Windows task (13:00 here, while the PC is on; runs later if it was off, and retries while Docker starts):
 
 ```powershell
 $a = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$PWD\scripts\backup-db.ps1`""
-Register-ScheduledTask -TaskName "Lead Intelligence - nightly database backup" -Action $a -Trigger (New-ScheduledTaskTrigger -Daily -At 2:00am) -Settings (New-ScheduledTaskSettingsSet -StartWhenAvailable -RestartCount 4 -RestartInterval (New-TimeSpan -Minutes 15)) -Force
+Register-ScheduledTask -TaskName "Lead Intelligence - nightly database backup" -Action $a -Trigger (New-ScheduledTaskTrigger -Daily -At 1:00pm) -Settings (New-ScheduledTaskSettingsSet -StartWhenAvailable -RestartCount 4 -RestartInterval (New-TimeSpan -Minutes 15)) -Force
 ```
 
 Restore instructions are in the script header. Keep `CREDENTIAL_ENCRYPTION_KEY` somewhere other than the backups, and copy `backups/` off this machine regularly (another disk or a cloud drive).

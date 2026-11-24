@@ -7,8 +7,11 @@
   verifies it can be read, deletes backups older than -RetentionDays (always keeping the newest -KeepAtLeast),
   and appends a line to backups\backup.log. Exits non-zero on failure so Task Scheduler records it.
 
+  If Google Drive for desktop is running, each dump is also copied to "My Drive\LeadIntelligenceBackups"
+  (same retention). Override with -CopyTo <folder>, or disable with -CopyTo none.
+
   Store CREDENTIAL_ENCRYPTION_KEY separately from these files: provider keys inside the dump are encrypted
-  with it. For off-site safety, copy the backups folder to another disk or cloud drive.
+  with it.
 
 .EXAMPLE
   powershell -NoProfile -ExecutionPolicy Bypass -File scripts\backup-db.ps1
@@ -21,7 +24,10 @@
 param(
     [int]$RetentionDays = 14,
     [int]$KeepAtLeast = 3,
-    [string]$Container = "lead-intelligence-agent-database-1"
+    [string]$Container = "lead-intelligence-agent-database-1",
+    # Off-site copy folder. Empty = auto-detect Google Drive for desktop ("<drive>:\My Drive").
+    # Use -CopyTo none to disable.
+    [string]$CopyTo = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -34,6 +40,26 @@ function Write-Log([string]$message) {
     $line = "{0}  {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $message
     Add-Content -Path $logFile -Value $line
     Write-Output $line
+}
+
+function Find-OffsiteFolder {
+    if ($CopyTo -eq "none") { return $null }
+    if ($CopyTo) { return $CopyTo }
+    # Google Drive for desktop mounts a virtual drive containing "My Drive".
+    foreach ($drive in Get-PSDrive -PSProvider FileSystem) {
+        $myDrive = Join-Path $drive.Root "My Drive"
+        if (Test-Path -LiteralPath $myDrive) { return (Join-Path $myDrive "LeadIntelligenceBackups") }
+    }
+    return $null
+}
+
+function Remove-OldDumps([string]$folder) {
+    $dumps = Get-ChildItem -Path $folder -Filter "lead_agent_*.dump" | Sort-Object LastWriteTime -Descending
+    $cutoff = (Get-Date).AddDays(-$RetentionDays)
+    $dumps | Select-Object -Skip $KeepAtLeast | Where-Object { $_.LastWriteTime -lt $cutoff } | ForEach-Object {
+        Remove-Item $_.FullName -Force
+        Write-Log "DEL  $($_.Name) from $folder (older than $RetentionDays days)"
+    }
 }
 
 try {
@@ -65,11 +91,21 @@ try {
     Write-Log ("OK   {0} ({1:N0} KB, {2} tables)" -f $name, ($size / 1KB), $tables)
 
     # Retention: delete old dumps, but always keep the newest $KeepAtLeast.
-    $dumps = Get-ChildItem -Path $backupDir -Filter "lead_agent_*.dump" | Sort-Object LastWriteTime -Descending
-    $cutoff = (Get-Date).AddDays(-$RetentionDays)
-    $dumps | Select-Object -Skip $KeepAtLeast | Where-Object { $_.LastWriteTime -lt $cutoff } | ForEach-Object {
-        Remove-Item $_.FullName -Force
-        Write-Log "DEL  $($_.Name) (older than $RetentionDays days)"
+    Remove-OldDumps $backupDir
+
+    # Off-site copy. A failure here is logged but does not fail the backup itself.
+    $offsite = Find-OffsiteFolder
+    if ($null -eq $offsite) {
+        if ($CopyTo -ne "none") { Write-Log "WARN off-site copy skipped: Google Drive (My Drive) not found - is Google Drive for desktop running?" }
+    } else {
+        try {
+            New-Item -ItemType Directory -Force -Path $offsite | Out-Null
+            Copy-Item -LiteralPath $target -Destination (Join-Path $offsite $name) -Force
+            Write-Log "COPY $name -> $offsite"
+            Remove-OldDumps $offsite
+        } catch {
+            Write-Log "WARN off-site copy to $offsite failed: $($_.Exception.Message)"
+        }
     }
     exit 0
 }
